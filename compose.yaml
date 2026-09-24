@@ -1,0 +1,215 @@
+# Локальное окружение Тестматики. Запуск: make up  (или docker compose up -d --build)
+#
+#   http://localhost:8080        — приложение (Traefik → web и /api/*)
+#   http://localhost:8081        — панель Traefik (маршруты)
+#   http://localhost:8025        — Mailpit: все письма, которые отправляет платформа
+#   http://localhost:15672       — RabbitMQ (guest / guest)
+#   http://localhost:8333        — S3-хранилище (SeaweedFS); http://localhost:8888 — просмотр файлов
+#   localhost:5433               — PostgreSQL (postgres / postgres)
+
+name: testmatica
+
+x-python-env: &python-env
+  ENVIRONMENT: dev
+  LOG_LEVEL: INFO
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+  JWKS_URL: http://identity:8000/.well-known/jwks.json
+
+x-python-depends: &python-depends
+  postgres:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
+
+x-python-volumes: &libs-volume ./libs/platform-common:/libs/platform-common
+
+services:
+  # ---------- Инфраструктура ----------
+
+  traefik:
+    image: traefik:v3
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --accesslog=false
+    ports:
+      - "8080:80"
+      - "8081:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - traefik.enable=true
+      # Общий лимит запросов к API с одного IP.
+      - traefik.http.middlewares.api-ratelimit.ratelimit.average=30
+      - traefik.http.middlewares.api-ratelimit.ratelimit.burst=60
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      SERVICE_DATABASES: identity notification audit
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+
+  # S3-совместимое хранилище (в облаке — Yandex Object Storage).
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: server -dir=/data -s3 -s3.port=8333
+    ports:
+      - "8333:8333"
+      - "8888:8888"
+    volumes:
+      - s3-data:/data
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+
+  # ---------- Сервисы ----------
+
+  identity:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: identity, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/identity
+      DATABASE_URL: postgresql+asyncpg://identity:identity_dev@postgres:5432/identity
+      TEST_DATABASE_URL: postgresql+asyncpg://identity:identity_dev@postgres:5432/identity_test
+      REDIS_URL: redis://redis:6379/0
+      TEST_REDIS_URL: redis://redis:6379/15
+      SECRET_KEY: ${IDENTITY_SECRET_KEY:-dev-only-secret-change-me}
+    volumes:
+      - ./services/identity:/app
+      - *libs-volume
+      - identity-keys:/keys
+    depends_on:
+      <<: *python-depends
+      redis:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.identity.rule=PathPrefix(`/api/identity`)
+      - traefik.http.routers.identity.middlewares=identity-strip,api-ratelimit@docker
+      - traefik.http.middlewares.identity-strip.stripprefix.prefixes=/api/identity
+      - traefik.http.services.identity.loadbalancer.server.port=8000
+
+  notification:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: notification, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/notification
+      DATABASE_URL: postgresql+asyncpg://notification:notification_dev@postgres:5432/notification
+      TEST_DATABASE_URL: postgresql+asyncpg://notification:notification_dev@postgres:5432/notification_test
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    volumes:
+      - ./services/notification:/app
+      - *libs-volume
+    depends_on:
+      <<: *python-depends
+      mailpit:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.notification.rule=PathPrefix(`/api/notification`)
+      - traefik.http.routers.notification.middlewares=notification-strip,api-ratelimit@docker
+      - traefik.http.middlewares.notification-strip.stripprefix.prefixes=/api/notification
+      - traefik.http.services.notification.loadbalancer.server.port=8000
+
+  audit:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: audit, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/audit
+      DATABASE_URL: postgresql+asyncpg://audit:audit_dev@postgres:5432/audit
+      TEST_DATABASE_URL: postgresql+asyncpg://audit:audit_dev@postgres:5432/audit_test
+    volumes:
+      - ./services/audit:/app
+      - *libs-volume
+    depends_on: *python-depends
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.audit.rule=PathPrefix(`/api/audit`)
+      - traefik.http.routers.audit.middlewares=audit-strip,api-ratelimit@docker
+      - traefik.http.middlewares.audit-strip.stripprefix.prefixes=/api/audit
+      - traefik.http.services.audit.loadbalancer.server.port=8000
+
+  # ---------- Веб-клиент ----------
+
+  web:
+    image: node:24-alpine
+    working_dir: /web
+    command: sh -c "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
+    environment:
+      WATCHPACK_POLLING: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - ./web:/web
+      - web-node-modules:/web/node_modules
+      - web-next-cache:/web/.next
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=PathPrefix(`/`)
+      - traefik.http.routers.web.priority=1
+      - traefik.http.services.web.loadbalancer.server.port=3000
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:
+  s3-data:
+  identity-keys:
+  web-node-modules:
+  web-next-cache:
