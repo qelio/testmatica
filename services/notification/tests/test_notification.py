@@ -179,3 +179,27 @@ async def test_new_grade_notifies_student(client):
     await c.process(make_envelope("academic.grade.updated", data))
     items = (await client.get("/notifications", headers=bearer(student))).json()["items"]
     assert [(n["title"], n["body"]) for n in items] == [("Новая оценка: 5 — Алгебра", "Контрольная работа. Отлично")]
+
+
+async def test_inapp_command_coalesces_unread_chat_notifications(client):
+    user = uuid4()
+    c = consumer("notification.inapp", handlers.on_inapp_command)
+
+    def command(body, key="chat:1"):
+        return make_envelope(
+            "notification.inapp.send",
+            {"user_ids": [str(user)], "kind": "message", "title": "Новое сообщение: 7А", "body": body,
+             "payload": {"conversation_id": "1"}, "coalesce_key": key},
+        )
+
+    await c.process(command("Петя: привет"))
+    await c.process(command("Аня: как дела?"))
+    items = (await client.get("/notifications", headers=bearer(user))).json()["items"]
+    assert [(n["body"]) for n in items] == ["Аня: как дела?"]
+
+    # После прочтения следующее сообщение — новое уведомление.
+    await client.post(f"/notifications/{items[0]['id']}/read", headers=bearer(user))
+    await c.process(command("Петя: ещё вопрос"))
+    await c.process(command("Объявление", key=None))
+    items = (await client.get("/notifications", headers=bearer(user))).json()["items"]
+    assert len(items) == 3

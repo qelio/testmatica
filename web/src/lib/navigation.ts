@@ -1,14 +1,17 @@
 // Разделы сайдбара по ролям и режимам педагога (ТЗ, раздел 2).
 // ready: false — раздел появится на следующих этапах, пока показывается как «скоро».
 
-export type NavItem = { title: string; href: string; ready: boolean };
+export type NavItem = { title: string; href: string; ready: boolean; badge?: "chats" };
 
 const DASHBOARD: NavItem = { title: "Дашборд", href: "/dashboard", ready: true };
+// В ТЗ чаты не перечислены среди разделов, но без пункта меню до них не добраться.
+const CHATS: NavItem = { title: "Сообщения", href: "/dashboard/chats", ready: true, badge: "chats" };
 const soon = (title: string, href: string): NavItem => ({ title, href, ready: false });
 
 export const NAV = {
   school: [
     DASHBOARD,
+    CHATS,
     { title: "Расписание", href: "/dashboard/schedule", ready: true },
     { title: "Мои классы/группы", href: "/dashboard/groups", ready: true },
     soon("Планирование (КТП)", "/dashboard/planning"),
@@ -18,6 +21,7 @@ export const NAV = {
   ],
   tutor: [
     DASHBOARD,
+    CHATS,
     { title: "Расписание", href: "/dashboard/schedule", ready: true },
     { title: "Мои группы/ученики", href: "/dashboard/groups", ready: true },
     soon("Задания и тесты", "/dashboard/assignments"),
@@ -28,6 +32,7 @@ export const NAV = {
   ],
   student: [
     DASHBOARD,
+    CHATS,
     { title: "Мои педагоги", href: "/dashboard/teachers", ready: true },
     { title: "Расписание", href: "/dashboard/schedule", ready: true },
     soon("Задания", "/dashboard/assignments"),

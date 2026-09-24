@@ -51,6 +51,12 @@ export function setAccessToken(token: string | null) {
   accessToken = token;
 }
 
+/** Действующий access-токен (для WebSocket); при необходимости обновляется. */
+export async function currentAccessToken(): Promise<string | null> {
+  if (accessToken) return accessToken;
+  return (await refreshSession())?.access_token ?? null;
+}
+
 export function setSessionLostHandler(handler: (() => void) | null) {
   onSessionLost = handler;
 }
@@ -427,4 +433,49 @@ export const academic = {
   deleteGrade: (id: string) => api<void>(`${AC}/grades/${id}`, { method: "DELETE" }),
 
   myGrades: (from: Date, to: Date) => api<MyGrades>(`${AC}/me/grades?${period(from, to)}`),
+};
+
+// ---- chat ----
+
+export type ChatMessage = {
+  id: string;
+  conversation_id: string;
+  author_id: string;
+  author_name: string;
+  text: string;
+  is_announcement: boolean;
+  deleted: boolean;
+  created_at: string;
+};
+
+export type Conversation = {
+  id: string;
+  kind: "direct" | "group";
+  title: string;
+  group_id: string | null;
+  other_user_id: string | null;
+  my_role: string;
+  can_write: boolean;
+  unread: number;
+  last_message: ChatMessage | null;
+  pinned: ChatMessage | null;
+  last_message_at: string | null;
+};
+
+export type Contact = { id: string; full_name: string; relation: string };
+
+const CH = "/api/chat";
+
+export const chat = {
+  conversations: () => api<Conversation[]>(`${CH}/conversations`),
+  conversation: (id: string) => api<Conversation>(`${CH}/conversations/${id}`),
+  contacts: () => api<Contact[]>(`${CH}/contacts`),
+  openDirect: (userId: string) => api<Conversation>(`${CH}/conversations/direct`, { method: "POST", body: { user_id: userId } }),
+  messages: (id: string, before?: string) =>
+    api<ChatMessage[]>(`${CH}/conversations/${id}/messages?limit=50${before ? `&before=${encodeURIComponent(before)}` : ""}`),
+  send: (id: string, text: string, announcement = false) =>
+    api<ChatMessage>(`${CH}/conversations/${id}/messages`, { method: "POST", body: { text, announcement } }),
+  read: (id: string) => api<void>(`${CH}/conversations/${id}/read`, { method: "POST", body: {} }),
+  unpin: (id: string) => api<void>(`${CH}/conversations/${id}/pin`, { method: "DELETE" }),
+  deleteMessage: (id: string) => api<void>(`${CH}/messages/${id}`, { method: "DELETE" }),
 };
