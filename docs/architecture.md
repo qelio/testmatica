@@ -197,7 +197,8 @@ flowchart LR
 - Личные сообщения — только при связи (привязка педагог–ученик или общая активная группа); без связи диалог только для чтения
 - Реальное время: WebSocket `/ws` (первое сообщение — access-токен), доставка через Redis pub/sub `chat:user:<id>`
 - Уведомления: команда `notification.inapp` с `coalesce_key` — одно непрочитанное уведомление на чат; в аудит — событие без текста
-- Позже: вложения (с сервисом media), чат переговоров (этап 4), чат в занятии (этап 3), поддержка
+- Вложения: до 10 файлов на сообщение (через media); свежая ссылка — `GET /conversations/{id}/attachments/{file_id}`
+- Позже: чат переговоров (этап 4), чат в занятии (этап 3), поддержка
 
 ### video
 - `rooms` — id, lesson_id | attempt_id, livekit_room_name, kind (lesson / proctoring), status
@@ -214,7 +215,11 @@ flowchart LR
 - `deliveries` — notification_id, channel (email / push), status, attempts
 
 ### media
-- `files` — id, owner_id, bucket, key, mime, size, purpose, scan_status, expires_at
+- `files` — owner_id, purpose (chat_attachment / answer / material / avatar), filename, mime (по расширению), size, key в S3, status, claimed_by (какой сервис прикрепил)
+- Загрузка через сервис (multipart), скачивание — временные подписанные ссылки S3 (картинки, PDF, видео — в браузере, остальное — скачивание)
+- Ограничения по назначению: типы файлов и размер (вложения и ответы — 20 МБ, материалы — 500 МБ, фото — 5 МБ)
+- Прикрепление: `POST /internal/files/claim` — проверка владельца и назначения; ссылки: `POST /internal/files/urls` — вызывает сервис-владелец сущности после своей проверки доступа
+- Локально — SeaweedFS, в облаке — Yandex Object Storage; антивирусная проверка — позже
 
 ### audit
 - `audit_log` — id, event_id, type, actor_id, occurred_at, data (JSONB). Только INSERT: у пользователя БД нет прав на UPDATE/DELETE. Партиционирование по месяцам.

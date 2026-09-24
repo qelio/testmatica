@@ -1,0 +1,4 @@
+alembic>=1.14
+uvicorn[standard]>=0.32
+aioboto3>=13.2
+python-multipart>=0.0.18

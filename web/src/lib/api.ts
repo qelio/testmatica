@@ -437,12 +437,15 @@ export const academic = {
 
 // ---- chat ----
 
+export type Attachment = { id: string; filename: string; mime: string; size: number; url: string | null };
+
 export type ChatMessage = {
   id: string;
   conversation_id: string;
   author_id: string;
   author_name: string;
   text: string;
+  attachments: Attachment[];
   is_announcement: boolean;
   deleted: boolean;
   created_at: string;
@@ -473,9 +476,50 @@ export const chat = {
   openDirect: (userId: string) => api<Conversation>(`${CH}/conversations/direct`, { method: "POST", body: { user_id: userId } }),
   messages: (id: string, before?: string) =>
     api<ChatMessage[]>(`${CH}/conversations/${id}/messages?limit=50${before ? `&before=${encodeURIComponent(before)}` : ""}`),
-  send: (id: string, text: string, announcement = false) =>
-    api<ChatMessage>(`${CH}/conversations/${id}/messages`, { method: "POST", body: { text, announcement } }),
+  send: (id: string, text: string, attachmentIds: string[] = [], announcement = false) =>
+    api<ChatMessage>(`${CH}/conversations/${id}/messages`, {
+      method: "POST",
+      body: { text, attachment_ids: attachmentIds, announcement },
+    }),
+  attachment: (conversationId: string, fileId: string) =>
+    api<Attachment>(`${CH}/conversations/${conversationId}/attachments/${fileId}`),
   read: (id: string) => api<void>(`${CH}/conversations/${id}/read`, { method: "POST", body: {} }),
   unpin: (id: string) => api<void>(`${CH}/conversations/${id}/pin`, { method: "DELETE" }),
   deleteMessage: (id: string) => api<void>(`${CH}/messages/${id}`, { method: "DELETE" }),
 };
+
+// ---- media ----
+
+export type FilePurpose = "chat_attachment" | "answer" | "material" | "avatar";
+
+export type UploadedFile = { id: string; filename: string; mime: string; size: number; purpose: FilePurpose; url: string | null };
+
+/** Загрузить файл в media (multipart). Возвращает id для прикрепления. */
+export async function uploadFile(file: File, purpose: FilePurpose): Promise<UploadedFile> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("purpose", purpose);
+  const doUpload = async () => {
+    const token = await currentAccessToken();
+    return fetch("/api/media/files", {
+      method: "POST",
+      body: form,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: "same-origin",
+    });
+  };
+  let resp: Response;
+  try {
+    resp = await doUpload();
+    if (resp.status === 401 && (await refreshSession())) resp = await doUpload();
+  } catch {
+    throw new ApiError(0, "network_error", "Не удалось загрузить файл. Проверьте интернет.");
+  }
+  return parse<UploadedFile>(resp);
+}
+
+export function fmtSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
+  return `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} МБ`;
+}

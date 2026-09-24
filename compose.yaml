@@ -14,6 +14,7 @@ x-python-env: &python-env
   LOG_LEVEL: INFO
   RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
   JWKS_URL: http://identity:8000/.well-known/jwks.json
+  MEDIA_URL: http://media:8000
   INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token}
 
 x-python-depends: &python-depends
@@ -52,7 +53,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      SERVICE_DATABASES: identity notification audit classroom schedule academic chat
+      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media
     ports:
       - "5433:5432"
     volumes:
@@ -300,6 +301,40 @@ services:
       - traefik.http.routers.chat.middlewares=chat-strip,api-ratelimit@docker
       - traefik.http.middlewares.chat-strip.stripprefix.prefixes=/api/chat
       - traefik.http.services.chat.loadbalancer.server.port=8000
+
+  media:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: media, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/media
+      DATABASE_URL: postgresql+asyncpg://media:media_dev@postgres:5432/media
+      TEST_DATABASE_URL: postgresql+asyncpg://media:media_dev@postgres:5432/media_test
+      S3_ENDPOINT: http://s3:8333
+      S3_PUBLIC_ENDPOINT: http://localhost:8333
+      S3_BUCKET: testmatica
+    volumes:
+      - ./services/media:/app
+      - *libs-volume
+    depends_on:
+      <<: *python-depends
+      s3:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.media.rule=PathPrefix(`/api/media`) && !PathPrefix(`/api/media/internal`)
+      - traefik.http.routers.media.middlewares=media-strip,media-body,api-ratelimit@docker
+      - traefik.http.middlewares.media-strip.stripprefix.prefixes=/api/media
+      # Учебные видео — до 500 МБ.
+      - traefik.http.middlewares.media-body.buffering.maxRequestBodyBytes=524288000
+      - traefik.http.services.media.loadbalancer.server.port=8000
 
   # ---------- Веб-клиент ----------
 

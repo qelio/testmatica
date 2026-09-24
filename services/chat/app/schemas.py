@@ -1,22 +1,34 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .config import settings
 
 
 class MessageCreate(BaseModel):
-    text: str = Field(min_length=1, max_length=settings.message_max_length)
+    text: str = Field("", max_length=settings.message_max_length)
+    attachment_ids: list[UUID] = Field(default_factory=list, max_length=settings.max_attachments)
     announcement: bool = Field(False, description="Объявление в групповом чате (только педагог) — закрепляется")
 
     @field_validator("text")
     @classmethod
     def _text(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def _not_empty(self) -> "MessageCreate":
+        if not self.text and not self.attachment_ids:
             raise ValueError("Пустое сообщение")
-        return value
+        return self
+
+
+class Attachment(BaseModel):
+    id: UUID
+    filename: str
+    mime: str
+    size: int
+    url: str | None = Field(None, description="Временная ссылка на скачивание")
 
 
 class MessageOut(BaseModel):
@@ -25,6 +37,7 @@ class MessageOut(BaseModel):
     author_id: UUID
     author_name: str
     text: str
+    attachments: list[Attachment]
     is_announcement: bool
     deleted: bool
     created_at: datetime
