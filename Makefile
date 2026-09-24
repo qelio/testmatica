@@ -1,6 +1,6 @@
 # Короткие команды для локальной разработки. Список: make help
 
-SERVICES := identity notification audit classroom
+SERVICES := identity notification audit classroom schedule
 DC := docker compose
 
 .DEFAULT_GOAL := help

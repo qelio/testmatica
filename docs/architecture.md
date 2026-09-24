@@ -126,11 +126,15 @@ flowchart LR
 - Создание аккаунта ученика и поиск по логину — синхронный вызов `identity /internal/...`
 
 ### schedule
-- `lesson_series` — id, teacher_id, rule (RRULE), starts_at, until / count
-- `lessons` — id, series_id, teacher_id, group_id | student_id, mode (school / tutor), subject_id, starts_at, duration_min, status (scheduled / cancelled / finished), price, is_paid_lesson, is_trial, video_mode (builtin / external), external_url
-- `lesson_participants` — lesson_id, student_id, payment_status (not_required / pending / paid / refunded), attendance
-- `reschedule_requests` — lesson_id, requested_by, new_starts_at, status
-- Ограничение пересечений: exclusion constraint PostgreSQL по (teacher_id, tstzrange) для неотменённых занятий
+- `people` — реплика имён из identity
+- `lesson_series` — правило повторения (дни недели, раз в N недель, до даты / N занятий) и часовой пояс педагога
+- `lessons` — id, series_id, teacher_id, mode (school / tutor), kind (individual / group), group_id, group_title, student_id, subject, topic, starts_at, ends_at, status (scheduled / cancelled), video_url, отмена (кто, когда, причина)
+  - пересечения запрещены ограничением `EXCLUDE USING gist (teacher_id =, tstzrange(starts_at, ends_at) &&) WHERE status = 'scheduled'`
+- `lesson_participants` — lesson_id, student_id; будущие групповые занятия следуют за составом группы (события `classroom.member.*`, `classroom.link.ended`)
+- `reschedule_requests` — перенос индивидуального занятия, ждущий подтверждения второй стороны
+- `scheduled_jobs` — напоминания за 24 и 2 часа; устаревшие (занятие перенесено/отменено) пропускаются
+- Проверка доступа при создании — синхронно `classroom /internal/groups/{id}`, `/internal/links`
+- Позже (этап 4): статус оплаты участника, автоотмена без оплаты
 
 ### academic
 - `grade_types` — id, name (справочник модератора)

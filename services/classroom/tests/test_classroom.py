@@ -204,3 +204,28 @@ async def test_people_replica_from_identity_events():
     async with db.sessionmaker() as s:
         person = await s.get(Person, uid)
     assert (person.full_name, person.login, person.roles) == ("Новое имя", "x", ["student"])
+
+
+async def test_internal_group_and_link_info(client, teacher, fake_identity):
+    from testmatica_common.internal import INTERNAL_HEADER
+
+    from app.config import settings
+
+    h = {INTERNAL_HEADER: settings.internal_token}
+    group = await create_group(client, teacher)
+    sid = (
+        await client.post(
+            "/students/manual", json={"full_name": "Аня", "group_id": group["id"]}, headers=bearer(teacher)
+        )
+    ).json()["student"]["student_id"]
+
+    assert (await client.get(f"/internal/groups/{group['id']}", params={"teacher_id": str(teacher)})).status_code == 403
+    info = await client.get(f"/internal/groups/{group['id']}", params={"teacher_id": str(teacher)}, headers=h)
+    assert info.json()["member_ids"] == [sid] and info.json()["mode"] == "school"
+    other = await client.get(f"/internal/groups/{group['id']}", params={"teacher_id": str(uuid4())}, headers=h)
+    assert other.status_code == 404
+
+    link = await client.get("/internal/links", params={"teacher_id": str(teacher), "student_id": sid}, headers=h)
+    assert link.json()["active"] is True
+    missing = await client.get("/internal/links", params={"teacher_id": str(teacher), "student_id": str(uuid4())}, headers=h)
+    assert missing.status_code == 404

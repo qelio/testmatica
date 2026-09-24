@@ -7,7 +7,7 @@ from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import people
-from .api import groups, invitations, me, students
+from .api import groups, internal, invitations, me, students
 from .config import settings
 from .deps import db
 
@@ -33,3 +33,4 @@ app.include_router(groups.router)
 app.include_router(students.router)
 app.include_router(invitations.router)
 app.include_router(me.router)
+app.include_router(internal.router)

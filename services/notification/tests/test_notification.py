@@ -121,3 +121,47 @@ async def test_link_request_notifies_student_and_acceptance_notifies_teacher(cli
     assert [n["kind"] for n in student_items] == ["link_request"]
     teacher_items = (await client.get("/notifications", headers=bearer(teacher, ["teacher"]))).json()["items"]
     assert [n["title"] for n in teacher_items] == ["Петя принял(а) ваш запрос"]
+
+
+def schedule_event(type_, teacher, students, actor, **extra):
+    data = {
+        "lesson_ids": [str(uuid4())], "count": 1, "teacher_id": str(teacher), "teacher_name": "Мария Ивановна",
+        "student_ids": [str(s) for s in students], "title": "Петя", "subject": "Физика", "mode": "tutor",
+        "kind": "individual", "starts_at": "2026-10-01T12:00:00+00:00", "ends_at": "2026-10-01T13:00:00+00:00",
+    } | extra
+    return make_envelope(type_, data, actor_id=actor)
+
+
+async def test_schedule_notifications_skip_actor_and_label_by_role(client):
+    teacher, student = uuid4(), uuid4()
+    c = consumer("notification.schedule", handlers.on_schedule_event)
+    await c.process(schedule_event("schedule.lesson.created", teacher, [student], teacher))
+    await c.process(schedule_event("schedule.lesson.cancelled", teacher, [student], teacher, reason="Болею"))
+    await c.process(schedule_event("schedule.lesson.reminder", teacher, [student], teacher, hours=2))
+
+    student_items = (await client.get("/notifications", headers=bearer(student))).json()["items"]
+    assert sorted(n["title"] for n in student_items) == [
+        "Занятие отменено: Мария Ивановна",
+        "Новое занятие: Мария Ивановна",
+        "Через 2 ч занятие: Мария Ивановна",
+    ]
+    assert student_items[0]["payload"]["starts_at"] == "2026-10-01T12:00:00+00:00"
+
+    # Педагог — автор создания и отмены, ему приходит только напоминание (с именем ученика).
+    teacher_items = (await client.get("/notifications", headers=bearer(teacher, ["teacher"]))).json()["items"]
+    assert [n["title"] for n in teacher_items] == ["Через 2 ч занятие: Петя"]
+
+
+async def test_reschedule_request_notifies_other_side(client):
+    teacher, student = uuid4(), uuid4()
+    c = consumer("notification.schedule", handlers.on_schedule_event)
+    await c.process(
+        schedule_event(
+            "schedule.reschedule.requested", teacher, [student], student,
+            request_id=str(uuid4()), new_starts_at="2026-10-02T12:00:00+00:00", by_teacher=False,
+        )
+    )
+    teacher_items = (await client.get("/notifications", headers=bearer(teacher, ["teacher"]))).json()["items"]
+    assert teacher_items[0]["title"] == "Петя предлагает перенести занятие"
+    assert teacher_items[0]["payload"]["new_starts_at"] == "2026-10-02T12:00:00+00:00"
+    assert (await client.get("/notifications", headers=bearer(student))).json()["items"] == []
