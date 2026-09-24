@@ -2,17 +2,20 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Logo } from "@/components/ui";
+import { chat } from "@/lib/api";
 import { ROLE_LABELS, useAuth } from "@/lib/auth";
 import { navFor } from "@/lib/navigation";
+import { useRealtime } from "@/lib/realtime";
 
 export default function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const auth = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const unreadChats = useUnreadChats(auth.status === "authenticated", pathname);
 
   useEffect(() => {
     if (auth.status === "anonymous") router.replace("/login");
@@ -29,6 +32,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
   const { user } = auth;
   const isTeacher = user.roles.includes("teacher");
   const nav = navFor(user.roles, user.teacher_mode);
+  const badges = { chats: unreadChats };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -63,7 +67,14 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
                   onClick={() => setMenuOpen(false)}
                   className={`block rounded-xl px-3 py-2.5 text-sm font-medium ${isActive(pathname, item.href) ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
                 >
-                  {item.title}
+                  <span className="flex items-center justify-between">
+                    {item.title}
+                    {item.badge && badges[item.badge] > 0 && (
+                      <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-white">
+                        {badges[item.badge]}
+                      </span>
+                    )}
+                  </span>
                 </Link>
               ) : (
                 <span
@@ -81,6 +92,26 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
       </div>
     </div>
   );
+}
+
+/** Сколько чатов с непрочитанными сообщениями — для значка в меню. */
+function useUnreadChats(enabled: boolean, pathname: string): number {
+  const [count, setCount] = useState(0);
+  const refresh = useCallback(() => {
+    if (!enabled) return;
+    chat
+      .conversations()
+      .then((list) => setCount(list.filter((c) => c.unread > 0).length))
+      .catch(() => {});
+  }, [enabled]);
+  useEffect(() => {
+    // Обновляем при смене страницы (например, после чтения чата).
+    refresh();
+  }, [refresh, pathname]);
+  useRealtime((e) => {
+    if (e.type === "message" || e.type === "reconnected") refresh();
+  });
+  return count;
 }
 
 function isActive(pathname: string, href: string): boolean {

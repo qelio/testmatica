@@ -15,6 +15,7 @@ configure_logging(settings.service_name, settings.log_level)
 
 runtime = ServiceRuntime(settings, db)
 runtime.consumer("notification.email", [(COMMANDS_EXCHANGE, "notification.email")], handlers.on_email_command)
+runtime.consumer("notification.inapp", [(COMMANDS_EXCHANGE, "notification.inapp")], handlers.on_inapp_command)
 runtime.consumer("notification.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
 runtime.consumer("notification.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
 runtime.consumer("notification.academic", [(EVENTS_EXCHANGE, "academic.grade.*")], handlers.on_academic_event)

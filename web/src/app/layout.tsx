@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
 import { AuthProvider } from "@/lib/auth";
+import { RealtimeProvider } from "@/lib/realtime";
 
 import "./globals.css";
 
@@ -16,7 +17,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="ru" className={`${inter.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col font-sans">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <RealtimeProvider>{children}</RealtimeProvider>
+        </AuthProvider>
       </body>
     </html>
   );

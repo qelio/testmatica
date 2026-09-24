@@ -3,6 +3,7 @@
 import logging
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
 
@@ -165,3 +166,40 @@ async def on_academic_event(envelope: Envelope, session: AsyncSession) -> None:
             payload={"grade_id": data["grade_id"], "starts_at": data["lesson_starts_at"], "teacher_name": data["teacher_name"]},
         )
     )
+
+
+async def on_inapp_command(envelope: Envelope, session: AsyncSession) -> None:
+    """Команда notification.inapp.send: {"user_ids", "kind", "title", "body", "payload", "coalesce_key"}.
+
+    С coalesce_key непрочитанное уведомление с тем же ключом обновляется, а не дублируется
+    (одно уведомление на чат, а не на каждое сообщение)."""
+    data = envelope.data
+    key = data.get("coalesce_key")
+    payload = dict(data.get("payload") or {})
+    if key:
+        payload["coalesce_key"] = key
+    for raw in data["user_ids"]:
+        user_id = UUID(raw)
+        existing = None
+        if key:
+            existing = (
+                await session.execute(
+                    select(Notification)
+                    .where(
+                        Notification.user_id == user_id,
+                        Notification.read_at.is_(None),
+                        Notification.payload["coalesce_key"].astext == key,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+        if existing is not None:
+            existing.title = data["title"]
+            existing.body = data.get("body", "")
+            existing.created_at = envelope.occurred_at
+        else:
+            session.add(
+                Notification(
+                    user_id=user_id, kind=data["kind"], title=data["title"], body=data.get("body", ""), payload=payload
+                )
+            )

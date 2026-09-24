@@ -190,9 +190,14 @@ flowchart LR
 - Балансы не хранятся «числом», а считаются по `ledger_entries` (с кэшированным снимком). Все операции — в одной транзакции с блокировкой счёта.
 
 ### chat
-- `conversations` — id, kind (direct / group / negotiation / lesson / support), ref_id (group_id / request_id / lesson_id / dispute_id)
-- `conversation_members` — conversation_id, user_id, role, last_read_at
-- `messages` — id, conversation_id, author_id, text, attachments (media ids), is_announcement, is_pinned, created_at
+- Реплики: `people` (identity), `rel_links`, `rel_groups`, `rel_group_members` (classroom; события `classroom.group|member|link.*`, для заполнения — `*.snapshot`)
+- `conversations` — kind (direct / group), group_id (один чат на группу) или pair_key (один диалог на пару), pinned_message_id, last_message_at
+- `conversation_members` — user_id, role (teacher / member), joined_at, left_at, last_read_at (непрочитанные считаются от него)
+- `messages` — author_id, text, is_announcement, created_at, deleted_at (мягкое удаление; история бессрочно)
+- Личные сообщения — только при связи (привязка педагог–ученик или общая активная группа); без связи диалог только для чтения
+- Реальное время: WebSocket `/ws` (первое сообщение — access-токен), доставка через Redis pub/sub `chat:user:<id>`
+- Уведомления: команда `notification.inapp` с `coalesce_key` — одно непрочитанное уведомление на чат; в аудит — событие без текста
+- Позже: вложения (с сервисом media), чат переговоров (этап 4), чат в занятии (этап 3), поддержка
 
 ### video
 - `rooms` — id, lesson_id | attempt_id, livekit_room_name, kind (lesson / proctoring), status
