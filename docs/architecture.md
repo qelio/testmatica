@@ -137,13 +137,13 @@ flowchart LR
 - Позже (этап 4): статус оплаты участника, автоотмена без оплаты
 
 ### academic
-- `grade_types` — id, name (справочник модератора)
-- `grades` — id, student_id, group_id, lesson_id, teacher_id, value (1–5), grade_type_id, comment, source (manual / test), attempt_id
-- `attendance` — lesson_id, student_id, status (present / absent / late / sick)
-- `plan_templates` — id, author_id, subject_id, title, is_public, moderation_status, based_on_id
-- `plan_template_items` — template_id, position, topic, planned_results, materials_class, materials_home
-- `plan_bindings` — template_id, target_type (group / student), target_id
-- `plan_lessons` — binding_id, item_id, lesson_id, planned_date
+- `people` — реплика имён из identity
+- `grade_types` — справочник типов оценок (ведёт модератор, без весов; значения по умолчанию — в миграции)
+- `grades` — teacher_id, student_id, lesson_id, копия данных занятия (lesson_starts_at, group_id, subject), value 1–5, grade_type_id, comment (обязателен), source (manual / test)
+- `attendance` — (lesson_id, student_id), status (present / absent / late / sick), копия данных занятия
+- Столбцы журнала — занятия из `schedule /internal/lessons`, строки — состав из `classroom /internal/groups/{id}` плюс все, у кого есть записи
+- Базовая аналитика: средний балл и доля посещённых занятий по ученику, группе, предмету
+- Позже: КТП (этап 2), расширенная аналитика и экспорт (этап 5)
 
 ### content
 - `subjects` — id, name

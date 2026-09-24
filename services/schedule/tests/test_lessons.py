@@ -300,3 +300,24 @@ async def test_reminders(client, teacher, fake_classroom):
 async def test_calendar_range_is_limited(client, teacher):
     resp = await client.get("/lessons", params={"from": iso(at(0)), "to": iso(at(100))}, headers=bearer(teacher))
     assert resp.status_code == 422
+
+
+async def test_internal_lessons_for_journal(client, teacher, fake_classroom):
+    from testmatica_common.internal import INTERNAL_HEADER
+
+    from app.config import settings
+
+    h = {INTERNAL_HEADER: settings.internal_token}
+    s1 = uuid4()
+    gid = fake_classroom.group(teacher, [s1])
+    await create(client, teacher, kind="group", group_id=str(gid), starts_at=iso(at(-3, 9)), duration_min=45,
+                 repeat={"interval_weeks": 1, "count": 2}, timezone="UTC")
+    params = {"teacher_id": str(teacher), "group_id": str(gid), **window(-5, 30)}
+    lessons = (await client.get("/internal/lessons", params=params, headers=h)).json()
+    assert len(lessons) == 2 and lessons[0]["participant_ids"] == [str(s1)]
+
+    one = await client.get(f"/internal/lessons/{lessons[0]['id']}", params={"teacher_id": str(teacher)}, headers=h)
+    assert one.json()["group_id"] == str(gid)
+    other = await client.get(f"/internal/lessons/{lessons[0]['id']}", params={"teacher_id": str(uuid4())}, headers=h)
+    assert other.status_code == 404
+    assert (await client.get("/internal/lessons", params=params)).status_code == 403

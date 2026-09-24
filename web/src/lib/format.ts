@@ -19,3 +19,23 @@ export function pluralStudents(n: number): string {
         : "учеников";
   return `${n} ${word}`;
 }
+
+export const ATTENDANCE_LABELS = {
+  present: { short: "✓", full: "Присутствовал" },
+  late: { short: "О", full: "Опоздал" },
+  absent: { short: "Н", full: "Отсутствовал" },
+  sick: { short: "Б", full: "Болел" },
+} as const;
+
+export function fmtAverage(value: number | null): string {
+  return value === null ? "—" : value.toFixed(2).replace(/\.?0+$/, "").replace(".", ",");
+}
+
+export function fmtRate(value: number | null): string {
+  return value === null ? "—" : `${Math.round(value * 100)}%`;
+}
+
+/** Цвет оценки: 5 и 4 — хорошо, 3 — средне, 2 и 1 — плохо. */
+export function gradeTone(value: number): string {
+  return value >= 4 ? "text-ok" : value === 3 ? "text-tutor" : "text-danger";
+}

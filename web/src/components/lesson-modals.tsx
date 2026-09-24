@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { Alert, Badge, Button, Field, Modal, Select } from "@/components/ui";
@@ -400,8 +401,16 @@ function LessonDetails({
           )}
         </div>
       )}
+      {isTeacher && !cancelled && new Date(lesson.starts_at) <= new Date() && (
+        <Link
+          href={`/dashboard/journal?${lesson.kind === "group" ? `group=${lesson.group_id}` : `student=${lesson.participants?.[0]?.id ?? ""}`}`}
+          className="flex h-11 items-center justify-center rounded-xl border border-line font-medium hover:bg-muted"
+        >
+          Открыть журнал
+        </Link>
+      )}
       {isTeacher && !cancelled && (
-        <p className="text-xs text-fg-soft">Журнал, домашние задания и встроенный видеозвонок появятся на следующих этапах.</p>
+        <p className="text-xs text-fg-soft">Домашние задания и встроенный видеозвонок появятся на следующих этапах.</p>
       )}
     </div>
   );

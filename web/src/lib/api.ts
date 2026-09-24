@@ -356,3 +356,75 @@ export const schedule = {
   declineRequest: (id: string) => api<void>(`${SC}/reschedule-requests/${id}/decline`, { method: "POST" }),
   withdrawRequest: (id: string) => api<void>(`${SC}/reschedule-requests/${id}`, { method: "DELETE" }),
 };
+
+// ---- academic ----
+
+export type AttendanceStatus = "present" | "absent" | "late" | "sick";
+
+export type GradeType = { id: string; name: string; position: number; is_active: boolean };
+
+export type Grade = {
+  id: string;
+  lesson_id: string;
+  student_id: string;
+  value: number;
+  grade_type_id: string;
+  grade_type: string;
+  comment: string;
+  source: "manual" | "test";
+  lesson_starts_at: string;
+  created_at: string;
+};
+
+export type Stats = {
+  average: number | null;
+  grades_count: number;
+  present: number;
+  late: number;
+  absent: number;
+  sick: number;
+  attendance_rate: number | null;
+};
+
+export type Journal = {
+  title: string;
+  lessons: { id: string; starts_at: string; subject: string | null; topic: string | null; started: boolean }[];
+  students: { id: string; full_name: string; current: boolean; stats: Stats }[];
+  grades: Grade[];
+  attendance: { lesson_id: string; student_id: string; status: AttendanceStatus }[];
+  stats: Stats;
+};
+
+export type MyGrades = {
+  subjects: { subject: string; teacher_names: string[]; stats: Stats; grades: Grade[] }[];
+  stats: Stats;
+};
+
+const AC = "/api/academic";
+
+function period(from: Date, to: Date): string {
+  return `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+}
+
+export const academic = {
+  gradeTypes: (all = false) => api<GradeType[]>(`${AC}/grade-types${all ? "?all=true" : ""}`),
+  createGradeType: (name: string, position = 0) =>
+    api<GradeType>(`${AC}/grade-types`, { method: "POST", body: { name, position } }),
+  updateGradeType: (id: string, data: Partial<Pick<GradeType, "name" | "position" | "is_active">>) =>
+    api<GradeType>(`${AC}/grade-types/${id}`, { method: "PATCH", body: data }),
+
+  journal: (target: { group_id?: string; student_id?: string }, from: Date, to: Date) => {
+    const t = target.group_id ? `group_id=${target.group_id}` : `student_id=${target.student_id}`;
+    return api<Journal>(`${AC}/journal?${t}&${period(from, to)}`);
+  },
+  setAttendance: (lessonId: string, studentId: string, status: AttendanceStatus | null) =>
+    api<void>(`${AC}/lessons/${lessonId}/attendance/${studentId}`, { method: "PUT", body: { status } }),
+  allPresent: (lessonId: string) => api<void>(`${AC}/lessons/${lessonId}/attendance/all-present`, { method: "POST" }),
+  addGrade: (lessonId: string, data: { student_id: string; value: number; grade_type_id: string; comment: string }) =>
+    api<Grade>(`${AC}/lessons/${lessonId}/grades`, { method: "POST", body: data }),
+  updateGrade: (id: string, data: { value?: number; grade_type_id?: string; comment?: string }) =>
+    api<Grade>(`${AC}/grades/${id}`, { method: "PATCH", body: data }),
+  deleteGrade: (id: string) => api<void>(`${AC}/grades/${id}`, { method: "DELETE" }),
+
+  myGrades: (from: Date, to: Date) => api<MyGrades>(`${AC}/me/grades?${period(from, to)}`),
+};

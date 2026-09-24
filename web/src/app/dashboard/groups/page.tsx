@@ -187,7 +187,13 @@ function StudentsTab({
                 {s.group_ids.length > 0 && ` · ${s.group_ids.map((id) => titles[id] ?? "группа другого режима").join(", ")}`}
               </p>
             </div>
-            {s.status === "pending" ? <Badge tone="warn">ждёт подтверждения</Badge> : null}
+            {s.status === "pending" ? (
+              <Badge tone="warn">ждёт подтверждения</Badge>
+            ) : (
+              <Link href={`/dashboard/journal?student=${s.student_id}`} className="text-sm font-medium text-brand hover:underline">
+                Журнал
+              </Link>
+            )}
             <Button variant="ghost" className="h-9" onClick={() => setEditing(s)}>
               Управление
             </Button>

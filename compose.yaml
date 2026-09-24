@@ -52,7 +52,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      SERVICE_DATABASES: identity notification audit classroom schedule
+      SERVICE_DATABASES: identity notification audit classroom schedule academic
     ports:
       - "5433:5432"
     volumes:
@@ -241,6 +241,34 @@ services:
       - traefik.http.routers.schedule.middlewares=schedule-strip,api-ratelimit@docker
       - traefik.http.middlewares.schedule-strip.stripprefix.prefixes=/api/schedule
       - traefik.http.services.schedule.loadbalancer.server.port=8000
+
+  academic:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: academic, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/academic
+      DATABASE_URL: postgresql+asyncpg://academic:academic_dev@postgres:5432/academic
+      TEST_DATABASE_URL: postgresql+asyncpg://academic:academic_dev@postgres:5432/academic_test
+      SCHEDULE_URL: http://schedule:8000
+      CLASSROOM_URL: http://classroom:8000
+    volumes:
+      - ./services/academic:/app
+      - *libs-volume
+    depends_on: *python-depends
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.academic.rule=PathPrefix(`/api/academic`) && !PathPrefix(`/api/academic/internal`)
+      - traefik.http.routers.academic.middlewares=academic-strip,api-ratelimit@docker
+      - traefik.http.middlewares.academic-strip.stripprefix.prefixes=/api/academic
+      - traefik.http.services.academic.loadbalancer.server.port=8000
 
   # ---------- Веб-клиент ----------
 
