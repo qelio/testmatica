@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Alert, Button, CodeStep, Field } from "@/components/ui";
 import { ApiError, identity } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { nextPath } from "@/lib/next-path";
 
 type Role = "student" | "teacher";
 
@@ -61,7 +62,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       signIn(await identity.verifyEmail(challenge.id, code));
-      router.replace("/dashboard");
+      router.replace(nextPath());
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Что-то пошло не так");
     } finally {

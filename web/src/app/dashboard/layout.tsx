@@ -61,7 +61,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
                   key={item.href}
                   href={item.href}
                   onClick={() => setMenuOpen(false)}
-                  className={`block rounded-xl px-3 py-2.5 text-sm font-medium ${pathname === item.href ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
+                  className={`block rounded-xl px-3 py-2.5 text-sm font-medium ${isActive(pathname, item.href) ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
                 >
                   {item.title}
                 </Link>
@@ -81,6 +81,10 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
       </div>
     </div>
   );
+}
+
+function isActive(pathname: string, href: string): boolean {
+  return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
 }
 
 function ModeSwitch() {

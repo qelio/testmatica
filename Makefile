@@ -1,6 +1,6 @@
 # Короткие команды для локальной разработки. Список: make help
 
-SERVICES := identity notification audit
+SERVICES := identity notification audit classroom
 DC := docker compose
 
 .DEFAULT_GOAL := help
@@ -41,10 +41,14 @@ test-%: ## Тесты одного сервиса: make test-identity
 migration: ## Новая миграция: make migration s=identity m="add phone"
 	$(DC) run --rm --no-deps -e RUN_BACKGROUND=false $(s) alembic revision --autogenerate -m "$(m)"
 
+snapshot: ## Разослать данные всех пользователей сервисам (после добавления нового сервиса)
+	$(DC) exec identity python -m app.cli publish-snapshot
+
 admin: ## Создать администратора: make admin email=admin@example.com
 	$(DC) exec identity python -m app.cli create-user --email $(email) --name "Администратор" --role admin
 
 db-init: ## Создать базы для новых сервисов (после добавления в SERVICE_DATABASES)
+	$(DC) up -d --wait postgres
 	$(DC) exec postgres sh /docker-entrypoint-initdb.d/init-databases.sh
 
-.PHONY: help up down reset ps logs test migration admin db-init
+.PHONY: help up down reset ps logs test migration snapshot admin db-init

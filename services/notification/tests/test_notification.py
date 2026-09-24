@@ -85,3 +85,39 @@ async def test_welcome_notification_and_api(client):
 
 async def test_api_requires_token(client):
     assert (await client.get("/notifications")).status_code == 401
+
+
+def test_invitation_template():
+    subject, text, _ = render(
+        "invitation", {"teacher_name": "Мария Ивановна", "group_text": " в классе «7А»", "url": "http://x/invite/t", "ttl_days": 14}
+    )
+    assert subject == "Мария Ивановна приглашает вас в Тестматику"
+    assert "заниматься в классе «7А»" in text and "http://x/invite/t" in text
+
+
+async def test_link_request_notifies_student_and_acceptance_notifies_teacher(client):
+    teacher, student = uuid4(), uuid4()
+    c = consumer("notification.classroom", handlers.on_classroom_event)
+    await c.process(
+        make_envelope(
+            "classroom.link.requested",
+            {"link_id": str(uuid4()), "teacher_id": str(teacher), "student_id": str(student), "teacher_name": "Мария"},
+        )
+    )
+    await c.process(
+        make_envelope(
+            "classroom.link.created",
+            {"link_id": str(uuid4()), "teacher_id": str(teacher), "student_id": str(student), "source": "request", "student_name": "Петя"},
+        )
+    )
+    # Ученик, созданный педагогом вручную, уведомления не порождает.
+    await c.process(
+        make_envelope(
+            "classroom.link.created",
+            {"link_id": str(uuid4()), "teacher_id": str(teacher), "student_id": str(uuid4()), "source": "manual", "student_name": "Вася"},
+        )
+    )
+    student_items = (await client.get("/notifications", headers=bearer(student))).json()["items"]
+    assert [n["kind"] for n in student_items] == ["link_request"]
+    teacher_items = (await client.get("/notifications", headers=bearer(teacher, ["teacher"]))).json()["items"]
+    assert [n["title"] for n in teacher_items] == ["Петя принял(а) ваш запрос"]

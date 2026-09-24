@@ -16,6 +16,7 @@ configure_logging(settings.service_name, settings.log_level)
 runtime = ServiceRuntime(settings, db)
 runtime.consumer("notification.email", [(COMMANDS_EXCHANGE, "notification.email")], handlers.on_email_command)
 runtime.consumer("notification.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
+runtime.consumer("notification.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
 
 
 @asynccontextmanager

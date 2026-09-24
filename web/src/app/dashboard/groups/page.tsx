@@ -1,0 +1,434 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+
+import { AddStudentModal, CredentialsView } from "@/components/add-student";
+import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
+import { classroom, type Group, type Invitation, type Student, type StudentCredentials } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { pluralStudents, SOURCE_LABELS } from "@/lib/format";
+import { errorText, useLoad } from "@/lib/hooks";
+
+type Tab = "groups" | "students" | "invitations";
+
+export default function GroupsPage() {
+  const { user } = useAuth();
+  const isSchool = user?.teacher_mode !== "tutor";
+  const [tab, setTab] = useState<Tab>("groups");
+  const [archived, setArchived] = useState(false);
+  const groups = useLoad(() => classroom.groups(archived), [archived, user?.teacher_mode]);
+  const students = useLoad(() => classroom.students(), []);
+  const invitations = useLoad(() => classroom.invitations(), []);
+  const [creating, setCreating] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  const reloadAll = () => {
+    groups.reload();
+    students.reload();
+    invitations.reload();
+  };
+
+  const tabs: { value: Tab; label: string; count?: number }[] = [
+    { value: "groups", label: isSchool ? "Классы и группы" : "Группы", count: groups.data?.length },
+    { value: "students", label: "Ученики", count: students.data?.length },
+    { value: "invitations", label: "Приглашения", count: invitations.data?.length },
+  ];
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">{isSchool ? "Мои классы и группы" : "Мои группы и ученики"}</h1>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setAdding(true)}>
+            Добавить ученика
+          </Button>
+          <Button onClick={() => setCreating(true)}>{isSchool ? "Создать класс" : "Создать группу"}</Button>
+        </div>
+      </div>
+
+      <div className="flex gap-1 border-b border-line" role="tablist">
+        {tabs.map((t) => (
+          <button
+            key={t.value}
+            role="tab"
+            aria-selected={tab === t.value}
+            onClick={() => setTab(t.value)}
+            className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium ${tab === t.value ? "border-brand text-fg" : "border-transparent text-fg-soft hover:text-fg"}`}
+          >
+            {t.label}
+            {!!t.count && <span className="ml-1.5 text-fg-soft">{t.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {tab === "groups" && (
+        <GroupsTab
+          groups={groups.data}
+          error={groups.error}
+          archived={archived}
+          setArchived={setArchived}
+          onCreate={() => setCreating(true)}
+        />
+      )}
+      {tab === "students" && (
+        <StudentsTab
+          students={students.data}
+          groups={groups.data ?? []}
+          error={students.error}
+          onChanged={reloadAll}
+          onAdd={() => setAdding(true)}
+        />
+      )}
+      {tab === "invitations" && (
+        <InvitationsTab items={invitations.data} error={invitations.error} reload={invitations.reload} />
+      )}
+
+      <CreateGroupModal
+        open={creating}
+        isSchool={isSchool}
+        onClose={() => setCreating(false)}
+        onCreated={() => {
+          setCreating(false);
+          groups.reload();
+        }}
+      />
+      <AddStudentModal open={adding} onClose={() => setAdding(false)} onDone={reloadAll} />
+    </div>
+  );
+}
+
+function GroupsTab({
+  groups,
+  error,
+  archived,
+  setArchived,
+  onCreate,
+}: {
+  groups: Group[] | null;
+  error?: string;
+  archived: boolean;
+  setArchived: (v: boolean) => void;
+  onCreate: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <label className="flex items-center gap-2 text-sm text-fg-soft">
+        <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} className="accent-brand" />
+        Показать архив
+      </label>
+      {error && <Alert>{error}</Alert>}
+      {!groups && !error && <Spinner />}
+      {groups?.length === 0 && (
+        <EmptyState
+          title={archived ? "В архиве пусто" : "Пока нет ни одной группы"}
+          text={archived ? undefined : "Создайте класс или группу и добавьте в неё учеников."}
+          action={!archived && <Button onClick={onCreate}>Создать</Button>}
+        />
+      )}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {groups?.map((g) => (
+          <Link
+            key={g.id}
+            href={`/dashboard/groups/${g.id}`}
+            className="rounded-2xl border border-line bg-surface p-5 transition-colors hover:border-brand/50"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <h2 className="text-lg font-semibold">{g.title}</h2>
+              <Badge>{g.kind === "class" ? "класс" : "группа"}</Badge>
+            </div>
+            {g.subject && <p className="mt-1 text-sm text-fg-soft">{g.subject}</p>}
+            <p className="mt-4 text-sm text-fg-soft">{pluralStudents(g.student_count)}</p>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StudentsTab({
+  students,
+  groups,
+  error,
+  onChanged,
+  onAdd,
+}: {
+  students: Student[] | null;
+  groups: Group[];
+  error?: string;
+  onChanged: () => void;
+  onAdd: () => void;
+}) {
+  const [editing, setEditing] = useState<Student | null>(null);
+  const titles = Object.fromEntries(groups.map((g) => [g.id, g.title]));
+  if (error) return <Alert>{error}</Alert>;
+  if (!students) return <Spinner />;
+  if (!students.length) {
+    return (
+      <EmptyState
+        title="У вас пока нет учеников"
+        text="Пригласите ученика по email, найдите зарегистрированного или создайте аккаунт сами."
+        action={<Button onClick={onAdd}>Добавить ученика</Button>}
+      />
+    );
+  }
+  return (
+    <>
+      <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
+        {students.map((s) => (
+          <li key={s.student_id} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">
+                {s.full_name}
+                {s.login && <span className="ml-2 font-mono text-sm text-fg-soft">{s.login}</span>}
+              </p>
+              <p className="mt-0.5 text-sm text-fg-soft">
+                {SOURCE_LABELS[s.source]}
+                {s.group_ids.length > 0 && ` · ${s.group_ids.map((id) => titles[id] ?? "группа другого режима").join(", ")}`}
+              </p>
+            </div>
+            {s.status === "pending" ? <Badge tone="warn">ждёт подтверждения</Badge> : null}
+            <Button variant="ghost" className="h-9" onClick={() => setEditing(s)}>
+              Управление
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <StudentModal student={editing} onClose={() => setEditing(null)} onChanged={onChanged} />
+    </>
+  );
+}
+
+function StudentModal({
+  student,
+  onClose,
+  onChanged,
+}: {
+  student: Student | null;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  const [credentials, setCredentials] = useState<StudentCredentials | null>(null);
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
+
+  function close() {
+    setCredentials(null);
+    setConfirmUnlink(false);
+    setError(undefined);
+    setName("");
+    onClose();
+  }
+
+  async function act(action: () => Promise<void>) {
+    setLoading(true);
+    setError(undefined);
+    try {
+      await action();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!student) return <Modal open={false} onClose={close} title="">{null}</Modal>;
+
+  return (
+    <Modal open onClose={close} title={student.full_name}>
+      {credentials ? (
+        <CredentialsView credentials={credentials} onClose={close} />
+      ) : (
+        <div className="space-y-5">
+          {error && <Alert>{error}</Alert>}
+          {student.managed ? (
+            <>
+              <form
+                className="flex items-end gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  act(async () => {
+                    await classroom.renameStudent(student.student_id, name);
+                    onChanged();
+                    close();
+                  });
+                }}
+              >
+                <div className="flex-1">
+                  <Field
+                    label="Имя и фамилия"
+                    required
+                    defaultValue={student.full_name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <Button type="submit" variant="secondary" loading={loading} disabled={!name.trim()}>
+                  Сохранить
+                </Button>
+              </form>
+              <div>
+                <Button
+                  variant="secondary"
+                  loading={loading}
+                  onClick={() => act(async () => setCredentials(await classroom.resetPassword(student.student_id)))}
+                >
+                  Сбросить пароль
+                </Button>
+                <p className="mt-1.5 text-sm text-fg-soft">Будет создан новый пароль, старый перестанет работать.</p>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-fg-soft">
+              Ученик сам управляет своим аккаунтом: имя и пароль может изменить только он.
+            </p>
+          )}
+          <div className="border-t border-line pt-4">
+            {confirmUnlink ? (
+              <div className="space-y-3">
+                <p className="text-sm">
+                  {student.status === "pending"
+                    ? "Отменить запрос?"
+                    : "Отвязать ученика? Он выйдет из всех ваших групп. Аккаунт ученика не удаляется."}
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => setConfirmUnlink(false)}>
+                    Нет
+                  </Button>
+                  <Button
+                    className="bg-danger hover:bg-danger/90"
+                    loading={loading}
+                    onClick={() =>
+                      act(async () => {
+                        await classroom.unlinkStudent(student.student_id);
+                        onChanged();
+                        close();
+                      })
+                    }
+                  >
+                    Да, отвязать
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmUnlink(true)} className="text-sm font-medium text-danger hover:underline">
+                {student.status === "pending" ? "Отменить запрос" : "Отвязать ученика"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function InvitationsTab({
+  items,
+  error,
+  reload,
+}: {
+  items: Invitation[] | null;
+  error?: string;
+  reload: () => void;
+}) {
+  if (error) return <Alert>{error}</Alert>;
+  if (!items) return <Spinner />;
+  if (!items.length) {
+    return <EmptyState title="Нет активных приглашений" text="Отправленные и ещё не принятые приглашения появятся здесь." />;
+  }
+  return (
+    <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
+      {items.map((inv) => (
+        <li key={inv.id} className="flex items-center gap-3 px-5 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium">{inv.email}</p>
+            <p className="text-sm text-fg-soft">действует до {new Date(inv.expires_at).toLocaleDateString("ru-RU")}</p>
+          </div>
+          <Button
+            variant="ghost"
+            className="h-9 text-danger"
+            onClick={async () => {
+              await classroom.revokeInvitation(inv.id);
+              reload();
+            }}
+          >
+            Отменить
+          </Button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CreateGroupModal({
+  open,
+  isSchool,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  isSchool: boolean;
+  onClose: () => void;
+  onCreated: (g: Group) => void;
+}) {
+  // kind = null — значение по умолчанию для текущего режима (режим может смениться, пока страница открыта).
+  const [form, setForm] = useState<{ title: string; subject: string; kind: string | null }>({
+    title: "",
+    subject: "",
+    kind: null,
+  });
+  const kind = isSchool ? (form.kind ?? "class") : "group";
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <Modal open={open} onClose={onClose} title={isSchool ? "Новый класс или группа" : "Новая группа"}>
+      <form
+        className="space-y-4"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setLoading(true);
+          setError(undefined);
+          try {
+            const group = await classroom.createGroup({
+              title: form.title,
+              subject: form.subject || null,
+              kind: kind as "class" | "group",
+            });
+            setForm({ title: "", subject: "", kind: null });
+            onCreated(group);
+          } catch (err) {
+            setError(errorText(err));
+          } finally {
+            setLoading(false);
+          }
+        }}
+      >
+        {error && <Alert>{error}</Alert>}
+        {isSchool && (
+          <Select label="Тип" value={kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+            <option value="class">Класс</option>
+            <option value="group">Группа</option>
+          </Select>
+        )}
+        <Field
+          label="Название"
+          placeholder={isSchool ? "7А" : "Подготовка к ЕГЭ"}
+          required
+          value={form.title}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+        />
+        <Field
+          label="Предмет"
+          placeholder="Математика"
+          value={form.subject}
+          onChange={(e) => setForm({ ...form, subject: e.target.value })}
+        />
+        <Button type="submit" loading={loading} className="w-full">
+          Создать
+        </Button>
+      </form>
+    </Modal>
+  );
+}

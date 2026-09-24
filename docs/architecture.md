@@ -118,10 +118,12 @@ flowchart LR
 - `consents` — user_id, type (pdn), version, accepted_at
 
 ### classroom
-- `groups` — id, teacher_id, kind (school_class / tutor_group / individual), title, subject_id, is_closed, invite_token, archived_at
-- `group_members` — group_id, student_id, joined_at, left_at
-- `teacher_student_links` — teacher_id, student_id, status (pending / active / ended), source (invite / manual / request / marketplace)
-- `invitations` — email, teacher_id, group_id, token, expires_at, accepted_at
+- `people` — реплика имён пользователей из identity (события `identity.user.registered|updated|snapshot`)
+- `groups` — id, teacher_id, kind (class / group), mode (school / tutor), title, subject, description, archived_at
+- `group_members` — group_id, student_id, joined_at, left_at (история сохраняется)
+- `teacher_student_links` — teacher_id, student_id, status (pending / active / declined / ended), source (invite / manual / request / marketplace), pending_group_id
+- `invitations` — email, teacher_id, group_id, token, expires_at, accepted_at, revoked_at
+- Создание аккаунта ученика и поиск по логину — синхронный вызов `identity /internal/...`
 
 ### schedule
 - `lesson_series` — id, teacher_id, rule (RRULE), starts_at, until / count
