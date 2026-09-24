@@ -89,3 +89,43 @@ async def outbox(routing_key: str) -> list[dict]:
             text("SELECT payload FROM outbox WHERE routing_key = :k ORDER BY created_at"), {"k": routing_key}
         )
         return [r[0] for r in rows]
+
+
+class FakeMedia:
+    """Имитация внутреннего API media: файлы с владельцами и назначением."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, dict] = {}
+
+    def add(self, owner: UUID, filename="решение.pdf", purpose="chat_attachment") -> str:
+        fid = str(uuid4())
+        self.files[fid] = {"id": fid, "owner": str(owner), "purpose": purpose, "filename": filename,
+                           "mime": "application/pdf", "size": 1234}
+        return fid
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        import json
+
+        body = json.loads(request.content)
+        public = lambda f, url=None: {k: f[k] for k in ("id", "filename", "mime", "size")} | {  # noqa: E731
+            "purpose": f["purpose"], "created_at": "2026-09-24T00:00:00Z", "url": url}
+        if request.url.path == "/internal/files/claim":
+            out = []
+            for fid in body["file_ids"]:
+                f = self.files.get(fid)
+                if f is None or f["owner"] != body["owner_id"] or f["purpose"] != body["purpose"]:
+                    return httpx.Response(422, json={"error": {"code": "invalid_attachment", "message": "Файл не найден"}})
+                out.append(public(f))
+            return httpx.Response(200, json=out)
+        return httpx.Response(
+            200, json={fid: public(self.files[fid], f"http://s3/{fid}") for fid in body["file_ids"] if fid in self.files}
+        )
+
+
+@pytest.fixture
+def fake_media() -> FakeMedia:
+    from app.deps import media
+
+    fake = FakeMedia()
+    media.transport = httpx.MockTransport(fake.handle)
+    return fake

@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text, func, text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
 from testmatica_common.messaging import messaging_tables
@@ -103,6 +103,8 @@ class Message(Base):
     conversation_id: Mapped[UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"))
     author_id: Mapped[UUID]
     text: Mapped[str] = mapped_column(Text)
+    # [{"id", "filename", "mime", "size"}] — сами файлы в сервисе media.
+    attachments: Mapped[list[dict]] = mapped_column(JSONB, default=list, server_default="[]")
     is_announcement: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

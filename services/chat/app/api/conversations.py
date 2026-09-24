@@ -9,7 +9,7 @@ from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
 
 from .. import realtime, relations
-from ..deps import auth, db, outbox
+from ..deps import auth, db, media, outbox
 from ..models import (
     KIND_DIRECT,
     KIND_GROUP,
@@ -19,7 +19,7 @@ from ..models import (
     Person,
     RelGroup,
 )
-from ..schemas import Contact, ConversationOut, DirectCreate, MessageCreate, MessageOut, ReadMark
+from ..schemas import Attachment, Contact, ConversationOut, DirectCreate, MessageCreate, MessageOut, ReadMark
 
 router = APIRouter(tags=["chat"])
 
@@ -38,18 +38,32 @@ async def _names(session: AsyncSession, ids) -> dict[UUID, str]:
     return dict((await session.execute(select(Person.user_id, Person.full_name).where(Person.user_id.in_(ids)))).all())
 
 
-def _message_out(m: Message, names: dict[UUID, str]) -> MessageOut:
+def _message_out(m: Message, names: dict[UUID, str], urls: dict[str, str] | None = None) -> MessageOut:
     deleted = m.deleted_at is not None
+    urls = urls or {}
     return MessageOut(
         id=m.id,
         conversation_id=m.conversation_id,
         author_id=m.author_id,
         author_name=names.get(m.author_id, "Пользователь"),
         text=DELETED_TEXT if deleted else m.text,
+        attachments=[] if deleted else [Attachment(**a, url=urls.get(a["id"])) for a in m.attachments],
         is_announcement=m.is_announcement,
         deleted=deleted,
         created_at=m.created_at,
     )
+
+
+async def _attachment_urls(messages) -> dict[str, str]:
+    """Временные ссылки на вложения. Если media недоступен — чат работает, просто без ссылок."""
+    ids = [a["id"] for m in messages if m.deleted_at is None for a in m.attachments]
+    if not ids:
+        return {}
+    try:
+        found = await media.post("/internal/files/urls", json={"file_ids": ids})
+    except ApiError:
+        return {}
+    return {fid: f["url"] for fid, f in found.items()}
 
 
 async def _membership(session: AsyncSession, conversation_id: UUID, user_id: UUID) -> tuple[Conversation, ConversationMember]:
@@ -231,7 +245,8 @@ async def list_messages(
         query = query.where(Message.created_at < before)
     rows = (await session.execute(query.order_by(Message.created_at.desc()).limit(limit))).scalars().all()
     names = await _names(session, {m.author_id for m in rows})
-    return [_message_out(m, names) for m in rows]
+    urls = await _attachment_urls(rows)
+    return [_message_out(m, names, urls) for m in rows]
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageOut, status_code=201)
@@ -248,8 +263,26 @@ async def send_message(
     if body.announcement and (conv.kind != KIND_GROUP or member.role != "teacher"):
         raise ApiError(403, "forbidden", "Объявления публикует педагог в групповом чате")
 
+    attachments = []
+    if body.attachment_ids:
+        # media проверит, что файлы загрузил сам автор и именно как вложения в чат.
+        claimed = await media.post(
+            "/internal/files/claim",
+            json={
+                "owner_id": str(principal.user_id),
+                "purpose": "chat_attachment",
+                "file_ids": [str(i) for i in body.attachment_ids],
+                "claimed_by": "chat",
+            },
+        )
+        attachments = [{k: f[k] for k in ("id", "filename", "mime", "size")} for f in claimed]
     msg = Message(
-        conversation_id=conv.id, author_id=principal.user_id, text=body.text, is_announcement=body.announcement, created_at=_now()
+        conversation_id=conv.id,
+        author_id=principal.user_id,
+        text=body.text,
+        attachments=attachments,
+        is_announcement=body.announcement,
+        created_at=_now(),
     )
     session.add(msg)
     await session.flush()
@@ -270,7 +303,7 @@ async def send_message(
         ).scalars()
     )
     names = await _names(session, [principal.user_id])
-    out = _message_out(msg, names)
+    out = _message_out(msg, names, await _attachment_urls([msg]))
     title = (await session.get(RelGroup, conv.group_id)).title if conv.kind == KIND_GROUP else out.author_name
 
     # В аудит — только факт, без текста. Текст — в команде уведомлений (она не попадает в аудит).
@@ -281,7 +314,8 @@ async def send_message(
         actor_id=principal.user_id,
     )
     if recipients:
-        preview = body.text if len(body.text) <= PREVIEW else body.text[: PREVIEW - 1] + "…"
+        text = body.text or "📎 " + ", ".join(a["filename"] for a in attachments)
+        preview = text if len(text) <= PREVIEW else text[: PREVIEW - 1] + "…"
         await outbox.command(
             session,
             queue="notification.inapp",
@@ -360,3 +394,28 @@ async def delete_message(
         list(members),
         {"type": "deleted", "conversation_id": str(conv.id), "message_id": str(msg.id)},
     )
+
+
+@router.get("/conversations/{conversation_id}/attachments/{file_id}", response_model=Attachment)
+async def attachment(
+    conversation_id: UUID,
+    file_id: UUID,
+    principal: Principal = Depends(auth.principal),
+    session: AsyncSession = Depends(db.session),
+) -> Attachment:
+    """Свежая ссылка на вложение (если старая истекла). Только участникам чата."""
+    await _membership(session, conversation_id, principal.user_id)
+    msg = (
+        await session.execute(
+            select(Message).where(
+                Message.conversation_id == conversation_id,
+                Message.deleted_at.is_(None),
+                Message.attachments.contains([{"id": str(file_id)}]),
+            )
+        )
+    ).scalars().first()
+    if msg is None:
+        raise ApiError(404, "attachment_not_found", "Вложение не найдено")
+    meta = next(a for a in msg.attachments if a["id"] == str(file_id))
+    urls = await _attachment_urls([msg])
+    return Attachment(**meta, url=urls.get(str(file_id)))

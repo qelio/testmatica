@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { AttachButton, AttachmentView, UploadChips, useUploads } from "@/components/files";
 import { Alert, Badge, Button, EmptyState, Modal, Spinner } from "@/components/ui";
 import { chat, type ChatMessage, type Conversation } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -78,7 +79,7 @@ function Chats() {
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm text-fg-soft">
                     {c.last_message
-                      ? `${c.kind === "group" ? `${c.last_message.author_name.split(" ")[0]}: ` : ""}${c.last_message.text}`
+                      ? `${c.kind === "group" ? `${c.last_message.author_name.split(" ")[0]}: ` : ""}${c.last_message.text || `📎 ${c.last_message.attachments.map((a) => a.filename).join(", ")}`}`
                       : "Нет сообщений"}
                   </p>
                   {c.unread > 0 && (
@@ -169,6 +170,7 @@ function Thread({
   const [hasMore, setHasMore] = useState(true);
   const [text, setText] = useState("");
   const [announcement, setAnnouncement] = useState(false);
+  const uploads = useUploads("chat_attachment");
   const [error, setError] = useState<string>();
   const [sending, setSending] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -233,14 +235,15 @@ function Thread({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const value = text.trim();
-    if (!value) return;
+    if ((!value && !uploads.ids.length) || uploads.busy) return;
     setSending(true);
     setError(undefined);
     try {
-      const msg = await chat.send(conversation.id, value, announcement);
+      const msg = await chat.send(conversation.id, value, uploads.ids, announcement);
       stickToBottom.current = true;
       setMessages((prev) => (prev && !prev.some((m) => m.id === msg.id) ? [...prev, msg] : prev));
       setText("");
+      uploads.clear();
       setAnnouncement(false);
       onChanged();
     } catch (err) {
@@ -318,9 +321,23 @@ function Thread({
                   >
                     {showAuthor && <p className="mb-0.5 text-xs font-semibold text-brand">{m.author_name}</p>}
                     {m.is_announcement && !m.deleted && <p className="mb-0.5 text-xs font-semibold text-brand">Объявление</p>}
-                    <p className="whitespace-pre-wrap break-words">
-                      <Linkified text={m.text} />
-                    </p>
+                    {m.text && (
+                      <p className="whitespace-pre-wrap break-words">
+                        <Linkified text={m.text} />
+                      </p>
+                    )}
+                    {m.attachments.length > 0 && (
+                      <div className="mt-1.5 space-y-1.5">
+                        {m.attachments.map((a) => (
+                          <AttachmentView
+                            key={a.id}
+                            att={a}
+                            dark={mine && !m.is_announcement}
+                            getFresh={() => chat.attachment(conversation.id, a.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
                     <p className={`mt-0.5 text-right text-[11px] ${mine && !m.deleted && !m.is_announcement ? "text-white/70" : "text-fg-soft"}`}>
                       {fmtTime(m.created_at)}
                       {mine && !m.deleted && (
@@ -353,7 +370,11 @@ function Thread({
               Объявление — закрепить для всей группы
             </label>
           )}
+          <div className="mb-2">
+            <UploadChips items={uploads.items} onRemove={uploads.remove} />
+          </div>
           <div className="flex items-end gap-2">
+            <AttachButton onFiles={uploads.add} disabled={uploads.items.length >= 10} />
             <textarea
               rows={1}
               value={text}
@@ -369,7 +390,7 @@ function Thread({
               aria-label="Сообщение"
               className="max-h-40 min-h-11 flex-1 resize-none rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
-            <Button type="submit" loading={sending} disabled={!text.trim()}>
+            <Button type="submit" loading={sending || uploads.busy} disabled={!text.trim() && !uploads.ids.length}>
               Отправить
             </Button>
           </div>

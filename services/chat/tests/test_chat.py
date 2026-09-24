@@ -169,3 +169,33 @@ def test_websocket_rejects_missing_or_bad_token():
     with tc.websocket_connect("/ws") as ws:
         ws.send_json({"type": "hello", "token": token(uuid4())})
         assert ws.receive()["code"] == 4401
+
+
+async def test_attachments(client, school, fake_media):
+    conv = await group_chat(client, school["anya"])
+    own = fake_media.add(school["anya"], "дз.pdf")
+    foreign = fake_media.add(school["petya"], "чужое.pdf")
+
+    only_file = await client.post(
+        f"/conversations/{conv['id']}/messages", json={"attachment_ids": [own]}, headers=bearer(school["anya"])
+    )
+    assert only_file.status_code == 201, only_file.text
+    att = only_file.json()["attachments"][0]
+    assert (att["filename"], att["url"]) == ("дз.pdf", f"http://s3/{own}")
+    assert (await outbox("notification.inapp"))[0]["data"]["body"] == "Аня: 📎 дз.pdf"
+
+    stolen = await client.post(
+        f"/conversations/{conv['id']}/messages", json={"text": "смотри", "attachment_ids": [foreign]}, headers=bearer(school["anya"])
+    )
+    assert stolen.status_code == 422
+    empty = await client.post(f"/conversations/{conv['id']}/messages", json={}, headers=bearer(school["anya"]))
+    assert empty.status_code == 422
+
+    history = (await client.get(f"/conversations/{conv['id']}/messages", headers=bearer(school["petya"]))).json()
+    assert history[0]["attachments"][0]["url"] == f"http://s3/{own}"
+
+    fresh = await client.get(f"/conversations/{conv['id']}/attachments/{own}", headers=bearer(school["petya"]))
+    assert fresh.json()["url"] == f"http://s3/{own}"
+    # Посторонний не получит ссылку, даже зная id файла.
+    assert (await client.get(f"/conversations/{conv['id']}/attachments/{own}", headers=bearer(school["olya"]))).status_code == 404
+    assert (await client.get(f"/conversations/{conv['id']}/attachments/{uuid4()}", headers=bearer(school["petya"]))).status_code == 404
