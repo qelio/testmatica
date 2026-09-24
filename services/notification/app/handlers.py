@@ -149,3 +149,19 @@ async def on_schedule_event(envelope: Envelope, session: AsyncSession) -> None:
             lambda for_teacher: f"{when} занятие: {_lesson_label(data, for_teacher)}",
             skip_actor=False,
         )
+
+
+async def on_academic_event(envelope: Envelope, session: AsyncSession) -> None:
+    if envelope.type != "academic.grade.created":
+        return
+    data = envelope.data
+    subject = f" — {data['subject']}" if data.get("subject") else ""
+    session.add(
+        Notification(
+            user_id=UUID(data["student_id"]),
+            kind="grade",
+            title=f"Новая оценка: {data['value']}{subject}",
+            body=f"{data['grade_type']}. {data['comment']}",
+            payload={"grade_id": data["grade_id"], "starts_at": data["lesson_starts_at"], "teacher_name": data["teacher_name"]},
+        )
+    )

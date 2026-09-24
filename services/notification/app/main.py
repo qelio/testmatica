@@ -17,6 +17,7 @@ runtime = ServiceRuntime(settings, db)
 runtime.consumer("notification.email", [(COMMANDS_EXCHANGE, "notification.email")], handlers.on_email_command)
 runtime.consumer("notification.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
 runtime.consumer("notification.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
+runtime.consumer("notification.academic", [(EVENTS_EXCHANGE, "academic.grade.*")], handlers.on_academic_event)
 runtime.consumer(
     "notification.schedule",
     [(EVENTS_EXCHANGE, "schedule.lesson.*"), (EVENTS_EXCHANGE, "schedule.reschedule.*")],

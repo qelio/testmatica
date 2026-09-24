@@ -31,7 +31,7 @@ export const NAV = {
     { title: "Мои педагоги", href: "/dashboard/teachers", ready: true },
     { title: "Расписание", href: "/dashboard/schedule", ready: true },
     soon("Задания", "/dashboard/assignments"),
-    soon("Оценки", "/dashboard/grades"),
+    { title: "Оценки", href: "/dashboard/grades", ready: true },
     soon("Библиотека", "/dashboard/library"),
     soon("Найти репетитора", "/dashboard/tutors"),
     soon("Баланс", "/dashboard/balance"),
@@ -40,6 +40,7 @@ export const NAV = {
   staff: [
     DASHBOARD,
     soon("Очередь модерации", "/dashboard/moderation"),
+    { title: "Типы оценок", href: "/dashboard/grade-types", ready: true },
     soon("Пользователи", "/dashboard/users"),
     soon("Журнал аудита", "/dashboard/audit"),
   ],

@@ -59,6 +59,12 @@ export default function GroupPage() {
           {g.description && <p className="mt-2 max-w-2xl text-sm">{g.description}</p>}
         </div>
         <div className="flex gap-2">
+          <Link
+            href={`/dashboard/journal?group=${g.id}`}
+            className="inline-flex h-11 items-center rounded-xl border border-line bg-surface px-4 text-sm font-medium hover:bg-muted"
+          >
+            Журнал
+          </Link>
           <Button variant="secondary" onClick={() => setEditing(true)}>
             Изменить
           </Button>

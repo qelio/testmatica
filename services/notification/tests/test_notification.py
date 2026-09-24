@@ -165,3 +165,17 @@ async def test_reschedule_request_notifies_other_side(client):
     assert teacher_items[0]["title"] == "Петя предлагает перенести занятие"
     assert teacher_items[0]["payload"]["new_starts_at"] == "2026-10-02T12:00:00+00:00"
     assert (await client.get("/notifications", headers=bearer(student))).json()["items"] == []
+
+
+async def test_new_grade_notifies_student(client):
+    student = uuid4()
+    c = consumer("notification.academic", handlers.on_academic_event)
+    data = {
+        "grade_id": str(uuid4()), "teacher_id": str(uuid4()), "teacher_name": "Мария Ивановна", "student_id": str(student),
+        "lesson_id": str(uuid4()), "lesson_starts_at": "2026-09-28T06:00:00+00:00", "subject": "Алгебра", "value": 5,
+        "grade_type": "Контрольная работа", "comment": "Отлично",
+    }
+    await c.process(make_envelope("academic.grade.created", data))
+    await c.process(make_envelope("academic.grade.updated", data))
+    items = (await client.get("/notifications", headers=bearer(student))).json()["items"]
+    assert [(n["title"], n["body"]) for n in items] == [("Новая оценка: 5 — Алгебра", "Контрольная работа. Отлично")]
