@@ -175,6 +175,7 @@ export type NotificationItem = {
   kind: string;
   title: string;
   body: string;
+  payload: { starts_at?: string; new_starts_at?: string; [key: string]: unknown };
   read_at: string | null;
   created_at: string;
 };
@@ -245,7 +246,8 @@ export type MyGroup = {
 const CR = "/api/classroom";
 
 export const classroom = {
-  groups: (archived = false) => api<Group[]>(`${CR}/groups?archived=${archived}`),
+  groups: (archived = false, mode?: "school" | "tutor") =>
+    api<Group[]>(`${CR}/groups?archived=${archived}${mode ? `&mode=${mode}` : ""}`),
   group: (id: string) => api<GroupDetail>(`${CR}/groups/${id}`),
   createGroup: (data: { title: string; kind: "class" | "group"; subject?: string | null }) =>
     api<Group>(`${CR}/groups`, { method: "POST", body: data }),
@@ -279,4 +281,78 @@ export const classroom = {
   myGroups: () => api<MyGroup[]>(`${CR}/me/groups`),
   acceptRequest: (linkId: string) => api<void>(`${CR}/me/requests/${linkId}/accept`, { method: "POST" }),
   declineRequest: (linkId: string) => api<void>(`${CR}/me/requests/${linkId}/decline`, { method: "POST" }),
+};
+
+// ---- schedule ----
+
+export type PersonRef = { id: string; full_name: string };
+
+export type RescheduleRequest = {
+  id: string;
+  lesson_id: string;
+  requested_by: string;
+  requested_by_me: boolean;
+  new_starts_at: string;
+  new_ends_at: string;
+  comment: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type Lesson = {
+  id: string;
+  series_id: string | null;
+  teacher: PersonRef;
+  mode: "school" | "tutor";
+  kind: "individual" | "group";
+  group_id: string | null;
+  title: string;
+  subject: string | null;
+  topic: string | null;
+  starts_at: string;
+  ends_at: string;
+  duration_min: number;
+  status: "scheduled" | "cancelled";
+  video_url: string | null;
+  cancel_reason: string | null;
+  participants: PersonRef[] | null;
+  pending_reschedule: RescheduleRequest | null;
+};
+
+export type Repeat = { weekdays: number[]; interval_weeks: number; until?: string | null; count?: number | null };
+
+export type LessonCreate = {
+  kind: "individual" | "group";
+  group_id?: string | null;
+  student_id?: string | null;
+  starts_at: string;
+  duration_min: number;
+  subject?: string | null;
+  topic?: string | null;
+  video_url?: string | null;
+  repeat?: Repeat | null;
+  timezone: string;
+};
+
+export type Scope = "this" | "following";
+
+const SC = "/api/schedule";
+
+export const schedule = {
+  lessons: (from: Date, to: Date) =>
+    api<Lesson[]>(`${SC}/lessons?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`),
+  lesson: (id: string) => api<Lesson>(`${SC}/lessons/${id}`),
+  create: (data: LessonCreate) => api<{ count: number; lessons: Lesson[] }>(`${SC}/lessons`, { method: "POST", body: data }),
+  update: (
+    id: string,
+    data: { scope: Scope; starts_at?: string; duration_min?: number; subject?: string | null; topic?: string | null; video_url?: string | null },
+  ) => api<Lesson>(`${SC}/lessons/${id}`, { method: "PATCH", body: data }),
+  cancel: (id: string, scope: Scope, reason?: string | null) =>
+    api<Lesson>(`${SC}/lessons/${id}/cancel`, { method: "POST", body: { scope, reason } }),
+  reschedule: (id: string, starts_at: string, comment?: string | null) =>
+    api<Lesson>(`${SC}/lessons/${id}/reschedule`, { method: "POST", body: { starts_at, comment } }),
+  requests: () => api<(RescheduleRequest & { lesson: Lesson })[]>(`${SC}/reschedule-requests`),
+  acceptRequest: (id: string) => api<void>(`${SC}/reschedule-requests/${id}/accept`, { method: "POST" }),
+  declineRequest: (id: string) => api<void>(`${SC}/reschedule-requests/${id}/decline`, { method: "POST" }),
+  withdrawRequest: (id: string) => api<void>(`${SC}/reschedule-requests/${id}`, { method: "DELETE" }),
 };

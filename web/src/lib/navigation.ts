@@ -9,7 +9,7 @@ const soon = (title: string, href: string): NavItem => ({ title, href, ready: fa
 export const NAV = {
   school: [
     DASHBOARD,
-    soon("Расписание", "/dashboard/schedule"),
+    { title: "Расписание", href: "/dashboard/schedule", ready: true },
     { title: "Мои классы/группы", href: "/dashboard/groups", ready: true },
     soon("Планирование (КТП)", "/dashboard/planning"),
     soon("Задания и тесты", "/dashboard/assignments"),
@@ -18,7 +18,7 @@ export const NAV = {
   ],
   tutor: [
     DASHBOARD,
-    soon("Расписание", "/dashboard/schedule"),
+    { title: "Расписание", href: "/dashboard/schedule", ready: true },
     { title: "Мои группы/ученики", href: "/dashboard/groups", ready: true },
     soon("Задания и тесты", "/dashboard/assignments"),
     soon("Библиотека", "/dashboard/library"),
@@ -29,7 +29,7 @@ export const NAV = {
   student: [
     DASHBOARD,
     { title: "Мои педагоги", href: "/dashboard/teachers", ready: true },
-    soon("Расписание", "/dashboard/schedule"),
+    { title: "Расписание", href: "/dashboard/schedule", ready: true },
     soon("Задания", "/dashboard/assignments"),
     soon("Оценки", "/dashboard/grades"),
     soon("Библиотека", "/dashboard/library"),

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert } from "@/components/ui";
 import { ApiError, type NotificationItem, notifications } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { fmtDateTime } from "@/lib/dates";
 
 const MODE_TEXT = {
   school: "Вы в режиме «Школьный учитель»: классы, журнал и КТП.",
@@ -79,6 +80,13 @@ export default function DashboardPage() {
               />
               <div className="min-w-0">
                 <p className="font-medium">{n.title}</p>
+                {(n.payload.new_starts_at || n.payload.starts_at) && (
+                  <p className="mt-1 text-sm">
+                    {n.payload.new_starts_at
+                      ? `Новое время: ${fmtDateTime(n.payload.new_starts_at)}`
+                      : fmtDateTime(n.payload.starts_at as string)}
+                  </p>
+                )}
                 {n.body && <p className="mt-1 text-sm text-fg-soft">{n.body}</p>}
                 <p className="mt-1 text-xs text-fg-soft">{new Date(n.created_at).toLocaleString("ru-RU")}</p>
               </div>
@@ -88,7 +96,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="rounded-2xl border border-dashed border-line p-5 text-sm text-fg-soft">
-        Расписание, классы, задания и библиотека появятся на следующих этапах разработки.
+        Журнал, задания и библиотека появятся на следующих этапах разработки.
       </section>
     </div>
   );
