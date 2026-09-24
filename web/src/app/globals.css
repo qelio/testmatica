@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --muted: #eef0f6;
+  --line: #dfe3ec;
+  --fg: #151a2d;
+  --fg-soft: #5d6479;
+  --brand: #4f46e5;
+  --brand-strong: #4338ca;
+  --danger: #d92d20;
+  --ok: #12805c;
+  --school: #0e9384;
+  --tutor: #c4320a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1117;
+    --surface: #161b25;
+    --muted: #1f2533;
+    --line: #2b3243;
+    --fg: #e8eaf0;
+    --fg-soft: #9aa2b6;
+    --brand: #7c74ff;
+    --brand-strong: #948dff;
+    --danger: #f97066;
+    --ok: #32d583;
+    --school: #2ed3b7;
+    --tutor: #fb6514;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-fg-soft: var(--fg-soft);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --color-school: var(--school);
+  --color-tutor: var(--tutor);
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}

@@ -1,0 +1,50 @@
+# Короткие команды для локальной разработки. Список: make help
+
+SERVICES := identity notification audit
+DC := docker compose
+
+.DEFAULT_GOAL := help
+
+help: ## Показать список команд
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36mmake %-14s\033[0m %s\n", $$1, $$2}'
+
+up: ## Собрать и запустить всё окружение
+	$(DC) up -d --build
+	@echo ""
+	@echo "  Приложение:  http://localhost:8080"
+	@echo "  Почта:       http://localhost:8025"
+	@echo "  RabbitMQ:    http://localhost:15672  (guest / guest)"
+	@echo "  Traefik:     http://localhost:8081"
+
+down: ## Остановить всё (данные сохраняются)
+	$(DC) down
+
+reset: ## Остановить и УДАЛИТЬ все локальные данные (базы, очереди, файлы)
+	$(DC) down -v
+
+ps: ## Состояние контейнеров
+	$(DC) ps
+
+logs: ## Логи всех сервисов (или: make logs s=identity)
+	$(DC) logs -f --tail=100 $(s)
+
+test: ## Прогнать тесты всех сервисов
+	@for svc in $(SERVICES); do \
+		echo "\n=== $$svc ==="; \
+		$(DC) run --rm --no-deps $$svc pytest -q || exit 1; \
+	done
+	$(DC) exec -T web sh -c "npx tsc --noEmit && npm run lint"
+
+test-%: ## Тесты одного сервиса: make test-identity
+	$(DC) run --rm --no-deps $* pytest -q
+
+migration: ## Новая миграция: make migration s=identity m="add phone"
+	$(DC) run --rm --no-deps -e RUN_BACKGROUND=false $(s) alembic revision --autogenerate -m "$(m)"
+
+admin: ## Создать администратора: make admin email=admin@example.com
+	$(DC) exec identity python -m app.cli create-user --email $(email) --name "Администратор" --role admin
+
+db-init: ## Создать базы для новых сервисов (после добавления в SERVICE_DATABASES)
+	$(DC) exec postgres sh /docker-entrypoint-initdb.d/init-databases.sh
+
+.PHONY: help up down reset ps logs test migration admin db-init
