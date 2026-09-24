@@ -51,7 +51,17 @@ async def create_user(
     await outbox.event(
         session,
         "identity.user.registered",
-        {"user_id": str(user.id), "roles": sorted(roles), "status": status},
+        person_data(user) | {"status": status},
         actor_id=actor_id or user.id,
     )
     return user
+
+
+def person_data(user: User) -> dict:
+    """Публичные данные пользователя для реплик в других сервисах (имена в списках)."""
+    return {
+        "user_id": str(user.id),
+        "full_name": user.full_name,
+        "login": user.login,
+        "roles": user.role_names,
+    }

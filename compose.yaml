@@ -14,6 +14,7 @@ x-python-env: &python-env
   LOG_LEVEL: INFO
   RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
   JWKS_URL: http://identity:8000/.well-known/jwks.json
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token}
 
 x-python-depends: &python-depends
   postgres:
@@ -51,7 +52,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      SERVICE_DATABASES: identity notification audit
+      SERVICE_DATABASES: identity notification audit classroom
     ports:
       - "5433:5432"
     volumes:
@@ -124,7 +125,7 @@ services:
         condition: service_started
     labels:
       - traefik.enable=true
-      - traefik.http.routers.identity.rule=PathPrefix(`/api/identity`)
+      - traefik.http.routers.identity.rule=PathPrefix(`/api/identity`) && !PathPrefix(`/api/identity/internal`)
       - traefik.http.routers.identity.middlewares=identity-strip,api-ratelimit@docker
       - traefik.http.middlewares.identity-strip.stripprefix.prefixes=/api/identity
       - traefik.http.services.identity.loadbalancer.server.port=8000
@@ -155,7 +156,7 @@ services:
         condition: service_started
     labels:
       - traefik.enable=true
-      - traefik.http.routers.notification.rule=PathPrefix(`/api/notification`)
+      - traefik.http.routers.notification.rule=PathPrefix(`/api/notification`) && !PathPrefix(`/api/notification/internal`)
       - traefik.http.routers.notification.middlewares=notification-strip,api-ratelimit@docker
       - traefik.http.middlewares.notification-strip.stripprefix.prefixes=/api/notification
       - traefik.http.services.notification.loadbalancer.server.port=8000
@@ -181,10 +182,38 @@ services:
     depends_on: *python-depends
     labels:
       - traefik.enable=true
-      - traefik.http.routers.audit.rule=PathPrefix(`/api/audit`)
+      - traefik.http.routers.audit.rule=PathPrefix(`/api/audit`) && !PathPrefix(`/api/audit/internal`)
       - traefik.http.routers.audit.middlewares=audit-strip,api-ratelimit@docker
       - traefik.http.middlewares.audit-strip.stripprefix.prefixes=/api/audit
       - traefik.http.services.audit.loadbalancer.server.port=8000
+
+  classroom:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: classroom, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/classroom
+      DATABASE_URL: postgresql+asyncpg://classroom:classroom_dev@postgres:5432/classroom
+      TEST_DATABASE_URL: postgresql+asyncpg://classroom:classroom_dev@postgres:5432/classroom_test
+      IDENTITY_URL: http://identity:8000
+      WEB_BASE_URL: http://localhost:8080
+    volumes:
+      - ./services/classroom:/app
+      - *libs-volume
+    depends_on: *python-depends
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.classroom.rule=PathPrefix(`/api/classroom`) && !PathPrefix(`/api/classroom/internal`)
+      - traefik.http.routers.classroom.middlewares=classroom-strip,api-ratelimit@docker
+      - traefik.http.middlewares.classroom-strip.stripprefix.prefixes=/api/classroom
+      - traefik.http.services.classroom.loadbalancer.server.port=8000
 
   # ---------- Веб-клиент ----------
 

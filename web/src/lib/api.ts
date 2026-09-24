@@ -185,3 +185,98 @@ export const notifications = {
   markRead: (id: string) => api<void>(`/api/notification/notifications/${id}/read`, { method: "POST" }),
   markAllRead: () => api<void>("/api/notification/notifications/read-all", { method: "POST" }),
 };
+
+// ---- classroom ----
+
+export type Group = {
+  id: string;
+  kind: "class" | "group";
+  mode: "school" | "tutor";
+  title: string;
+  subject: string | null;
+  description: string;
+  archived: boolean;
+  student_count: number;
+  created_at: string;
+};
+
+export type Member = { student_id: string; full_name: string; login: string | null; joined_at: string };
+
+export type GroupDetail = Group & { members: Member[] };
+
+export type Student = {
+  student_id: string;
+  full_name: string;
+  login: string | null;
+  status: "active" | "pending";
+  source: "invite" | "manual" | "request" | "marketplace";
+  managed: boolean;
+  group_ids: string[];
+};
+
+export type StudentCredentials = { student: Student; login: string | null; password: string | null };
+
+export type Invitation = { id: string; email: string; group_id: string | null; expires_at: string; created_at: string };
+
+export type InvitationPublic = {
+  status: "valid" | "expired" | "used" | "revoked";
+  teacher_name: string;
+  group_title: string | null;
+  group_kind: "class" | "group" | null;
+};
+
+export type MyTeacher = {
+  link_id: string;
+  teacher_id: string;
+  full_name: string;
+  status: "active" | "pending";
+  groups: { id: string; title: string }[];
+};
+
+export type MyGroup = {
+  id: string;
+  title: string;
+  subject: string | null;
+  kind: string;
+  teacher_id: string;
+  teacher_name: string;
+};
+
+const CR = "/api/classroom";
+
+export const classroom = {
+  groups: (archived = false) => api<Group[]>(`${CR}/groups?archived=${archived}`),
+  group: (id: string) => api<GroupDetail>(`${CR}/groups/${id}`),
+  createGroup: (data: { title: string; kind: "class" | "group"; subject?: string | null }) =>
+    api<Group>(`${CR}/groups`, { method: "POST", body: data }),
+  updateGroup: (id: string, data: { title?: string; subject?: string | null; description?: string }) =>
+    api<Group>(`${CR}/groups/${id}`, { method: "PATCH", body: data }),
+  archiveGroup: (id: string) => api<Group>(`${CR}/groups/${id}/archive`, { method: "POST" }),
+  restoreGroup: (id: string) => api<Group>(`${CR}/groups/${id}/restore`, { method: "POST" }),
+  addMember: (groupId: string, studentId: string) =>
+    api<void>(`${CR}/groups/${groupId}/members`, { method: "POST", body: { student_id: studentId } }),
+  removeMember: (groupId: string, studentId: string) =>
+    api<void>(`${CR}/groups/${groupId}/members/${studentId}`, { method: "DELETE" }),
+
+  students: () => api<Student[]>(`${CR}/students`),
+  createManual: (data: { full_name: string; login?: string | null; password?: string | null; group_id?: string | null }) =>
+    api<StudentCredentials>(`${CR}/students/manual`, { method: "POST", body: data }),
+  requestLink: (identifier: string, group_id?: string | null) =>
+    api<Student>(`${CR}/students/requests`, { method: "POST", body: { identifier, group_id } }),
+  renameStudent: (id: string, full_name: string) =>
+    api<Student>(`${CR}/students/${id}`, { method: "PATCH", body: { full_name } }),
+  resetPassword: (id: string) => api<StudentCredentials>(`${CR}/students/${id}/reset-password`, { method: "POST" }),
+  unlinkStudent: (id: string) => api<void>(`${CR}/students/${id}`, { method: "DELETE" }),
+
+  invitations: () => api<Invitation[]>(`${CR}/invitations`),
+  invite: (email: string, group_id?: string | null) =>
+    api<Invitation>(`${CR}/invitations`, { method: "POST", body: { email, group_id } }),
+  revokeInvitation: (id: string) => api<void>(`${CR}/invitations/${id}`, { method: "DELETE" }),
+  viewInvitation: (token: string) => api<InvitationPublic>(`${CR}/invitations/token/${token}`, { auth: false }),
+  acceptInvitation: (token: string) => api<void>(`${CR}/invitations/token/${token}/accept`, { method: "POST" }),
+
+  myTeachers: () => api<MyTeacher[]>(`${CR}/me/teachers`),
+  myGroups: () => api<MyGroup[]>(`${CR}/me/groups`),
+  acceptRequest: (linkId: string) => api<void>(`${CR}/me/requests/${linkId}/accept`, { method: "POST" }),
+  declineRequest: (linkId: string) => api<void>(`${CR}/me/requests/${linkId}/decline`, { method: "POST" }),
+};

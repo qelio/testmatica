@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Alert, Button, CodeStep, Field } from "@/components/ui";
 import { ApiError, identity, type TwoFactorRequired } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { nextPath } from "@/lib/next-path";
 
 type Step =
   | { kind: "credentials" }
@@ -23,7 +24,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/dashboard");
+    if (status === "authenticated") router.replace(nextPath());
   }, [status, router]);
 
   async function run(action: () => Promise<void>) {

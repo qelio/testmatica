@@ -20,7 +20,10 @@
 - Обработчики сообщений — через `runtime.consumer(...)`; идемпотентность даёт inbox.
 - Ошибки API — `ApiError(status, code, message, details)`; формат ответа `{"error": {...}}`.
 - Права — `auth.principal` / `auth.require(ROLE_...)` из `testmatica_common.auth`.
-- Новый сервис: скопировать структуру `services/audit`, добавить в `compose.yaml`, в `SERVICE_DATABASES`, в `SERVICES` в Makefile; `make db-init`.
+- Новый сервис: скопировать структуру `services/classroom`, добавить в `compose.yaml` (правило Traefik с `!PathPrefix(.../internal)`),
+  в `SERVICE_DATABASES`, в `SERVICES` в Makefile; `make db-init`, `make migration s=<svc> m=initial`; если нужна реплика имён — `make snapshot`.
+- Синхронные вызовы между сервисами — только `/internal/...` через `InternalClient` (заголовок X-Internal-Token); наружу не публикуются.
+- Имена пользователей в других сервисах — локальная реплика `people`, заполняется событиями `identity.user.registered|updated|snapshot`.
 - Схема БД меняется только миграциями: `make migration s=<svc> m="..."`.
 
 ## Правила веба

@@ -34,3 +34,37 @@ async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
                 body="Ваш email подтверждён. Здесь будут появляться уведомления о занятиях, заданиях и сообщениях.",
             )
         )
+
+
+async def on_classroom_event(envelope: Envelope, session: AsyncSession) -> None:
+    data = envelope.data
+    if envelope.type == "classroom.link.requested":
+        session.add(
+            Notification(
+                user_id=UUID(data["student_id"]),
+                kind="link_request",
+                title=f"{data['teacher_name']} хочет добавить вас в свои ученики",
+                body="Подтвердите или отклоните запрос в разделе «Мои педагоги».",
+                payload={"link_id": data["link_id"], "teacher_id": data["teacher_id"]},
+            )
+        )
+    elif envelope.type == "classroom.link.created" and data["source"] in ("request", "invite"):
+        what = "ваш запрос" if data["source"] == "request" else "ваше приглашение"
+        session.add(
+            Notification(
+                user_id=UUID(data["teacher_id"]),
+                kind="link_accepted",
+                title=f"{data['student_name']} принял(а) {what}",
+                body="Ученик появился в списке ваших учеников.",
+                payload={"student_id": data["student_id"]},
+            )
+        )
+    elif envelope.type == "classroom.link.declined":
+        session.add(
+            Notification(
+                user_id=UUID(data["teacher_id"]),
+                kind="link_declined",
+                title=f"{data['student_name']} отклонил(а) ваш запрос",
+                payload={"student_id": data["student_id"]},
+            )
+        )

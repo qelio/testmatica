@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 
 export function Logo({ className = "", compact = false }: { className?: string; compact?: boolean }) {
   return (
@@ -172,4 +172,91 @@ export function CodeStep({
       </div>
     </form>
   );
+}
+
+export function Badge({
+  tone = "neutral",
+  children,
+}: {
+  tone?: "neutral" | "brand" | "warn" | "ok";
+  children: React.ReactNode;
+}) {
+  const styles = {
+    neutral: "bg-muted text-fg-soft",
+    brand: "bg-brand/10 text-brand",
+    warn: "bg-tutor/10 text-tutor",
+    ok: "bg-ok/10 text-ok",
+  }[tone];
+  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${styles}`}>{children}</span>;
+}
+
+/** Модальное окно на нативном <dialog>: фокус, Esc и затемнение фона — из коробки. */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && onClose()}
+      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/50"
+    >
+      <div className="flex items-center justify-between border-b border-line px-5 py-4">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <button onClick={onClose} aria-label="Закрыть" className="rounded-lg p-1.5 text-fg-soft hover:bg-muted">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+      <div className="p-5">{open && children}</div>
+    </dialog>
+  );
+}
+
+export function Select({
+  label,
+  children,
+  ...rest
+}: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm font-medium">{label}</span>
+      <select
+        {...rest}
+        className="h-11 w-full rounded-xl border border-line bg-surface px-3 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
+export function EmptyState({ title, text, action }: { title: string; text?: string; action?: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-line px-6 py-10 text-center">
+      <p className="font-medium">{title}</p>
+      {text && <p className="mx-auto mt-1 max-w-md text-sm text-fg-soft">{text}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
+export function Spinner() {
+  return <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-brand border-r-transparent" />;
 }

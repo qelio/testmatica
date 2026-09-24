@@ -20,5 +20,8 @@ class CommonSettings(BaseSettings):
     jwt_issuer: str = "testmatica-identity"
     jwt_audience: str = "testmatica"
 
+    # Общий секрет для внутренних вызовов между сервисами (заголовок X-Internal-Token).
+    internal_token: str = "dev-internal-token"
+
     # Outbox relay и consumers. В тестах выключаются.
     run_background: bool = True

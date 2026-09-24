@@ -10,7 +10,7 @@ export const NAV = {
   school: [
     DASHBOARD,
     soon("Расписание", "/dashboard/schedule"),
-    soon("Мои классы/группы", "/dashboard/groups"),
+    { title: "Мои классы/группы", href: "/dashboard/groups", ready: true },
     soon("Планирование (КТП)", "/dashboard/planning"),
     soon("Задания и тесты", "/dashboard/assignments"),
     soon("Библиотека", "/dashboard/library"),
@@ -19,7 +19,7 @@ export const NAV = {
   tutor: [
     DASHBOARD,
     soon("Расписание", "/dashboard/schedule"),
-    soon("Мои группы/ученики", "/dashboard/groups"),
+    { title: "Мои группы/ученики", href: "/dashboard/groups", ready: true },
     soon("Задания и тесты", "/dashboard/assignments"),
     soon("Библиотека", "/dashboard/library"),
     soon("Финансы и баланс", "/dashboard/finance"),
@@ -28,6 +28,7 @@ export const NAV = {
   ],
   student: [
     DASHBOARD,
+    { title: "Мои педагоги", href: "/dashboard/teachers", ready: true },
     soon("Расписание", "/dashboard/schedule"),
     soon("Задания", "/dashboard/assignments"),
     soon("Оценки", "/dashboard/grades"),

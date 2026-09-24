@@ -68,7 +68,13 @@ async def test_registration_publishes_event(client):
     reg = await register(client, "e@example.com")
     registered = await events("identity.user.registered")
     assert len(registered) == 1
-    assert registered[0]["data"] == {"user_id": reg["user_id"], "roles": ["student"], "status": "pending_verification"}
+    assert registered[0]["data"] == {
+        "user_id": reg["user_id"],
+        "full_name": "Иван Петров",
+        "login": None,
+        "roles": ["student"],
+        "status": "pending_verification",
+    }
     assert len(await events("identity.user.email_verified")) == 1
 
 
