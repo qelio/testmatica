@@ -1,0 +1,4 @@
+alembic>=1.14
+uvicorn[standard]>=0.32
+livekit-api>=1.0
+aioboto3>=13.2

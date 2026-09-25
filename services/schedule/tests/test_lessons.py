@@ -321,6 +321,8 @@ async def test_internal_lessons_for_journal(client, teacher, fake_classroom):
     other = await client.get(f"/internal/lessons/{lessons[0]['id']}", params={"teacher_id": str(uuid4())}, headers=h)
     assert other.status_code == 404
     assert (await client.get("/internal/lessons", params=params)).status_code == 403
+    room = (await client.get(f"/internal/lessons/{lessons[0]['id']}/room", headers=h)).json()
+    assert room["teacher_id"] == str(teacher) and room["group_title"] and room["participant_ids"] == [str(s1)]
 
 
 async def test_lesson_exam_items(client, teacher, fake_classroom):

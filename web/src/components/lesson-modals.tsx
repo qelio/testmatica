@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ExamItemsByIds, ExamItemsField } from "@/components/exams";
 import { LessonAssignments } from "@/components/lesson-assignments";
 import { LessonKtp } from "@/components/lesson-ktp";
+import { JoinLessonButton, LessonRecordings } from "@/components/lesson-video";
 import { Alert, Badge, Button, Field, Modal, Select } from "@/components/ui";
 import { classroom, type Lesson, type Repeat, schedule, type Scope } from "@/lib/api";
 import {
@@ -189,9 +190,9 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
       <Field label="Тема урока" value={topic} maxLength={300} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
       <Field
-        label="Ссылка на видеозвонок"
+        label="Внешняя ссылка на звонок (необязательно)"
         placeholder="https://… (Zoom, Meet и т. д.)"
-        hint="Встроенная видеосвязь появится позже"
+        hint="По умолчанию занятие проходит во встроенной видеокомнате платформы"
         value={videoUrl}
         onChange={(e) => setVideoUrl(e.target.value)}
       />
@@ -391,16 +392,18 @@ function LessonDetails({
         </div>
       )}
 
+      {!cancelled && <JoinLessonButton lesson={lesson} isTeacher={isTeacher} />}
       {!cancelled && lesson.video_url && (
         <a
           href={lesson.video_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex h-11 items-center justify-center rounded-xl bg-brand font-medium text-white hover:bg-brand-strong"
+          className="flex h-11 items-center justify-center rounded-xl border border-line font-medium hover:bg-muted"
         >
-          Войти в звонок
+          Внешняя ссылка на звонок ↗
         </a>
       )}
+      <LessonRecordings lessonId={lesson.id} />
 
       {!cancelled && !past && (
         <div className="flex flex-wrap gap-2 border-t border-line pt-4">
@@ -544,7 +547,13 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
       <Field label="Предмет" value={subject} onChange={(e) => setSubject(e.target.value)} />
       <Field label="Тема урока" value={topic} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
-      <Field label="Ссылка на видеозвонок" placeholder="https://…" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
+      <Field
+        label="Внешняя ссылка на звонок (необязательно)"
+        placeholder="https://… (Zoom, Meet и т. д.)"
+        hint="По умолчанию — встроенная видеокомната"
+        value={videoUrl}
+        onChange={(e) => setVideoUrl(e.target.value)}
+      />
       <div className="flex gap-2">
         <Button type="button" variant="secondary" onClick={onBack}>
           Назад

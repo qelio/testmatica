@@ -231,10 +231,15 @@ flowchart LR
 - Позже: чат переговоров (этап 4), чат в занятии (этап 3), поддержка
 
 ### video
-- `rooms` — id, lesson_id | attempt_id, livekit_room_name, kind (lesson / proctoring), status
-- `room_sessions` — room_id, user_id, joined_at, left_at (логи для споров)
-- `recordings` — id, room_id, media_key, size, expires_at, owner_plan
-- `proctoring_events` — room_id, student_id, kind (tab_hidden / window_blur / camera_opened), at
+Этап 3 — видеосвязь на LiveKit (прокторинг — позже):
+- `rooms` — комната занятия (lesson_id, в LiveKit — `lesson-<id>`): ёмкость (1+1 / 15+1, +1 место для записи), лимит времени (бесплатный тариф — 40 минут от первого входа), started_at / ended_at / end_reason (teacher / time_limit / empty), ученики с правом показывать экран
+- `connections` — лог подключений по вебхукам LiveKit (кто, когда вошёл и вышел) — для споров об оплате
+- `recordings` — запись (egress → MP4 в корзину `recordings` в S3): статус, размер, длительность, срок хранения (14 дней, не больше 3 у педагога — новая вытесняет старую), кому видна (педагог и ученики занятия)
+- Вход: `POST /rooms/{lesson}/join` — занятие берётся из `schedule /internal/lessons/{id}/room`; пропуск (JWT LiveKit) — только педагогу и ученикам занятия, в окне за 30/15 минут до начала и до 30 минут после конца; права публикации: ученику экран — только с разрешения педагога
+- Вебхуки LiveKit — `/internal/webhooks/livekit` (наружу не публикуется, проверяется подпись): participant_joined/left, room_finished, egress_ended
+- Фоновая задача: закрыть комнату по лимиту времени, удалить просроченные записи
+- События: `video.room.started|ended`, `video.recording.ready` (→ уведомление участникам)
+- Инфраструктура: `livekit` (сигнализация ws://…:7880, медиа UDP 50000–50060 / TCP 7881) и `egress` (headless Chrome, пишет в S3). Локально LiveKit объявляет адрес компьютера в сети (`LIVEKIT_NODE_IP`, его выставляет Makefile), чтобы до него дотягивались и браузер, и контейнер записи. В облаке — отдельная ВМ с публичным IP, TLS (wss://) и встроенным TURN для учеников за строгими NAT.
 
 ### moderation
 - `queue_items` — id, kind (content / task / plan_template / review / review_reply / education_doc / verification / dispute), ref_service, ref_id, priority (для подписчиков), status, assignee_id, decision, comment, created_at — FIFO по (priority, created_at)

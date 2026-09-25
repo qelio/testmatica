@@ -271,3 +271,14 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
         session.add(Notification(user_id=UUID(d["student_id"]), kind="attempt_graded",
                                  title=f"Работа проверена: «{d['title']}» — {d['percent']:g}%, оценка {d['grade']}",
                                  payload={"assignment_id": d["assignment_id"], "attempt_id": d["attempt_id"]}))
+
+
+async def on_video_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Запись занятия готова — педагогу и ученикам занятия."""
+    if envelope.type != "video.recording.ready":
+        return
+    d = envelope.data
+    for uid in {d["teacher_id"], *d["viewer_ids"]}:
+        session.add(Notification(user_id=UUID(uid), kind="recording_ready", title=f"Запись занятия готова: {d['title']}",
+                                 body="Смотреть и скачать можно в карточке занятия. Запись хранится 14 дней.",
+                                 payload={"recording_id": d["recording_id"], "lesson_id": d["lesson_id"]}))

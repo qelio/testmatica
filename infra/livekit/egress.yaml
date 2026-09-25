@@ -1,0 +1,16 @@
+# LiveKit Egress — запись занятий в S3 (SeaweedFS локально, Object Storage в облаке).
+api_key: devkey
+api_secret: n6hn7kVJwirdXsPfhuGzZ_9NGMgZNBVykA2w6B15UY8
+ws_url: ws://livekit:7880
+redis:
+  address: redis:6379
+health_port: 8080
+log_level: info
+storage:
+  s3:
+    access_key: dev
+    secret: dev
+    region: ru-central1
+    endpoint: http://s3:8333
+    bucket: recordings
+    force_path_style: true

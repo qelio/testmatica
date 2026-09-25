@@ -6,6 +6,7 @@
 #   http://localhost:15672       — RabbitMQ (guest / guest)
 #   http://localhost:8333        — S3-хранилище (SeaweedFS); http://localhost:8888 — просмотр файлов
 #   localhost:5433               — PostgreSQL (postgres / postgres)
+#   ws://localhost:7880          — LiveKit (видеосвязь); UDP 50000–50060 — медиа
 
 name: testmatica
 
@@ -53,7 +54,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation assessment
+      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation assessment video
     ports:
       - "5433:5432"
     volumes:
@@ -440,6 +441,73 @@ services:
     mem_limit: 768m
     cpus: 1.0
     restart: unless-stopped
+
+  # ---------- Видеосвязь ----------
+
+  # LiveKit (WebRTC). Браузер подключается напрямую: сигнализация — ws://localhost:7880,
+  # медиа — UDP 50000–50060 (или TCP 7881). В облаке — отдельная ВМ с публичным IP и TLS.
+  livekit:
+    image: livekit/livekit-server:v1.9
+    command: --config /etc/livekit.yaml --node-ip ${LIVEKIT_NODE_IP:-127.0.0.1}
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50060:50000-50060/udp"
+    volumes:
+      - ./infra/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    depends_on:
+      redis:
+        condition: service_started
+
+  # Запись занятий: headless Chrome собирает «сетку» комнаты в MP4 и кладёт в S3.
+  egress:
+    image: livekit/egress:v1.10
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./infra/livekit/egress.yaml:/etc/egress.yaml:ro
+    cap_add: [SYS_ADMIN]  # песочница Chrome
+    depends_on:
+      livekit:
+        condition: service_started
+      s3:
+        condition: service_started
+
+  video:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: video, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/video
+      DATABASE_URL: postgresql+asyncpg://video:video_dev@postgres:5432/video
+      TEST_DATABASE_URL: postgresql+asyncpg://video:video_dev@postgres:5432/video_test
+      SCHEDULE_URL: http://schedule:8000
+      LIVEKIT_URL: http://livekit:7880
+      LIVEKIT_PUBLIC_URL: ws://localhost:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: n6hn7kVJwirdXsPfhuGzZ_9NGMgZNBVykA2w6B15UY8
+      S3_ENDPOINT: http://s3:8333
+      S3_PUBLIC_ENDPOINT: http://localhost:8333
+    volumes:
+      - ./services/video:/app
+      - *libs-volume
+    depends_on:
+      <<: *python-depends
+      livekit:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.video.rule=PathPrefix(`/api/video`) && !PathPrefix(`/api/video/internal`)
+      - traefik.http.routers.video.middlewares=video-strip,api-ratelimit@docker
+      - traefik.http.middlewares.video-strip.stripprefix.prefixes=/api/video
+      - traefik.http.services.video.loadbalancer.server.port=8000
 
   # ---------- Веб-клиент ----------
 

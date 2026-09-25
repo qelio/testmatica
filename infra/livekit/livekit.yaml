@@ -1,0 +1,25 @@
+# LiveKit — сервер видеосвязи (WebRTC). Локальная разработка.
+# Ключи — только для dev; в облаке задаются секретами (LIVEKIT_KEYS).
+port: 7880
+rtc:
+  tcp_port: 7881
+  # Небольшой диапазон UDP-портов: Docker пробрасывает каждый порт отдельно.
+  port_range_start: 50000
+  port_range_end: 50060
+  use_external_ip: false
+  # node_ip задаётся флагом --node-ip (см. compose.yaml): адрес, до которого дотягиваются
+  # и браузер на компьютере, и контейнер записи (egress).
+redis:
+  address: redis:6379
+keys:
+  devkey: n6hn7kVJwirdXsPfhuGzZ_9NGMgZNBVykA2w6B15UY8
+room:
+  auto_create: false
+  empty_timeout: 300
+  departure_timeout: 20
+webhook:
+  api_key: devkey
+  urls:
+    - http://video:8000/internal/webhooks/livekit
+logging:
+  level: info

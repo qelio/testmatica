@@ -260,3 +260,14 @@ async def test_plan_template_notifications(client):
         "template_id": str(uuid4()), "title": "Дроби", "author_id": str(author), "comment": "Нет результатов уроков"}))
     item = (await client.get("/notifications", headers=bearer(author, ["teacher"]))).json()["items"][0]
     assert (item["title"], item["body"]) == ("КТП «Дроби» не прошло проверку", "Нет результатов уроков")
+
+
+async def test_recording_ready_notification(client):
+    teacher, pupil = uuid4(), uuid4()
+    c = consumer("notification.video", handlers.on_video_event)
+    await c.process(make_envelope("video.recording.ready", {
+        "recording_id": str(uuid4()), "lesson_id": str(uuid4()), "teacher_id": str(teacher), "viewer_ids": [str(pupil)],
+        "title": "7А · Алгебра · 25.09.2026", "duration_s": 600}))
+    for user in (teacher, pupil):
+        items = (await client.get("/notifications", headers=bearer(user))).json()["items"]
+        assert items[0]["title"] == "Запись занятия готова: 7А · Алгебра · 25.09.2026"

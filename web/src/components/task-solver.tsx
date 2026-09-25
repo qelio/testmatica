@@ -32,7 +32,7 @@ export function resultText(s: Submission): { text: string; tone: "ok" | "warn" |
   }
 }
 
-/** Решение задачи прямо на странице (модуль курса, позже — ДЗ). */
+/** Решение задачи прямо на странице (задача в модуле курса). */
 export function TaskSolver({
   taskId,
   contextId,
