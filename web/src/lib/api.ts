@@ -315,6 +315,7 @@ export type Lesson = {
   title: string;
   subject: string | null;
   topic: string | null;
+  exam_item_ids: string[];
   starts_at: string;
   ends_at: string;
   duration_min: number;
@@ -335,6 +336,7 @@ export type LessonCreate = {
   duration_min: number;
   subject?: string | null;
   topic?: string | null;
+  exam_item_ids?: string[];
   video_url?: string | null;
   repeat?: Repeat | null;
   timezone: string;
@@ -351,7 +353,7 @@ export const schedule = {
   create: (data: LessonCreate) => api<{ count: number; lessons: Lesson[] }>(`${SC}/lessons`, { method: "POST", body: data }),
   update: (
     id: string,
-    data: { scope: Scope; starts_at?: string; duration_min?: number; subject?: string | null; topic?: string | null; video_url?: string | null },
+    data: { scope: Scope; starts_at?: string; duration_min?: number; subject?: string | null; topic?: string | null; exam_item_ids?: string[]; video_url?: string | null },
   ) => api<Lesson>(`${SC}/lessons/${id}`, { method: "PATCH", body: data }),
   cancel: (id: string, scope: Scope, reason?: string | null) =>
     api<Lesson>(`${SC}/lessons/${id}/cancel`, { method: "POST", body: { scope, reason } }),
@@ -544,7 +546,7 @@ export type CourseSummary = {
   updated_at: string;
 };
 
-export type MaterialKind = "text" | "card" | "video" | "pdf" | "file" | "link";
+export type MaterialKind = "text" | "card" | "video" | "pdf" | "file" | "link" | "task";
 
 export type MaterialBrief = { id: string; kind: MaterialKind; title: string; viewed: boolean; favorite: boolean };
 
@@ -563,6 +565,7 @@ export type Material = {
   body: string;
   url: string | null;
   file: { id: string; filename: string; mime: string; size: number | null; url: string | null } | null;
+  task_id: string | null;
   position_sec: number;
   viewed: boolean;
   favorite: boolean;
@@ -613,7 +616,10 @@ export const content = {
   deleteNode: (id: string) => api<void>(`${CT}/nodes/${id}`, { method: "DELETE" }),
   moveNode: (id: string, direction: "up" | "down") =>
     api<CourseTree>(`${CT}/nodes/${id}/move`, { method: "POST", body: { direction } }),
-  addMaterial: (moduleId: string, data: { kind: MaterialKind; title: string; body?: string; file_id?: string | null; url?: string | null }) =>
+  addMaterial: (
+    moduleId: string,
+    data: { kind: MaterialKind; title?: string; body?: string; file_id?: string | null; url?: string | null; task_id?: string | null },
+  ) =>
     api<Material>(`${CT}/modules/${moduleId}/materials`, { method: "POST", body: data }),
   updateMaterial: (id: string, data: { title?: string; body?: string; url?: string }) =>
     api<Material>(`${CT}/materials/${id}`, { method: "PATCH", body: data }),
@@ -654,4 +660,194 @@ export const moderation = {
   queue: (status = "pending") => api<QueueItem[]>(`/api/moderation/queue?status=${status}`),
   decide: (id: string, decision: "approve" | "reject", comment?: string) =>
     api<QueueItem>(`/api/moderation/queue/${id}/decide`, { method: "POST", body: { decision, comment } }),
+};
+
+// ---- assessment (банк задач) ----
+
+export type TaskType = "choice" | "short" | "long" | "code";
+export type TaskStatus = CourseStatus;
+
+export type TaskSummary = {
+  id: string;
+  title: string;
+  type: TaskType;
+  difficulty: 1 | 2 | 3;
+  subject_id: string | null;
+  subject_name: string | null;
+  topic_id: string | null;
+  topic_path: string[];
+  exam_items: ExamLabel[];
+  tags: string[];
+  status: TaskStatus;
+  owner_id: string;
+  author_name: string;
+  updated_at: string;
+};
+
+export type TaskFull = TaskSummary & {
+  statement: string;
+  explanation: string;
+  theory_material_id: string | null;
+  file_mode: "none" | "optional" | "required";
+  options: { id: string; text: string; is_correct: boolean | null }[];
+  answers: { mode: "exact" | "regex"; value: string }[] | null;
+  starter_code: string;
+  time_limit_s: number | null;
+  memory_limit_mb: number | null;
+  tests: { input: string; expected: string }[] | null;
+  review_comment: string | null;
+  can_edit: boolean;
+  multiple: boolean;
+};
+
+export type TaskInput = {
+  title: string;
+  statement: string;
+  type: TaskType;
+  subject_id: string | null;
+  subject_name: string | null;
+  topic_id: string | null;
+  exam_item_ids: string[];
+  difficulty: number;
+  tags: string[];
+  explanation: string;
+  file_mode: "none" | "optional" | "required";
+  options: { text: string; is_correct: boolean }[];
+  answers: { mode: "exact" | "regex"; value: string }[];
+  starter_code: string;
+  time_limit_s: number;
+  memory_limit_mb: number;
+  tests: { input: string; expected: string }[];
+};
+
+export type Submission = {
+  id: string;
+  task_id: string;
+  student_id: string;
+  context_type: "practice" | "assignment";
+  context_id: string;
+  answer: { option_ids?: string[]; text?: string; code?: string };
+  files: Attachment[];
+  status: "checking" | "correct" | "incorrect" | "error" | "pending_review" | "reviewed";
+  score: number | null;
+  failed_case: number | null;
+  failure: "wrong_answer" | "runtime_error" | "time_limit" | "memory_limit" | null;
+  teacher_comment: string | null;
+  created_at: string;
+  checked_at: string | null;
+  run_log: { number: number; status: string; time_ms: number; output: string; error: string }[] | null;
+  task_title?: string | null;
+  task_type?: TaskType | null;
+};
+
+export type ExamKind = "ege" | "oge";
+export type ExamItem = { id: string; number: number; title: string };
+export type Exam = { id: string; kind: ExamKind; subject_id: string; subject_name: string; title: string; items: ExamItem[] };
+export type ExamLabel = { id: string; label: string; title: string };
+
+export type ExamProgress = { attempted: number; solved: number; attempts: number; correct_attempts: number; last_at: string | null };
+export type ExamBoardRow = {
+  item_id: string;
+  number: number;
+  title: string;
+  done: boolean;
+  done_at: string | null;
+  note: string | null;
+  progress: ExamProgress;
+  by_student: (ExamProgress & { student_id: string })[];
+  tasks_in_bank: number;
+};
+export type ExamBoard = {
+  exam: Exam;
+  target_type: "student" | "group";
+  target_id: string;
+  can_edit: boolean;
+  students: PersonRef[];
+  rows: ExamBoardRow[];
+};
+export type ItemTaskProgress = {
+  task_id: string;
+  title: string;
+  type: TaskType;
+  attempts: number;
+  solved: boolean;
+  last_status: Submission["status"];
+  last_at: string;
+};
+
+/** Узел рубрикатора: раздел (parent_id = null) или тема внутри раздела. */
+export type Topic = {
+  id: string;
+  subject_id: string;
+  subject_name: string;
+  parent_id: string | null;
+  title: string;
+  position: number;
+  count: number;
+};
+
+export type SolveView = { task: TaskFull; submissions: Submission[]; solved: boolean; explanation: string | null };
+
+const AS = "/api/assessment";
+
+export const assessment = {
+  search: (params: Record<string, string | number | boolean | undefined>) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== "" && v !== false)
+        .map(([k, v]) => [k, String(v)]),
+    );
+    return api<{ items: TaskSummary[]; total: number }>(`${AS}/tasks?${qs}`);
+  },
+  task: (id: string) => api<TaskFull>(`${AS}/tasks/${id}`),
+  create: (data: TaskInput) => api<TaskFull>(`${AS}/tasks`, { method: "POST", body: data }),
+  update: (id: string, data: TaskInput) => api<TaskFull>(`${AS}/tasks/${id}`, { method: "PUT", body: data }),
+  remove: (id: string) => api<void>(`${AS}/tasks/${id}`, { method: "DELETE" }),
+  copy: (id: string) => api<TaskFull>(`${AS}/tasks/${id}/copy`, { method: "POST" }),
+  submitForReview: (id: string) => api<TaskFull>(`${AS}/tasks/${id}/submit`, { method: "POST" }),
+  unpublish: (id: string) => api<TaskFull>(`${AS}/tasks/${id}/unpublish`, { method: "POST" }),
+
+  solve: (id: string, contextId: string, contextType: "practice" | "assignment" = "practice") =>
+    api<SolveView>(`${AS}/tasks/${id}/solve?context_type=${contextType}&context_id=${contextId}`),
+  answer: (
+    id: string,
+    contextId: string,
+    answer: Submission["answer"],
+    fileIds: string[] = [],
+    contextType: "practice" | "assignment" = "practice",
+  ) =>
+    api<Submission>(`${AS}/tasks/${id}/submissions`, {
+      method: "POST",
+      body: { context_type: contextType, context_id: contextId, answer, file_ids: fileIds },
+    }),
+  submission: (id: string) => api<Submission>(`${AS}/submissions/${id}`),
+  history: (studentId: string, taskId?: string) =>
+    api<Submission[]>(`${AS}/students/${studentId}/submissions${taskId ? `?task_id=${taskId}` : ""}`),
+  moveTask: (id: string, topicId: string) => api<TaskFull>(`${AS}/tasks/${id}/topic`, { method: "POST", body: { topic_id: topicId } }),
+
+  topics: (scope: "mine" | "public" = "public") => api<Topic[]>(`${AS}/topics?scope=${scope}`),
+  createTopic: (data: { title: string; parent_id?: string | null; subject_id?: string; subject_name?: string }) =>
+    api<Topic>(`${AS}/topics`, { method: "POST", body: data }),
+  updateTopic: (id: string, data: { title?: string; position?: number }) =>
+    api<Topic>(`${AS}/topics/${id}`, { method: "PATCH", body: data }),
+  deleteTopic: (id: string) => api<void>(`${AS}/topics/${id}`, { method: "DELETE" }),
+
+  exams: () => api<Exam[]>(`${AS}/exams`),
+  createExam: (data: { kind: ExamKind; subject_id: string; subject_name: string; title: string }) =>
+    api<Exam>(`${AS}/exams`, { method: "POST", body: data }),
+  deleteExam: (id: string) => api<void>(`${AS}/exams/${id}`, { method: "DELETE" }),
+  addExamItem: (examId: string, data: { number: number; title: string }) =>
+    api<ExamItem>(`${AS}/exams/${examId}/items`, { method: "POST", body: data }),
+  updateExamItem: (id: string, data: { number?: number; title?: string }) =>
+    api<ExamItem>(`${AS}/exam-items/${id}`, { method: "PATCH", body: data }),
+  deleteExamItem: (id: string) => api<void>(`${AS}/exam-items/${id}`, { method: "DELETE" }),
+  examBoard: (examId: string, targetType: "student" | "group", targetId: string) =>
+    api<ExamBoard>(`${AS}/exam-board?exam_id=${examId}&target_type=${targetType}&target_id=${targetId}`),
+  setExamMark: (data: { target_type: "student" | "group"; target_id: string; item_id: string; done: boolean; note: string }) =>
+    api<void>(`${AS}/exam-marks`, { method: "PUT", body: data }),
+  examItemTasks: (studentId: string, itemId: string) =>
+    api<ItemTaskProgress[]>(`${AS}/exam-board/tasks?student_id=${studentId}&item_id=${itemId}`),
+
+  review: (id: string, score: number, comment: string) =>
+    api<Submission>(`${AS}/submissions/${id}/review`, { method: "POST", body: { score, comment } }),
 };

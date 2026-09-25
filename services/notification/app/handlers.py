@@ -228,3 +228,20 @@ async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
                 payload={"course_id": d["course_id"]},
             )
         )
+
+
+async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None:
+    d = envelope.data
+    t = envelope.type
+    if t == "assessment.task.published" and envelope.actor_id != UUID(d["author_id"]):
+        session.add(Notification(user_id=UUID(d["author_id"]), kind="task_published",
+                                 title=f"Задача «{d['title']}» опубликована в банке", payload={"task_id": d["task_id"]}))
+    elif t == "assessment.task.rejected":
+        session.add(Notification(user_id=UUID(d["author_id"]), kind="task_rejected",
+                                 title=f"Задача «{d['title']}» не прошла проверку", body=d.get("comment") or "",
+                                 payload={"task_id": d["task_id"]}))
+    elif t == "assessment.submission.reviewed":
+        percent = round(float(d["score"]) * 100)
+        session.add(Notification(user_id=UUID(d["student_id"]), kind="submission_reviewed",
+                                 title=f"Педагог проверил решение: «{d['task_title']}» — {percent}%", body=d.get("comment") or "",
+                                 payload={"submission_id": d["submission_id"], "task_id": d["task_id"]}))

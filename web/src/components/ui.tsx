@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 
 export function Logo({ className = "", compact = false }: { className?: string; compact?: boolean }) {
   return (
@@ -203,13 +204,20 @@ export function Modal({
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // Окно рендерится в конец <body> (портал): так форма внутри окна не окажется вложенной в форму страницы.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
-  }, [open]);
-  return (
+  }, [open, mounted]);
+  if (!mounted) return null;
+  return createPortal(
     <dialog
       ref={ref}
       onClose={onClose}
@@ -225,7 +233,8 @@ export function Modal({
         </button>
       </div>
       <div className="p-5">{open && children}</div>
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }
 

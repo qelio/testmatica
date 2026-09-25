@@ -11,7 +11,7 @@ from testmatica_common.errors import ApiError
 from testmatica_common.ids import uuid7
 
 from .. import access, views
-from ..deps import auth, db, media, outbox
+from ..deps import assessment, auth, db, media, outbox
 from ..models import CHILD_KIND, FILE_KINDS, PENDING, PRIVATE, PUBLISHED, REJECTED, Material, Node, Subject
 from ..schemas import (
     CourseCreate,
@@ -170,8 +170,19 @@ async def add_material(
     module, course = await access.editable_node(session, module_id, principal)
     if module.kind != "module":
         raise ApiError(422, "invalid_parent", "Материалы добавляются в модуль")
+    title = body.title
+    task_id = None
+    if body.kind == "task":
+        # В курсы — только задачи с автопроверкой; своя (в любом статусе) или опубликованная в банке.
+        brief = await _task_briefs(course.owner_id, [body.task_id])
+        task = brief.get(str(body.task_id))
+        if task is None or not task["usable"]:
+            raise ApiError(422, "task_not_available", "Задача не найдена в вашем банке или в публичном")
+        if not task["auto_checked"]:
+            raise ApiError(422, "task_manual_check", "В курс можно добавить только задачи с автопроверкой: выбор ответа, короткий ответ, код")
+        title, task_id = title or task["title"], body.task_id
     material = Material(
-        module_id=module.id, course_id=course.id, kind=body.kind, title=body.title, body=body.body.strip(),
+        module_id=module.id, course_id=course.id, kind=body.kind, title=title, body=body.body.strip(), task_id=task_id,
         url=body.url if body.kind == "link" else None,
         position=await _next_position(session, Material, module_id=module.id),
     )
@@ -249,6 +260,15 @@ async def move_material(
     await session.commit()
 
 
+async def _task_briefs(owner_id: UUID, task_ids: list[UUID]) -> dict[str, dict]:
+    if not task_ids:
+        return {}
+    rows = await assessment.post(
+        "/internal/tasks/lookup", json={"task_ids": [str(t) for t in task_ids], "user_id": str(owner_id)}
+    )
+    return {r["id"]: r for r in rows}
+
+
 # ---------- публикация ----------
 
 
@@ -267,7 +287,21 @@ async def submit(
     if course.subject_id is None:
         raise ApiError(422, "subject_required", "Укажите предмет курса — по нему курс ищут в библиотеке")
 
-    data = {"course_id": str(course.id), "title": course.title, "author_id": str(course.owner_id), "materials_count": materials}
+    # Задачи курса: чужие должны быть уже опубликованы, свои приватные уходят на проверку вместе с курсом.
+    task_ids = list(
+        (
+            await session.execute(select(Material.task_id).where(Material.course_id == course.id, Material.task_id.is_not(None)))
+        ).scalars()
+    )
+    briefs = await _task_briefs(course.owner_id, task_ids)
+    unavailable = [str(t) for t in task_ids if str(t) not in briefs or not briefs[str(t)]["usable"]]
+    if unavailable:
+        raise ApiError(422, "tasks_unavailable", "Некоторые задачи курса удалены или недоступны — уберите их", {"task_ids": unavailable})
+    own_private = [tid for tid, b in briefs.items() if b["owner_id"] == str(course.owner_id) and b["status"] != "published"]
+    data = {
+        "course_id": str(course.id), "title": course.title, "author_id": str(course.owner_id), "materials_count": materials,
+        "tasks_count": len(task_ids), "task_ids": own_private,
+    }
     if access.is_staff(principal):
         course.status = PUBLISHED
         course.published_at = datetime.now(UTC)

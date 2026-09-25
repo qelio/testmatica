@@ -256,6 +256,7 @@ async def serialize(session: AsyncSession, lessons: Sequence[Lesson], principal:
                 else name(lesson.student_id if is_teacher else lesson.teacher_id),
                 subject=lesson.subject,
                 topic=lesson.topic,
+                exam_item_ids=lesson.exam_item_ids or [],
                 starts_at=lesson.starts_at,
                 ends_at=lesson.ends_at,
                 duration_min=lesson.duration_min,

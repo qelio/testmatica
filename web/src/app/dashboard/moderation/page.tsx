@@ -10,6 +10,7 @@ import { errorText, useLoad } from "@/lib/hooks";
 
 const LINKS: Record<string, (id: string) => string> = {
   course: (id) => `/dashboard/library/course/${id}`,
+  task: (id) => `/dashboard/tasks/${id}`,
 };
 
 export default function ModerationPage() {

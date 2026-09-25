@@ -190,9 +190,14 @@ function StudentsTab({
             {s.status === "pending" ? (
               <Badge tone="warn">ждёт подтверждения</Badge>
             ) : (
-              <Link href={`/dashboard/journal?student=${s.student_id}`} className="text-sm font-medium text-brand hover:underline">
-                Журнал
-              </Link>
+              <>
+                <Link href={`/dashboard/journal?student=${s.student_id}`} className="text-sm font-medium text-brand hover:underline">
+                  Журнал
+                </Link>
+                <Link href={`/dashboard/students/${s.student_id}`} className="text-sm font-medium text-brand hover:underline">
+                  Прогресс
+                </Link>
+              </>
             )}
             <Button variant="ghost" className="h-9" onClick={() => setEditing(s)}>
               Управление

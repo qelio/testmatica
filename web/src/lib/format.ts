@@ -39,3 +39,19 @@ export function fmtRate(value: number | null): string {
 export function gradeTone(value: number): string {
   return value >= 4 ? "text-ok" : value === 3 ? "text-tutor" : "text-danger";
 }
+
+export const TASK_TYPE_LABELS = {
+  choice: "Выбор ответа",
+  short: "Короткий ответ",
+  long: "Развёрнутый ответ",
+  code: "Код (Python)",
+} as const;
+
+export const DIFFICULTY_LABELS = { 1: "базовый", 2: "средний", 3: "сложный" } as const;
+
+export const FAILURE_LABELS = {
+  wrong_answer: "неверный ответ",
+  runtime_error: "ошибка выполнения",
+  time_limit: "превышено время",
+  memory_limit: "превышена память",
+} as const;

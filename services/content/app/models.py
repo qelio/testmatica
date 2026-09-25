@@ -15,7 +15,8 @@ REJECTED = "rejected"  # отклонён модератором — можно 
 KINDS = ("course", "section", "module")
 CHILD_KIND = {"course": "section", "section": "module"}
 
-MATERIAL_KINDS = ("text", "card", "video", "pdf", "file", "link")
+# task — задача из банка заданий (только с автопроверкой), решается прямо в модуле.
+MATERIAL_KINDS = ("text", "card", "video", "pdf", "file", "link", "task")
 FILE_KINDS = ("video", "pdf", "file")
 
 DEFAULT_SUBJECTS = (
@@ -91,7 +92,7 @@ class Node(Base):
 class Material(Base):
     __tablename__ = "materials"
     __table_args__ = (
-        CheckConstraint("kind IN ('text', 'card', 'video', 'pdf', 'file', 'link')", name="kind_valid"),
+        CheckConstraint("kind IN ('text', 'card', 'video', 'pdf', 'file', 'link', 'task')", name="kind_valid"),
         Index("ix_materials_module", "module_id", "position"),
         Index("ix_materials_course", "course_id"),
     )
@@ -108,6 +109,7 @@ class Material(Base):
     file_mime: Mapped[str | None] = mapped_column(String(120))
     file_size: Mapped[int | None]
     url: Mapped[str | None] = mapped_column(String(500))
+    task_id: Mapped[UUID | None]  # для kind = task
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

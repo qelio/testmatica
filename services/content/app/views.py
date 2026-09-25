@@ -157,6 +157,7 @@ def material_out(m: Material, urls: dict[str, str], progress: dict[UUID, int], f
         file=FileInfo(id=m.file_id, filename=m.file_name or "", mime=m.file_mime or "", size=m.file_size, url=urls.get(str(m.file_id)))
         if m.file_id
         else None,
+        task_id=m.task_id,
         position_sec=progress.get(m.id, 0),
         viewed=m.id in progress,
         favorite=m.id in favorites,

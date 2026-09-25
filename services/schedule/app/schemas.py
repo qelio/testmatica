@@ -49,6 +49,7 @@ class LessonCreate(BaseModel):
     duration_min: int = Field(ge=15, le=300)
     subject: str | None = Field(None, max_length=80)
     topic: str | None = Field(None, max_length=300)
+    exam_item_ids: list[UUID] | None = Field(None, max_length=10, description="Задания ЕГЭ/ОГЭ на занятии")
     video_url: str | None = Field(None, max_length=500)
     repeat: Repeat | None = None
     timezone: str = Field("Europe/Moscow", max_length=64)
@@ -78,6 +79,7 @@ class LessonUpdate(BaseModel):
     duration_min: int | None = Field(None, ge=15, le=300)
     subject: str | None = Field(None, max_length=80)
     topic: str | None = Field(None, max_length=300)
+    exam_item_ids: list[UUID] | None = Field(None, max_length=10, description="Задания ЕГЭ/ОГЭ на занятии")
     video_url: str | None = Field(None, max_length=500)
 
     _subject = field_validator("subject", "topic")(_clean)
@@ -121,6 +123,7 @@ class LessonOut(BaseModel):
     title: str = Field(description="Название группы или имя ученика")
     subject: str | None
     topic: str | None
+    exam_item_ids: list[UUID]
     starts_at: datetime
     ends_at: datetime
     duration_min: int

@@ -321,3 +321,14 @@ async def test_internal_lessons_for_journal(client, teacher, fake_classroom):
     other = await client.get(f"/internal/lessons/{lessons[0]['id']}", params={"teacher_id": str(uuid4())}, headers=h)
     assert other.status_code == 404
     assert (await client.get("/internal/lessons", params=params)).status_code == 403
+
+
+async def test_lesson_exam_items(client, teacher, fake_classroom):
+    """К занятию, кроме темы, привязываются задания ЕГЭ/ОГЭ; их видит и ученик."""
+    item1, item2 = str(uuid4()), str(uuid4())
+    student, lesson = await individual(client, teacher, fake_classroom, topic="Логика", exam_item_ids=[item1, item1, item2])
+    assert lesson["exam_item_ids"] == [item1, item2]
+    upd = await client.patch(f"/lessons/{lesson['id']}", json={"exam_item_ids": [item2]}, headers=bearer(teacher))
+    assert upd.status_code == 200, upd.text
+    theirs = (await client.get(f"/lessons/{lesson['id']}", headers=student_bearer(student))).json()
+    assert theirs["exam_item_ids"] == [item2] and theirs["topic"] == "Логика"
