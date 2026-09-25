@@ -1078,3 +1078,51 @@ export const assessment = {
   review: (id: string, score: number, comment: string) =>
     api<Submission>(`${AS}/submissions/${id}/review`, { method: "POST", body: { score, comment } }),
 };
+
+// ---------- видеосвязь ----------
+
+export type VideoRoom = {
+  lesson_id: string;
+  title: string;
+  is_teacher: boolean;
+  status: "waiting" | "active" | "ended";
+  started_at: string | null;
+  lesson_ends_at: string;
+  limit_ends_at: string | null;
+  end_reason: string | null;
+  screen_share: string[];
+  recording: "starting" | "active" | "stopping" | null;
+  max_participants: number;
+  external_url: string | null;
+};
+export type VideoJoin = { url: string; token: string; room: VideoRoom };
+export type LessonRecording = {
+  id: string;
+  lesson_id: string;
+  title: string;
+  status: "recording" | "ready" | "failed";
+  error: string | null;
+  started_at: string;
+  ended_at: string | null;
+  duration_s: number | null;
+  size: number | null;
+  expires_at: string | null;
+  url: string | null;
+  download_url: string | null;
+  can_delete: boolean;
+};
+
+const VD = "/api/video";
+
+export const video = {
+  room: (lessonId: string) => api<VideoRoom>(`${VD}/rooms/${lessonId}`),
+  join: (lessonId: string) => api<VideoJoin>(`${VD}/rooms/${lessonId}/join`, { method: "POST" }),
+  screenShare: (lessonId: string, studentId: string, allowed: boolean) =>
+    api<VideoRoom>(`${VD}/rooms/${lessonId}/screen-share`, { method: "POST", body: { student_id: studentId, allowed } }),
+  recording: (lessonId: string, action: "start" | "stop") =>
+    api<VideoRoom>(`${VD}/rooms/${lessonId}/recording?action=${action}`, { method: "POST" }),
+  end: (lessonId: string) => api<VideoRoom>(`${VD}/rooms/${lessonId}/end`, { method: "POST" }),
+  recordings: (lessonId?: string) => api<LessonRecording[]>(`${VD}/recordings${lessonId ? `?lesson_id=${lessonId}` : ""}`),
+  deleteRecording: (id: string) => api<void>(`${VD}/recordings/${id}`, { method: "DELETE" }),
+};
+

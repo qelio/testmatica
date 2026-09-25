@@ -31,6 +31,8 @@ class LessonInfo(BaseModel):
     ends_at: datetime
     status: str
     participant_ids: list[UUID]
+    group_title: str | None = None
+    video_url: str | None = None
 
 
 async def _info(session: AsyncSession, lessons: list[Lesson]) -> list[LessonInfo]:
@@ -49,6 +51,8 @@ async def _info(session: AsyncSession, lessons: list[Lesson]) -> list[LessonInfo
             ends_at=lesson.ends_at,
             status=lesson.status,
             participant_ids=participants[lesson.id],
+            group_title=lesson.group_title,
+            video_url=lesson.video_url,
         )
         for lesson in lessons
     ]
@@ -76,5 +80,14 @@ async def lessons(
 async def lesson(lesson_id: UUID, teacher_id: UUID = Query(), session: AsyncSession = Depends(db.session)) -> LessonInfo:
     found = await session.get(Lesson, lesson_id)
     if found is None or found.teacher_id != teacher_id:
+        raise ApiError(404, "lesson_not_found", "Занятие не найдено")
+    return (await _info(session, [found]))[0]
+
+
+@router.get("/lessons/{lesson_id}/room", response_model=LessonInfo)
+async def lesson_for_room(lesson_id: UUID, session: AsyncSession = Depends(db.session)) -> LessonInfo:
+    """Занятие для видеокомнаты: сервис video сам проверяет, педагог это или участник."""
+    found = await session.get(Lesson, lesson_id)
+    if found is None:
         raise ApiError(404, "lesson_not_found", "Занятие не найдено")
     return (await _info(session, [found]))[0]

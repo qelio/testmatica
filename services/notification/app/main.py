@@ -18,6 +18,7 @@ runtime.consumer("notification.email", [(COMMANDS_EXCHANGE, "notification.email"
 runtime.consumer("notification.inapp", [(COMMANDS_EXCHANGE, "notification.inapp")], handlers.on_inapp_command)
 runtime.consumer("notification.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
 runtime.consumer("notification.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
+runtime.consumer("notification.video", [(EVENTS_EXCHANGE, "video.recording.ready")], handlers.on_video_event)
 runtime.consumer(
     "notification.academic",
     [(EVENTS_EXCHANGE, "academic.grade.*"), (EVENTS_EXCHANGE, "academic.plan_template.*")],
