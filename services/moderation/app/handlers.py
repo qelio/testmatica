@@ -44,6 +44,24 @@ async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
         )
 
 
+async def on_academic_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Шаблоны КТП в публичную библиотеку."""
+    d = envelope.data
+    if envelope.type == "academic.plan_template.submitted":
+        await session.execute(
+            insert(QueueItem)
+            .values(kind="plan_template", ref_id=UUID(d["template_id"]), title=d["title"], author_id=UUID(d["author_id"]),
+                    details={"lessons_count": d.get("lessons_count"), "subject": d.get("subject")}, status=PENDING)
+            .on_conflict_do_nothing(index_elements=["kind", "ref_id"], index_where=text("status = 'pending'"))
+        )
+    elif envelope.type == "academic.plan_template.unpublished":
+        await session.execute(
+            update(QueueItem)
+            .where(QueueItem.kind == "plan_template", QueueItem.ref_id == UUID(d["template_id"]), QueueItem.status == PENDING)
+            .values(status=WITHDRAWN)
+        )
+
+
 async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None:
     d = envelope.data
     if envelope.type == "assessment.task.submitted":

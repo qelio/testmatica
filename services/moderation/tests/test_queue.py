@@ -65,3 +65,14 @@ async def test_tasks_enter_queue(client):
     assert [(i["kind"], i["kind_label"], i["details"]) for i in queue] == [("task", "Задача в публичный банк", {"type": "code"})]
     await apply(handlers.on_assessment_event, "assessment.task.unpublished", task_id=task, title="x", author_id=author)
     assert (await client.get("/queue", headers=bearer(uuid4()))).json() == []
+
+
+async def test_plan_templates_enter_queue(client):
+    template, author = uuid4(), uuid4()
+    await apply(handlers.on_academic_event, "academic.plan_template.submitted", template_id=template, title="Дроби, 5 класс",
+                author_id=author, lessons_count=12, subject="Математика")
+    queue = (await client.get("/queue", headers=bearer(uuid4()))).json()
+    assert [(i["kind"], i["kind_label"], i["details"]["lessons_count"]) for i in queue] == [
+        ("plan_template", "КТП в публичную библиотеку", 12)]
+    await apply(handlers.on_academic_event, "academic.plan_template.unpublished", template_id=template, title="x", author_id=author)
+    assert (await client.get("/queue", headers=bearer(uuid4()))).json() == []

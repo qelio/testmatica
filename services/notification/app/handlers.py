@@ -153,9 +153,18 @@ async def on_schedule_event(envelope: Envelope, session: AsyncSession) -> None:
 
 
 async def on_academic_event(envelope: Envelope, session: AsyncSession) -> None:
+    data = envelope.data
+    if envelope.type == "academic.plan_template.published" and envelope.actor_id != UUID(data["author_id"]):
+        session.add(Notification(user_id=UUID(data["author_id"]), kind="plan_template_published",
+                                 title=f"КТП «{data['title']}» опубликовано в библиотеке", payload={"template_id": data["template_id"]}))
+        return
+    if envelope.type == "academic.plan_template.rejected":
+        session.add(Notification(user_id=UUID(data["author_id"]), kind="plan_template_rejected",
+                                 title=f"КТП «{data['title']}» не прошло проверку", body=data.get("comment") or "",
+                                 payload={"template_id": data["template_id"]}))
+        return
     if envelope.type != "academic.grade.created":
         return
-    data = envelope.data
     subject = f" — {data['subject']}" if data.get("subject") else ""
     session.add(
         Notification(

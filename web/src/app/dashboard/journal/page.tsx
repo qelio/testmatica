@@ -313,6 +313,7 @@ function CellEditor({
         {lesson.subject && ` · ${lesson.subject}`}
         {lesson.topic && ` · ${lesson.topic}`}
       </p>
+      {lesson.ktp.length > 0 && <p className="text-sm">По КТП: {lesson.ktp.join("; ")}</p>}
       {error && <Alert>{error}</Alert>}
 
       <section>

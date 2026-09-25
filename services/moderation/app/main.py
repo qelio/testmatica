@@ -16,6 +16,7 @@ runtime = ServiceRuntime(settings, db)
 runtime.consumer("moderation.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
 runtime.consumer("moderation.content", [(EVENTS_EXCHANGE, "content.course.*")], handlers.on_content_event)
 runtime.consumer("moderation.assessment", [(EVENTS_EXCHANGE, "assessment.task.*")], handlers.on_assessment_event)
+runtime.consumer("moderation.academic", [(EVENTS_EXCHANGE, "academic.plan_template.*")], handlers.on_academic_event)
 
 
 @asynccontextmanager

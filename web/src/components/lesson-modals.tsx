@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { ExamItemsByIds, ExamItemsField } from "@/components/exams";
 import { LessonAssignments } from "@/components/lesson-assignments";
+import { LessonKtp } from "@/components/lesson-ktp";
 import { Alert, Badge, Button, Field, Modal, Select } from "@/components/ui";
 import { classroom, type Lesson, type Repeat, schedule, type Scope } from "@/lib/api";
 import {
@@ -360,6 +361,7 @@ function LessonDetails({
         )}
       </dl>
 
+      {isTeacher && <LessonKtp lesson={lesson} />}
       {!cancelled && <LessonAssignments lesson={lesson} isTeacher={isTeacher} />}
 
       {req && !cancelled && (

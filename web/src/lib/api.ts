@@ -396,7 +396,7 @@ export type Stats = {
 
 export type Journal = {
   title: string;
-  lessons: { id: string; starts_at: string; subject: string | null; topic: string | null; started: boolean }[];
+  lessons: { id: string; starts_at: string; subject: string | null; topic: string | null; started: boolean; ktp: string[] }[];
   students: { id: string; full_name: string; current: boolean; stats: Stats }[];
   grades: Grade[];
   attendance: { lesson_id: string; student_id: string; status: AttendanceStatus }[];
@@ -413,6 +413,106 @@ const AC = "/api/academic";
 function period(from: Date, to: Date): string {
   return `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
 }
+
+// ---------- КТП ----------
+
+export type PlanItem = { kind: "module" | "test" | "link" | "note"; ref_id?: string | null; title: string; url?: string | null };
+export type PlanLessonInput = { topic: string; goals: string; class_items: PlanItem[]; home_items: PlanItem[]; exam_item_ids: string[] };
+export type PlanLesson = PlanLessonInput & {
+  id: string;
+  position: number;
+  planned_date: string | null;
+  schedule_lesson_id: string | null;
+  done: boolean;
+};
+export type TemplateStatus = "private" | "pending" | "published" | "rejected";
+export type PlanTemplateSummary = {
+  id: string;
+  title: string;
+  subject: string | null;
+  level: string | null;
+  status: TemplateStatus;
+  owner_id: string;
+  author_name: string;
+  lessons_count: number;
+  updated_at: string;
+};
+export type PlanTemplate = PlanTemplateSummary & {
+  description: string;
+  review_comment: string | null;
+  based_on_id: string | null;
+  can_edit: boolean;
+  lessons: (PlanLessonInput & { id: string })[];
+};
+export type PlanTemplateInput = { title: string; subject: string | null; level: string | null; description: string; lessons: PlanLessonInput[] };
+export type PlanSummary = {
+  id: string;
+  title: string;
+  subject: string | null;
+  target_type: "student" | "group";
+  target_id: string;
+  target_title: string;
+  lessons_count: number;
+  done_count: number;
+  next_topic: string | null;
+  next_date: string | null;
+  updated_at: string;
+};
+export type Plan = {
+  id: string;
+  title: string;
+  subject: string | null;
+  target_type: "student" | "group";
+  target_id: string;
+  target_title: string;
+  template_id: string | null;
+  start_date: string | null;
+  lessons: PlanLesson[];
+  slots: { id: string; starts_at: string; topic: string | null }[];
+  updated_at: string;
+};
+export type LessonKtp = { plan_id: string; plan_title: string; lesson: PlanLesson };
+
+const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow";
+const tzParam = () => `tz=${encodeURIComponent(browserTz())}`;
+
+export const planning = {
+  templates: (scope: "mine" | "public", q = "") =>
+    api<PlanTemplateSummary[]>(`${AC}/plan-templates?scope=${scope}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
+  template: (id: string) => api<PlanTemplate>(`${AC}/plan-templates/${id}`),
+  createTemplate: (data: PlanTemplateInput) => api<PlanTemplate>(`${AC}/plan-templates`, { method: "POST", body: data }),
+  updateTemplate: (id: string, data: PlanTemplateInput) => api<PlanTemplate>(`${AC}/plan-templates/${id}`, { method: "PUT", body: data }),
+  deleteTemplate: (id: string) => api<void>(`${AC}/plan-templates/${id}`, { method: "DELETE" }),
+  copyTemplate: (id: string) => api<PlanTemplate>(`${AC}/plan-templates/${id}/copy`, { method: "POST" }),
+  submitTemplate: (id: string) => api<PlanTemplate>(`${AC}/plan-templates/${id}/submit`, { method: "POST" }),
+  unpublishTemplate: (id: string) => api<PlanTemplate>(`${AC}/plan-templates/${id}/unpublish`, { method: "POST" }),
+
+  plans: (targetId?: string) => api<PlanSummary[]>(`${AC}/plans${targetId ? `?target_id=${targetId}` : ""}`),
+  plan: (id: string) => api<Plan>(`${AC}/plans/${id}`),
+  createPlan: (data: {
+    target_type: "student" | "group";
+    target_id: string;
+    title?: string | null;
+    subject?: string | null;
+    template_id?: string | null;
+    start_date?: string | null;
+    distribute?: boolean;
+  }) => api<Plan>(`${AC}/plans?${tzParam()}`, { method: "POST", body: data }),
+  updatePlan: (id: string, data: { title?: string; subject?: string | null; start_date?: string | null }) =>
+    api<Plan>(`${AC}/plans/${id}`, { method: "PATCH", body: data }),
+  deletePlan: (id: string) => api<void>(`${AC}/plans/${id}`, { method: "DELETE" }),
+  distribute: (id: string, fromDate?: string | null) =>
+    api<{ placed: number; left: number }>(`${AC}/plans/${id}/distribute`, { method: "POST", body: { from_date: fromDate || null, tz: browserTz() } }),
+  addLesson: (planId: string, data: PlanLessonInput, after?: string) =>
+    api<PlanLesson>(`${AC}/plans/${planId}/lessons${after ? `?after=${after}` : ""}`, { method: "POST", body: data }),
+  updateLesson: (planId: string, lessonId: string, data: Partial<PlanLessonInput> & { planned_date?: string | null; schedule_lesson_id?: string | null; done?: boolean }) =>
+    api<PlanLesson>(`${AC}/plans/${planId}/lessons/${lessonId}?${tzParam()}`, { method: "PATCH", body: data }),
+  deleteLesson: (planId: string, lessonId: string) => api<void>(`${AC}/plans/${planId}/lessons/${lessonId}`, { method: "DELETE" }),
+  moveLesson: (planId: string, lessonId: string, to: number) =>
+    api<Plan>(`${AC}/plans/${planId}/lessons/${lessonId}/move?to=${to}`, { method: "POST" }),
+  saveAsTemplate: (planId: string) => api<PlanTemplate>(`${AC}/plans/${planId}/save-as-template`, { method: "POST" }),
+  byLesson: (scheduleLessonId: string) => api<LessonKtp[]>(`${AC}/ktp/by-lesson/${scheduleLessonId}`),
+};
 
 export const academic = {
   gradeTypes: (all = false) => api<GradeType[]>(`${AC}/grade-types${all ? "?all=true" : ""}`),

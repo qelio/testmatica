@@ -13,7 +13,7 @@ from testmatica_common.errors import ApiError
 
 from .. import people, stats
 from ..deps import auth, classroom, db, outbox, schedule
-from ..models import Attendance, Grade, GradeType
+from ..models import Attendance, Grade, GradeType, Plan, PlanLesson
 from ..schemas import (
     AttendanceOut,
     AttendanceSet,
@@ -126,6 +126,17 @@ async def journal(
         for sid in student_ids
     ]
     rows.sort(key=lambda r: (not r.current, r.full_name))
+    # Темы КТП у занятий — своих планов педагога.
+    ktp: dict[UUID, list[str]] = defaultdict(list)
+    if lesson_ids:
+        linked = await session.execute(
+            select(PlanLesson.schedule_lesson_id, PlanLesson.topic).join(Plan, Plan.id == PlanLesson.plan_id)
+            .where(Plan.teacher_id == principal.user_id, PlanLesson.schedule_lesson_id.in_(lesson_ids))
+            .order_by(PlanLesson.position)
+        )
+        for lid, topic in linked:
+            ktp[lid].append(topic)
+
     return Journal(
         title=title,
         lessons=[
@@ -135,6 +146,7 @@ async def journal(
                 subject=lesson["subject"],
                 topic=lesson["topic"],
                 started=datetime.fromisoformat(lesson["starts_at"]) <= now,
+                ktp=ktp.get(UUID(lesson["id"]), []),
             )
             for lesson in lessons
         ],

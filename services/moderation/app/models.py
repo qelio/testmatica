@@ -17,6 +17,7 @@ WITHDRAWN = "withdrawn"
 KIND_LABELS = {
     "course": "Курс в публичную библиотеку",
     "task": "Задача в публичный банк",
+    "plan_template": "КТП в публичную библиотеку",
 }
 
 
