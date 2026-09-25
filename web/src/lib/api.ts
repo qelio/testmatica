@@ -775,6 +775,109 @@ export type ItemTaskProgress = {
   last_at: string;
 };
 
+export type TimeMode = "none" | "total" | "per_task";
+export type QuizSettings = { order_mode: "fixed" | "random"; shuffle_options: boolean; time_mode: TimeMode; time_limit_s: number | null };
+export type QuizInput = QuizSettings & { title: string; description: string; items: { task_id: string; points: number }[] };
+export type Quiz = QuizSettings & {
+  id: string;
+  title: string;
+  description: string;
+  items: { task_id: string; points: number; task: TaskSummary }[];
+  max_score: number;
+  assignments_count: number;
+  updated_at: string;
+};
+export type QuizSummary = {
+  id: string;
+  title: string;
+  tasks_count: number;
+  max_score: number;
+  time_mode: TimeMode;
+  time_limit_s: number | null;
+  assignments_count: number;
+  updated_at: string;
+};
+
+export type AttemptBrief = {
+  id: string;
+  number: number;
+  status: "in_progress" | "submitted";
+  started_at: string;
+  submitted_at: string | null;
+  auto_submitted: boolean;
+  answered: number;
+  total: number;
+  score: number | null;
+  max_score: number;
+  percent: number | null;
+  grade: number | null;
+  checked: boolean;
+};
+export type Assignment = {
+  id: string;
+  test_id: string;
+  title: string;
+  description: string;
+  kind: "homework" | "live";
+  target_type: "student" | "group";
+  target_id: string;
+  target_title: string;
+  teacher_id: string;
+  teacher_name: string;
+  lesson_id: string | null;
+  deadline: string | null;
+  overdue: boolean;
+  closed: boolean;
+  settings: QuizSettings;
+  tasks_count: number;
+  max_score: number;
+  grade_to_journal: boolean;
+  grade_type_id: string | null;
+  created_at: string;
+  students: { student_id: string; full_name: string; allowed_attempts: number; attempts: AttemptBrief[] }[];
+  can_start: boolean;
+};
+export type AssignInput = {
+  kind: "homework" | "live";
+  target_type: "student" | "group";
+  target_id: string;
+  lesson_id?: string | null;
+  deadline?: string | null;
+  grade_to_journal?: boolean;
+  grade_type_id?: string | null;
+};
+export type AttemptTask = {
+  task: TaskFull;
+  points: number;
+  answer: Submission["answer"] | null;
+  files: Attachment[];
+  locked: boolean;
+  result: Submission | null;
+  earned: number | null;
+};
+export type Attempt = {
+  id: string;
+  assignment_id: string;
+  title: string;
+  student_id: string;
+  number: number;
+  status: "in_progress" | "submitted";
+  settings: QuizSettings;
+  started_at: string;
+  ends_at: string | null;
+  current_index: number;
+  current_ends_at: string | null;
+  submitted_at: string | null;
+  auto_submitted: boolean;
+  score: number | null;
+  max_score: number;
+  percent: number | null;
+  grade: number | null;
+  checked: boolean;
+  server_time: string;
+  tasks: AttemptTask[];
+};
+
 /** Узел рубрикатора: раздел (parent_id = null) или тема внутри раздела. */
 export type Topic = {
   id: string;
@@ -847,6 +950,30 @@ export const assessment = {
     api<void>(`${AS}/exam-marks`, { method: "PUT", body: data }),
   examItemTasks: (studentId: string, itemId: string) =>
     api<ItemTaskProgress[]>(`${AS}/exam-board/tasks?student_id=${studentId}&item_id=${itemId}`),
+
+  tests: () => api<QuizSummary[]>(`${AS}/tests`),
+  test: (id: string) => api<Quiz>(`${AS}/tests/${id}`),
+  createTest: (data: QuizInput) => api<Quiz>(`${AS}/tests`, { method: "POST", body: data }),
+  updateTest: (id: string, data: QuizInput) => api<Quiz>(`${AS}/tests/${id}`, { method: "PUT", body: data }),
+  deleteTest: (id: string) => api<void>(`${AS}/tests/${id}`, { method: "DELETE" }),
+  assign: (testId: string, data: AssignInput) => api<Assignment>(`${AS}/tests/${testId}/assign`, { method: "POST", body: data }),
+  assignments: (role: "teacher" | "student", params: { lesson_id?: string; target_id?: string } = {}) => {
+    const qs = new URLSearchParams({ role, ...Object.fromEntries(Object.entries(params).filter(([, v]) => v)) });
+    return api<Assignment[]>(`${AS}/assignments?${qs}`);
+  },
+  assignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}`),
+  reassign: (id: string, studentId: string, deadline?: string | null) => {
+    const qs = new URLSearchParams({ student_id: studentId, ...(deadline ? { deadline } : {}) });
+    return api<Assignment>(`${AS}/assignments/${id}/reassign?${qs}`, { method: "POST" });
+  },
+  closeAssignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}/close`, { method: "POST" }),
+  start: (assignmentId: string) => api<Attempt>(`${AS}/assignments/${assignmentId}/start`, { method: "POST" }),
+  attempt: (id: string) => api<Attempt>(`${AS}/attempts/${id}`),
+  saveAnswer: (attemptId: string, taskId: string, answer: Submission["answer"], fileIds: string[] = []) =>
+    api<Attempt>(`${AS}/attempts/${attemptId}/answers/${taskId}`, { method: "PUT", body: { answer, file_ids: fileIds } }),
+  nextTask: (attemptId: string) => api<Attempt>(`${AS}/attempts/${attemptId}/next`, { method: "POST" }),
+  submitAttempt: (attemptId: string) => api<Attempt>(`${AS}/attempts/${attemptId}/submit`, { method: "POST" }),
+  recheck: (submissionId: string) => api<Submission>(`${AS}/submissions/${submissionId}/recheck`, { method: "POST" }),
 
   review: (id: string, score: number, comment: string) =>
     api<Submission>(`${AS}/submissions/${id}/review`, { method: "POST", body: { score, comment } }),

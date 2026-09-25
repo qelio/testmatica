@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { Alert } from "@/components/ui";
@@ -87,7 +88,15 @@ export default function DashboardPage() {
                       : fmtDateTime(n.payload.starts_at as string)}
                   </p>
                 )}
+                {typeof n.payload.deadline === "string" && (
+                  <p className="mt-1 text-sm">Сдать до {fmtDateTime(n.payload.deadline)}</p>
+                )}
                 {n.body && <p className="mt-1 text-sm text-fg-soft">{n.body}</p>}
+                {typeof n.payload.assignment_id === "string" && (
+                  <Link href={`/dashboard/assignments/${n.payload.assignment_id}`} className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
+                    Открыть работу
+                  </Link>
+                )}
                 <p className="mt-1 text-xs text-fg-soft">{new Date(n.created_at).toLocaleString("ru-RU")}</p>
               </div>
             </li>
@@ -95,9 +104,6 @@ export default function DashboardPage() {
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-dashed border-line p-5 text-sm text-fg-soft">
-        Журнал, задания и библиотека появятся на следующих этапах разработки.
-      </section>
     </div>
   );
 }

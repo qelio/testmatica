@@ -6,7 +6,7 @@ from testmatica_common.logging import configure_logging
 from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
-from . import people
+from . import people, test_grades
 from .api import grade_types, journal, me
 from .config import settings
 from .deps import db
@@ -15,6 +15,7 @@ configure_logging(settings.service_name, settings.log_level)
 
 runtime = ServiceRuntime(settings, db)
 runtime.consumer("academic.identity", [(EVENTS_EXCHANGE, "identity.user.*")], people.on_identity_event)
+runtime.consumer("academic.assessment", [(EVENTS_EXCHANGE, "assessment.attempt.graded")], test_grades.on_assessment_event)
 
 
 @asynccontextmanager

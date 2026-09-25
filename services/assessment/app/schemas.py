@@ -319,3 +319,172 @@ class ItemTaskProgress(BaseModel):
     solved: bool
     last_status: str
     last_at: datetime
+
+
+# ---------- тесты, ДЗ, попытки ----------
+# «Quiz» в названиях схем — чтобы не путать с тест-кейсами задач с кодом (TestIn).
+
+
+class QuizItemIn(BaseModel):
+    task_id: UUID
+    points: int = Field(1, ge=1, le=100)
+
+
+class QuizIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field("", max_length=5000)
+    order_mode: Literal["fixed", "random"] = "fixed"
+    shuffle_options: bool = False
+    time_mode: Literal["none", "total", "per_task"] = "none"
+    time_limit_s: int | None = Field(None, ge=10, le=6 * 3600, description="Секунды: на весь тест или на каждое задание")
+    items: list[QuizItemIn] = Field(default_factory=list, max_length=100)
+
+    _title = field_validator("title")(_clean)
+
+    @model_validator(mode="after")
+    def _timer(self) -> "QuizIn":
+        if self.time_mode == "none":
+            self.time_limit_s = None
+        elif self.time_limit_s is None:
+            raise ValueError("Укажите ограничение времени")
+        if len({i.task_id for i in self.items}) != len(self.items):
+            raise ValueError("Задача добавлена в тест дважды")
+        return self
+
+
+class QuizItemOut(BaseModel):
+    task_id: UUID
+    points: int
+    task: TaskSummary
+
+
+class QuizOut(BaseModel):
+    id: UUID
+    title: str
+    description: str
+    order_mode: str
+    shuffle_options: bool
+    time_mode: str
+    time_limit_s: int | None
+    items: list[QuizItemOut]
+    max_score: int
+    assignments_count: int
+    updated_at: datetime
+
+
+class QuizSummary(BaseModel):
+    id: UUID
+    title: str
+    tasks_count: int
+    max_score: int
+    time_mode: str
+    time_limit_s: int | None
+    assignments_count: int
+    updated_at: datetime
+
+
+class AssignIn(BaseModel):
+    kind: Literal["homework", "live"] = "homework"
+    target_type: Literal["student", "group"]
+    target_id: UUID
+    lesson_id: UUID | None = Field(None, description="Урок в расписании; нужен для оценки в журнал")
+    deadline: datetime | None = None
+    grade_to_journal: bool = False
+    grade_type_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _journal(self) -> "AssignIn":
+        if self.deadline is not None and self.deadline.tzinfo is None:
+            raise ValueError("Дедлайн нужно передавать с часовым поясом")
+        if self.grade_to_journal and (self.lesson_id is None or self.grade_type_id is None):
+            raise ValueError("Для оценки в журнал выберите урок и тип оценки")
+        return self
+
+
+class AttemptBrief(BaseModel):
+    id: UUID
+    number: int
+    status: str
+    started_at: datetime
+    submitted_at: datetime | None
+    auto_submitted: bool
+    answered: int = Field(description="Сколько заданий с ответом (для прогресса на уроке)")
+    total: int
+    score: float | None
+    max_score: float
+    percent: float | None
+    grade: int | None
+    checked: bool
+
+
+class AssignmentStudentOut(BaseModel):
+    student_id: UUID
+    full_name: str
+    allowed_attempts: int
+    attempts: list[AttemptBrief]
+
+
+class AssignmentOut(BaseModel):
+    id: UUID
+    test_id: UUID
+    title: str
+    description: str
+    kind: str
+    target_type: str
+    target_id: UUID
+    target_title: str
+    teacher_id: UUID
+    teacher_name: str
+    lesson_id: UUID | None
+    deadline: datetime | None
+    overdue: bool
+    closed: bool
+    settings: dict[str, Any]
+    tasks_count: int
+    max_score: int
+    grade_to_journal: bool
+    grade_type_id: UUID | None
+    created_at: datetime
+    # Педагогу — сводка по ученикам, ученику — только его строка.
+    students: list[AssignmentStudentOut]
+    can_start: bool = Field(False, description="Ученику: можно начать новую попытку")
+
+
+class AttemptTask(BaseModel):
+    """Задание в попытке глазами ученика; после сдачи — с результатом."""
+
+    task: TaskOut
+    points: int
+    answer: dict[str, Any] | None
+    files: list[FileRef]
+    locked: bool = Field(description="Таймер на задание: время вышло или задание пройдено")
+    result: SubmissionOut | None = None
+    earned: float | None = None
+
+
+class AttemptOut(BaseModel):
+    id: UUID
+    assignment_id: UUID
+    title: str
+    student_id: UUID
+    number: int
+    status: str
+    settings: dict[str, Any]
+    started_at: datetime
+    ends_at: datetime | None
+    current_index: int
+    current_ends_at: datetime | None
+    submitted_at: datetime | None
+    auto_submitted: bool
+    score: float | None
+    max_score: float
+    percent: float | None
+    grade: int | None
+    checked: bool
+    server_time: datetime = Field(description="Для точного таймера на клиенте")
+    tasks: list[AttemptTask]
+
+
+class DraftIn(BaseModel):
+    answer: AnswerIn
+    file_ids: list[UUID] = Field(default_factory=list, max_length=5)

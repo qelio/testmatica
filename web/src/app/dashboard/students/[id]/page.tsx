@@ -7,12 +7,13 @@ import { useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ExamBoardView } from "@/components/exams";
 import { AttachmentView } from "@/components/files";
+import { ReviewForm } from "@/components/review-form";
 import { resultText } from "@/components/task-solver";
-import { Alert, Badge, Button, EmptyState, Field, Spinner } from "@/components/ui";
+import { Alert, Badge, EmptyState, Spinner } from "@/components/ui";
 import { assessment, classroom, type Submission } from "@/lib/api";
 import { fmtDateTime } from "@/lib/dates";
 import { FAILURE_LABELS, TASK_TYPE_LABELS } from "@/lib/format";
-import { errorText, useLoad } from "@/lib/hooks";
+import { useLoad } from "@/lib/hooks";
 
 /** Ученик глазами педагога: подготовка к ЕГЭ/ОГЭ и история решений. */
 export default function StudentPage() {
@@ -137,49 +138,5 @@ function Attempt({ sub, number, onChanged }: { sub: Submission; number: number; 
       {sub.teacher_comment && <p className="text-sm">Ваш комментарий: {sub.teacher_comment}</p>}
       {(sub.status === "pending_review" || sub.status === "reviewed") && <ReviewForm sub={sub} onChanged={onChanged} />}
     </li>
-  );
-}
-
-function ReviewForm({ sub, onChanged }: { sub: Submission; onChanged: () => void }) {
-  const [open, setOpen] = useState(sub.status === "pending_review");
-  const [score, setScore] = useState(Math.round((sub.score ?? 1) * 100));
-  const [comment, setComment] = useState(sub.teacher_comment ?? "");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)} className="text-sm text-brand hover:underline">
-        Изменить оценку
-      </button>
-    );
-  }
-  return (
-    <form
-      className="space-y-2 rounded-xl bg-muted p-3"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        setError(undefined);
-        try {
-          await assessment.review(sub.id, score / 100, comment);
-          setOpen(false);
-          onChanged();
-        } catch (err) {
-          setError(errorText(err));
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      {error && <Alert>{error}</Alert>}
-      <div className="grid gap-2 sm:grid-cols-[8rem_1fr]">
-        <Field label="Результат, %" type="number" min={0} max={100} value={score} onChange={(e) => setScore(Number(e.target.value))} />
-        <Field label="Комментарий ученику" value={comment} maxLength={2000} onChange={(e) => setComment(e.target.value)} />
-      </div>
-      <Button type="submit" loading={busy}>
-        Сохранить проверку
-      </Button>
-    </form>
   );
 }

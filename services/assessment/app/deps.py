@@ -12,3 +12,4 @@ code_runner = InternalClient(settings.code_runner_url, settings.internal_token, 
 media = InternalClient(settings.media_url, settings.internal_token)
 content = InternalClient(settings.content_url, settings.internal_token)
 classroom = InternalClient(settings.classroom_url, settings.internal_token)
+schedule = InternalClient(settings.schedule_url, settings.internal_token)

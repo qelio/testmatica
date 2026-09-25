@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 from testmatica_common.messaging import Envelope
 
+from . import attempts
 from .deps import code_runner, outbox
 from .models import CHECKING, CORRECT, ERROR, INCORRECT, Submission, Task
 
@@ -33,6 +34,7 @@ async def on_code_check(envelope: Envelope, session: AsyncSession) -> None:
     except ApiError:
         # Песочница недоступна — ученик увидит «ошибка проверки» и сможет отправить решение снова.
         sub.status, sub.checked_at = ERROR, datetime.now(UTC)
+        await attempts.on_submission_changed(session, sub)
         return
 
     cases = result["cases"]
@@ -50,3 +52,4 @@ async def on_code_check(envelope: Envelope, session: AsyncSession) -> None:
          "context_type": sub.context_type, "context_id": str(sub.context_id)},
         actor_id=sub.student_id,
     )
+    await attempts.on_submission_changed(session, sub)
