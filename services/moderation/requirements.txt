@@ -1,0 +1,2 @@
+alembic>=1.14
+uvicorn[standard]>=0.32

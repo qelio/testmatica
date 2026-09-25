@@ -523,3 +523,135 @@ export function fmtSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
   return `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} МБ`;
 }
+
+// ---- content (библиотека) ----
+
+export type SubjectRef = { id: string; name: string };
+
+export type CourseStatus = "private" | "pending" | "published" | "rejected";
+
+export type CourseSummary = {
+  id: string;
+  title: string;
+  description: string;
+  subject: SubjectRef | null;
+  owner_id: string;
+  author_name: string;
+  status: CourseStatus;
+  review_comment: string | null;
+  sections_count: number;
+  materials_count: number;
+  updated_at: string;
+};
+
+export type MaterialKind = "text" | "card" | "video" | "pdf" | "file" | "link";
+
+export type MaterialBrief = { id: string; kind: MaterialKind; title: string; viewed: boolean; favorite: boolean };
+
+export type CourseTree = CourseSummary & {
+  sections: { id: string; title: string; description: string; modules: { id: string; title: string; description: string; materials: MaterialBrief[] }[] }[];
+  can_edit: boolean;
+  viewed_count: number;
+};
+
+export type Material = {
+  id: string;
+  module_id: string;
+  course_id: string;
+  kind: MaterialKind;
+  title: string;
+  body: string;
+  url: string | null;
+  file: { id: string; filename: string; mime: string; size: number | null; url: string | null } | null;
+  position_sec: number;
+  viewed: boolean;
+  favorite: boolean;
+};
+
+export type ModuleContent = {
+  id: string;
+  title: string;
+  description: string;
+  course_id: string;
+  course_title: string;
+  section_title: string;
+  materials: Material[];
+  prev_module_id: string | null;
+  next_module_id: string | null;
+  can_edit: boolean;
+};
+
+export type ProgressReport = {
+  materials: { id: string; title: string; kind: MaterialKind; module_title: string }[];
+  students: { id: string; full_name: string; viewed: string[] }[];
+};
+
+const CT = "/api/content";
+
+/** Публичные данные можно читать и без входа: токен передаётся, только если пользователь вошёл. */
+function readOpts(authed: boolean) {
+  return { auth: authed };
+}
+
+export const content = {
+  subjects: () => api<SubjectRef[]>(`${CT}/subjects`, { auth: false }),
+  catalog: (params: { subject_id?: string; q?: string }) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
+    return api<CourseSummary[]>(`${CT}/catalog?${qs}`, { auth: false });
+  },
+  myCourses: () => api<CourseSummary[]>(`${CT}/my/courses`),
+  sharedCourses: () => api<CourseSummary[]>(`${CT}/shared/courses`),
+  course: (id: string, authed: boolean) => api<CourseTree>(`${CT}/courses/${id}`, readOpts(authed)),
+  module: (id: string, authed: boolean) => api<ModuleContent>(`${CT}/modules/${id}`, readOpts(authed)),
+
+  createCourse: (data: { title: string; subject_id?: string | null; description?: string }) =>
+    api<CourseTree>(`${CT}/courses`, { method: "POST", body: data }),
+  addChild: (parentId: string, title: string) =>
+    api<CourseTree>(`${CT}/nodes/${parentId}/children`, { method: "POST", body: { title } }),
+  updateNode: (id: string, data: { title?: string; description?: string; subject_id?: string | null }) =>
+    api<CourseTree>(`${CT}/nodes/${id}`, { method: "PATCH", body: data }),
+  deleteNode: (id: string) => api<void>(`${CT}/nodes/${id}`, { method: "DELETE" }),
+  moveNode: (id: string, direction: "up" | "down") =>
+    api<CourseTree>(`${CT}/nodes/${id}/move`, { method: "POST", body: { direction } }),
+  addMaterial: (moduleId: string, data: { kind: MaterialKind; title: string; body?: string; file_id?: string | null; url?: string | null }) =>
+    api<Material>(`${CT}/modules/${moduleId}/materials`, { method: "POST", body: data }),
+  updateMaterial: (id: string, data: { title?: string; body?: string; url?: string }) =>
+    api<Material>(`${CT}/materials/${id}`, { method: "PATCH", body: data }),
+  deleteMaterial: (id: string) => api<void>(`${CT}/materials/${id}`, { method: "DELETE" }),
+  moveMaterial: (id: string, direction: "up" | "down") =>
+    api<void>(`${CT}/materials/${id}/move`, { method: "POST", body: { direction } }),
+  submit: (id: string) => api<CourseTree>(`${CT}/courses/${id}/submit`, { method: "POST" }),
+  unpublish: (id: string) => api<CourseTree>(`${CT}/courses/${id}/unpublish`, { method: "POST" }),
+
+  saveProgress: (id: string, position_sec?: number) =>
+    api<void>(`${CT}/materials/${id}/progress`, { method: "PUT", body: { position_sec } }),
+  favorite: (id: string, on: boolean) => api<void>(`${CT}/materials/${id}/favorite`, { method: on ? "PUT" : "DELETE" }),
+  favorites: () => api<Material[]>(`${CT}/favorites`),
+  progress: (courseId: string, target: { group_id?: string; student_id?: string }) => {
+    const t = target.group_id ? `group_id=${target.group_id}` : `student_id=${target.student_id}`;
+    return api<ProgressReport>(`${CT}/courses/${courseId}/progress?${t}`);
+  },
+};
+
+// ---- moderation ----
+
+export type QueueItem = {
+  id: string;
+  kind: string;
+  kind_label: string;
+  ref_id: string;
+  title: string;
+  author_id: string;
+  author_name: string;
+  details: Record<string, unknown>;
+  status: "pending" | "approved" | "rejected" | "withdrawn";
+  comment: string | null;
+  decided_at: string | null;
+  created_at: string;
+};
+
+export const moderation = {
+  queue: (status = "pending") => api<QueueItem[]>(`/api/moderation/queue?status=${status}`),
+  decide: (id: string, decision: "approve" | "reject", comment?: string) =>
+    api<QueueItem>(`/api/moderation/queue/${id}/decide`, { method: "POST", body: { decision, comment } }),
+};

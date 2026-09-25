@@ -53,7 +53,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media
+      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation
     ports:
       - "5433:5432"
     volumes:
@@ -335,6 +335,59 @@ services:
       # Учебные видео — до 500 МБ.
       - traefik.http.middlewares.media-body.buffering.maxRequestBodyBytes=524288000
       - traefik.http.services.media.loadbalancer.server.port=8000
+
+  content:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: content, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/content
+      DATABASE_URL: postgresql+asyncpg://content:content_dev@postgres:5432/content
+      TEST_DATABASE_URL: postgresql+asyncpg://content:content_dev@postgres:5432/content_test
+      CLASSROOM_URL: http://classroom:8000
+    volumes:
+      - ./services/content:/app
+      - *libs-volume
+    depends_on: *python-depends
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.content.rule=PathPrefix(`/api/content`) && !PathPrefix(`/api/content/internal`)
+      - traefik.http.routers.content.middlewares=content-strip,api-ratelimit@docker
+      - traefik.http.middlewares.content-strip.stripprefix.prefixes=/api/content
+      - traefik.http.services.content.loadbalancer.server.port=8000
+
+  moderation:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: moderation, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/moderation
+      DATABASE_URL: postgresql+asyncpg://moderation:moderation_dev@postgres:5432/moderation
+      TEST_DATABASE_URL: postgresql+asyncpg://moderation:moderation_dev@postgres:5432/moderation_test
+    volumes:
+      - ./services/moderation:/app
+      - *libs-volume
+    depends_on: *python-depends
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.moderation.rule=PathPrefix(`/api/moderation`) && !PathPrefix(`/api/moderation/internal`)
+      - traefik.http.routers.moderation.middlewares=moderation-strip,api-ratelimit@docker
+      - traefik.http.middlewares.moderation-strip.stripprefix.prefixes=/api/moderation
+      - traefik.http.services.moderation.loadbalancer.server.port=8000
 
   # ---------- Веб-клиент ----------
 

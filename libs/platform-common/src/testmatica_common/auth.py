@@ -128,6 +128,15 @@ class Auth:
             teacher_mode=claims.get("teacher_mode"),
         )
 
+    async def optional(
+        self, creds: HTTPAuthorizationCredentials | None = Depends(_bearer)
+    ) -> Principal | None:
+        """Для страниц, доступных и без входа (публичная библиотека): None — гость.
+        Если токен передан, но недействителен — 401, чтобы клиент обновил его, а не получил «гостевой» ответ."""
+        if creds is None:
+            return None
+        return await self.principal(creds)
+
     def require(self, *roles: str):
         async def dependency(principal: Principal = Depends(self.principal)) -> Principal:
             if not principal.has_any(*roles):
