@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
-from .. import access, checker, views
+from .. import access, attempts, checker, views
 from ..config import settings
 from ..deps import auth, db, media, outbox
 from ..models import (
@@ -88,6 +88,8 @@ async def submit_answer(
     session: AsyncSession = Depends(db.session),
 ) -> SubmissionOut:
     task = await access.viewable(session, task_id, principal)
+    if body.context_type != "practice":
+        raise ApiError(422, "use_attempt", "Ответы в тестах и ДЗ сохраняются в попытке и проверяются после сдачи")
     ans = body.answer
     now = datetime.now(UTC)
     sub = Submission(
@@ -228,5 +230,6 @@ async def review(
          "score": body.score, "comment": sub.teacher_comment, "context_type": sub.context_type, "context_id": str(sub.context_id)},
         actor_id=principal.user_id,
     )
+    await attempts.on_submission_changed(session, sub)  # ответ из теста или ДЗ — пересчитать итог работы
     await session.commit()
     return views.submission_out(sub, with_log=True, urls=await _file_urls([sub]))

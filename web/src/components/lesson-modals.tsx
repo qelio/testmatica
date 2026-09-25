@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { ExamItemsByIds, ExamItemsField } from "@/components/exams";
+import { LessonAssignments } from "@/components/lesson-assignments";
 import { Alert, Badge, Button, Field, Modal, Select } from "@/components/ui";
 import { classroom, type Lesson, type Repeat, schedule, type Scope } from "@/lib/api";
 import {
@@ -358,6 +359,8 @@ function LessonDetails({
           </>
         )}
       </dl>
+
+      {!cancelled && <LessonAssignments lesson={lesson} isTeacher={isTeacher} />}
 
       {req && !cancelled && (
         <div className="space-y-2 rounded-xl border border-tutor/40 bg-tutor/10 p-3 text-sm">

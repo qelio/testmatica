@@ -226,6 +226,28 @@ async def test_task_and_review_notifications(client):
     await c.process(make_envelope("assessment.task.rejected", {"task_id": str(uuid4()), "title": "Сумма", "author_id": str(author), "comment": "Мало тестов"}))
     await c.process(make_envelope("assessment.submission.reviewed", {
         "submission_id": str(uuid4()), "task_id": str(uuid4()), "task_title": "Доказательство", "student_id": str(pupil),
-        "score": 0.8, "comment": "Не хватает вывода", "context_type": "assignment", "context_id": str(uuid4())}))
+        "score": 0.8, "comment": "Не хватает вывода", "context_type": "practice", "context_id": str(uuid4())}))
     assert (await client.get("/notifications", headers=bearer(author, ["teacher"]))).json()["items"][0]["body"] == "Мало тестов"
     assert (await client.get("/notifications", headers=bearer(pupil))).json()["items"][0]["title"] == "Педагог проверил решение: «Доказательство» — 80%"
+
+
+async def test_assignment_notifications(client):
+    a, b = uuid4(), uuid4()
+    c = consumer("notification.assessment", handlers.on_assessment_event)
+    aid = str(uuid4())
+    await c.process(make_envelope("assessment.assignment.created", {
+        "assignment_id": aid, "title": "Дроби", "kind": "homework", "teacher_id": str(uuid4()),
+        "student_ids": [str(a), str(b)], "deadline": "2026-10-01T17:00:00+00:00", "lesson_id": None}))
+    item = (await client.get("/notifications", headers=bearer(a))).json()["items"][0]
+    assert (item["title"], item["payload"]["deadline"]) == ("Новое ДЗ: «Дроби»", "2026-10-01T17:00:00+00:00")
+    graded = {"assignment_id": aid, "attempt_id": str(uuid4()), "student_id": str(b), "title": "Дроби", "percent": 83.3,
+              "grade": 4, "to_journal": False}
+    await c.process(make_envelope("assessment.attempt.graded", graded))
+    await c.process(make_envelope("assessment.attempt.graded", graded | {"attempt_id": str(uuid4()), "to_journal": True}))
+    titles = [n["title"] for n in (await client.get("/notifications", headers=bearer(b))).json()["items"]]
+    assert sorted(titles) == ["Новое ДЗ: «Дроби»", "Работа проверена: «Дроби» — 83.3%, оценка 4"]
+    # Ответ из работы, проверенный педагогом, — без отдельного уведомления.
+    await c.process(make_envelope("assessment.submission.reviewed", {
+        "submission_id": str(uuid4()), "task_id": str(uuid4()), "task_title": "X", "student_id": str(a), "score": 1,
+        "comment": "", "context_type": "assignment", "context_id": str(uuid4())}))
+    assert len((await client.get("/notifications", headers=bearer(a))).json()["items"]) == 1

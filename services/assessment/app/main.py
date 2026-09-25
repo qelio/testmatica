@@ -6,8 +6,8 @@ from testmatica_common.logging import configure_logging
 from testmatica_common.messaging import COMMANDS_EXCHANGE, EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
-from . import handlers, rubric, runner
-from .api import exams, internal, solving, tasks, topics
+from . import attempts, handlers, rubric, runner
+from .api import assignments, exams, internal, quizzes, solving, tasks, topics
 from .config import settings
 from .deps import db
 
@@ -21,6 +21,8 @@ runtime.consumer("assessment.moderation", [(EVENTS_EXCHANGE, "moderation.decisio
 # Проверка кода — по одной за раз на экземпляр: песочница выполняет запуски последовательно.
 runtime.consumer("assessment.code", [(COMMANDS_EXCHANGE, "assessment.code")], runner.on_code_check, prefetch=1)
 runtime.every("default_topics", 300, rubric.ensure_default_topics)
+# Сдать попытки с истёкшим таймером или дедлайном, даже если ученик закрыл вкладку.
+runtime.every("expire_attempts", 10, attempts.expire_job)
 
 
 @asynccontextmanager
@@ -35,6 +37,8 @@ install_error_handlers(app)
 app.include_router(health_router(db))
 app.include_router(topics.router)
 app.include_router(exams.router)
+app.include_router(quizzes.router)
+app.include_router(assignments.router)
 app.include_router(tasks.router)
 app.include_router(solving.router)
 app.include_router(internal.router)

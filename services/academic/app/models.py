@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, SmallInteger, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, SmallInteger, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
@@ -61,6 +61,7 @@ class Grade(Base):
         Index("ix_grades_lesson", "lesson_id"),
         Index("ix_grades_student_time", "student_id", "lesson_starts_at"),
         Index("ix_grades_group_time", "group_id", "lesson_starts_at"),
+        Index("uq_grades_test_ref", "source_ref", "student_id", unique=True, postgresql_where=text("source = 'test'")),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
@@ -75,6 +76,8 @@ class Grade(Base):
     grade_type_id: Mapped[UUID] = mapped_column(ForeignKey("grade_types.id"))
     comment: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(10), default="manual")
+    # Для оценок из тестов — id выданной работы: переназначение обновляет оценку, а не дублирует.
+    source_ref: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

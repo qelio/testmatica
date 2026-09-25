@@ -14,7 +14,7 @@ from testmatica_common.testing import TestTokens, make_envelope  # noqa: E402
 
 from app import handlers, runner  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.deps import auth, classroom, code_runner, db, media  # noqa: E402
+from app.deps import auth, classroom, code_runner, db, media, schedule  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base, Topic  # noqa: E402
 
@@ -42,6 +42,7 @@ class Fakes:
         self.files: dict[str, dict] = {}
         self.runs: list[dict] = []
         self.groups: dict[str, dict] = {}  # id группы → {"teacher_id", "member_ids"}
+        self.lessons: dict[str, str] = {}  # id занятия → id педагога
 
     def runner(self, request: httpx.Request) -> httpx.Response:
         if not self.runner_up:
@@ -61,6 +62,12 @@ class Fakes:
         if group is None or group["teacher_id"] != request.url.params["teacher_id"]:
             return httpx.Response(404, json={"error": {"code": "group_not_found", "message": "Группа не найдена"}})
         return httpx.Response(200, json=group)
+
+    def schedule(self, request: httpx.Request) -> httpx.Response:
+        lesson_id = request.url.path.rsplit("/", 1)[-1]
+        if self.lessons.get(lesson_id) != request.url.params["teacher_id"]:
+            return httpx.Response(404, json={"error": {"code": "lesson_not_found", "message": "Занятие не найдено"}})
+        return httpx.Response(200, json={"id": lesson_id})
 
     def file(self, owner: UUID, name="решение.pdf") -> str:
         fid = str(uuid4())
@@ -88,6 +95,7 @@ def fakes() -> Fakes:
     code_runner.transport = httpx.MockTransport(f.runner)
     media.transport = httpx.MockTransport(f.media)
     classroom.transport = httpx.MockTransport(f.classroom)
+    schedule.transport = httpx.MockTransport(f.schedule)
     return f
 
 

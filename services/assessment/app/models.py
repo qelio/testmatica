@@ -237,3 +237,133 @@ class Submission(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- тесты и ДЗ ----------
+
+HOMEWORK, LIVE = "homework", "live"  # домашнее задание / активный тест на уроке
+IN_PROGRESS, SUBMITTED = "in_progress", "submitted"
+
+
+class Test(Base):
+    """Тест — набор задач из банка с настройками прохождения. Выдаётся как ДЗ или запускается на уроке."""
+
+    __tablename__ = "tests"
+    __table_args__ = (
+        CheckConstraint("order_mode IN ('fixed', 'random')", name="order_mode_valid"),
+        CheckConstraint("time_mode IN ('none', 'total', 'per_task')", name="time_mode_valid"),
+        Index("ix_tests_owner", "owner_id", "updated_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    owner_id: Mapped[UUID]
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    order_mode: Mapped[str] = mapped_column(String(6), default="fixed")  # порядок заданий
+    shuffle_options: Mapped[bool] = mapped_column(Boolean, default=False)  # варианты ответа у каждого свои
+    time_mode: Mapped[str] = mapped_column(String(8), default="none")  # таймер на весь тест или на каждое задание
+    time_limit_s: Mapped[int | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    items: Mapped[list["TestItem"]] = relationship(lazy="selectin", cascade="all, delete-orphan", order_by="TestItem.position")
+
+
+class TestItem(Base):
+    __tablename__ = "test_items"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    test_id: Mapped[UUID] = mapped_column(ForeignKey("tests.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    points: Mapped[int] = mapped_column(SmallInteger, default=1)
+
+
+class Assignment(Base):
+    """Выдача теста группе или ученику. Состав и настройки копируются: правка теста не меняет выданное."""
+
+    __tablename__ = "assignments"
+    __table_args__ = (
+        CheckConstraint("kind IN ('homework', 'live')", name="kind_valid"),
+        CheckConstraint("target_type IN ('student', 'group')", name="target_type_valid"),
+        Index("ix_assignments_teacher", "teacher_id", "created_at"),
+        Index("ix_assignments_lesson", "lesson_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    test_id: Mapped[UUID] = mapped_column(ForeignKey("tests.id", ondelete="RESTRICT"))
+    teacher_id: Mapped[UUID]
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(8))
+    target_type: Mapped[str] = mapped_column(String(10))
+    target_id: Mapped[UUID]
+    target_title: Mapped[str] = mapped_column(String(200))
+    lesson_id: Mapped[UUID | None]  # урок в расписании: колонка журнала для автооценки
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # {order_mode, shuffle_options, time_mode, time_limit_s}
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # [{task_id, points}] — в порядке теста
+    items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    grade_to_journal: Mapped[bool] = mapped_column(Boolean, default=False)
+    grade_type_id: Mapped[UUID | None]
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # тест на уроке завершён
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    students: Mapped[list["AssignmentStudent"]] = relationship(lazy="selectin", cascade="all, delete-orphan")
+
+
+class AssignmentStudent(Base):
+    """Кому выдано. allowed_attempts растёт при переназначении — повторная сдача только так (ТЗ)."""
+
+    __tablename__ = "assignment_students"
+    __table_args__ = (Index("ix_assignment_students_student", "student_id"),)
+
+    assignment_id: Mapped[UUID] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"), primary_key=True)
+    student_id: Mapped[UUID] = mapped_column(primary_key=True)
+    allowed_attempts: Mapped[int] = mapped_column(SmallInteger, default=1)
+    # Личный дедлайн — при переназначении после общего дедлайна.
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Attempt(Base):
+    """Попытка прохождения: свой порядок заданий и вариантов, таймер, черновики до сдачи, итог после."""
+
+    __tablename__ = "attempts"
+    __table_args__ = (
+        CheckConstraint("status IN ('in_progress', 'submitted')", name="status_valid"),
+        UniqueConstraint("assignment_id", "student_id", "number", name="uq_attempts_number"),
+        Index("ix_attempts_open", "status", "ends_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    assignment_id: Mapped[UUID] = mapped_column(ForeignKey("assignments.id", ondelete="CASCADE"))
+    student_id: Mapped[UUID]
+    number: Mapped[int] = mapped_column(SmallInteger)
+    status: Mapped[str] = mapped_column(String(12), default=IN_PROGRESS)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # таймер на весь тест
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    auto_submitted: Mapped[bool] = mapped_column(Boolean, default=False)  # сдано по истечении времени
+    task_order: Mapped[list[str]] = mapped_column(JSONB)
+    option_orders: Mapped[dict[str, list[str]]] = mapped_column(JSONB, default=dict)
+    # Таймер на каждое задание: текущее задание и когда оно открыто. Вернуться назад нельзя.
+    current_index: Mapped[int] = mapped_column(SmallInteger, default=0)
+    current_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    score: Mapped[float | None] = mapped_column(Float)
+    max_score: Mapped[float] = mapped_column(Float, default=0)
+    percent: Mapped[float | None] = mapped_column(Float)
+    grade: Mapped[int | None] = mapped_column(SmallInteger)
+    checked: Mapped[bool] = mapped_column(Boolean, default=False)  # все ответы проверены (код, развёрнутые)
+
+
+class AttemptAnswer(Base):
+    """Черновик ответа в попытке — меняется до сдачи; при сдаче превращается в отправку (submissions)."""
+
+    __tablename__ = "attempt_answers"
+
+    attempt_id: Mapped[UUID] = mapped_column(ForeignKey("attempts.id", ondelete="CASCADE"), primary_key=True)
+    task_id: Mapped[UUID] = mapped_column(primary_key=True)
+    answer: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    files: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

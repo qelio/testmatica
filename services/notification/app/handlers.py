@@ -240,8 +240,25 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
         session.add(Notification(user_id=UUID(d["author_id"]), kind="task_rejected",
                                  title=f"Задача «{d['title']}» не прошла проверку", body=d.get("comment") or "",
                                  payload={"task_id": d["task_id"]}))
-    elif t == "assessment.submission.reviewed":
+    elif t == "assessment.submission.reviewed" and d.get("context_type") != "assignment":
+        # Ответ из теста или ДЗ — ученик узнает итог всей работы (assessment.attempt.graded).
         percent = round(float(d["score"]) * 100)
         session.add(Notification(user_id=UUID(d["student_id"]), kind="submission_reviewed",
                                  title=f"Педагог проверил решение: «{d['task_title']}» — {percent}%", body=d.get("comment") or "",
                                  payload={"submission_id": d["submission_id"], "task_id": d["task_id"]}))
+    elif t == "assessment.assignment.created":
+        live = d["kind"] == "live"
+        title = f"Тест на уроке: «{d['title']}»" if live else f"Новое ДЗ: «{d['title']}»"
+        # Дедлайн — в payload: интерфейс покажет его в часовом поясе ученика.
+        for sid in d["student_ids"]:
+            session.add(Notification(user_id=UUID(sid), kind="assignment_created", title=title,
+                                     payload={"assignment_id": d["assignment_id"], "deadline": d.get("deadline")}))
+    elif t == "assessment.assignment.reassigned":
+        session.add(Notification(user_id=UUID(d["student_id"]), kind="assignment_reassigned",
+                                 title=f"Педагог разрешил пройти ещё раз: «{d['title']}»",
+                                 payload={"assignment_id": d["assignment_id"], "deadline": d.get("deadline")}))
+    elif t == "assessment.attempt.graded" and not d.get("to_journal"):
+        # Если оценка уходит в журнал, ученик получит уведомление об оценке от academic.
+        session.add(Notification(user_id=UUID(d["student_id"]), kind="attempt_graded",
+                                 title=f"Работа проверена: «{d['title']}» — {d['percent']:g}%, оценка {d['grade']}",
+                                 payload={"assignment_id": d["assignment_id"], "attempt_id": d["attempt_id"]}))

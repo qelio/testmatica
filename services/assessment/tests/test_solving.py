@@ -118,7 +118,7 @@ async def test_long_answer_with_file_and_review(client, fakes):
     foreign = fakes.file(uuid4())
     stolen = await client.post(
         f"/tasks/{task['id']}/submissions",
-        json={"context_type": "assignment", "context_id": str(CTX), "answer": {"text": "x"}, "file_ids": [foreign]},
+        json={"context_type": "practice", "context_id": str(CTX), "answer": {"text": "x"}, "file_ids": [foreign]},
         headers=student(pupil),
     )
     assert stolen.status_code == 422
@@ -127,7 +127,7 @@ async def test_long_answer_with_file_and_review(client, fakes):
     sub = (
         await client.post(
             f"/tasks/{task['id']}/submissions",
-            json={"context_type": "assignment", "context_id": str(CTX), "answer": {"text": "Предположим противное…"}, "file_ids": [own]},
+            json={"context_type": "practice", "context_id": str(CTX), "answer": {"text": "Предположим противное…"}, "file_ids": [own]},
             headers=student(pupil),
         )
     ).json()

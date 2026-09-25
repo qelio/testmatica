@@ -22,7 +22,8 @@ runtime.consumer("notification.academic", [(EVENTS_EXCHANGE, "academic.grade.*")
 runtime.consumer("notification.content", [(EVENTS_EXCHANGE, "content.course.*")], handlers.on_content_event)
 runtime.consumer(
     "notification.assessment",
-    [(EVENTS_EXCHANGE, "assessment.task.*"), (EVENTS_EXCHANGE, "assessment.submission.reviewed")],
+    [(EVENTS_EXCHANGE, "assessment.task.*"), (EVENTS_EXCHANGE, "assessment.submission.reviewed"),
+     (EVENTS_EXCHANGE, "assessment.assignment.*"), (EVENTS_EXCHANGE, "assessment.attempt.graded")],
     handlers.on_assessment_event,
 )
 runtime.consumer(

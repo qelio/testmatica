@@ -1,0 +1,469 @@
+"""Выдача тестов (ДЗ и тест на уроке) и их прохождение учениками."""
+
+import random
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
+from testmatica_common.errors import ApiError
+
+from .. import access, attempts, views
+from ..deps import auth, classroom, db, media, outbox, schedule
+from ..models import (
+    CHECKING,
+    CHOICE,
+    ERROR,
+    IN_PROGRESS,
+    LIVE,
+    LONG,
+    SUBMITTED,
+    Assignment,
+    AssignmentStudent,
+    Attempt,
+    AttemptAnswer,
+    Submission,
+    Task,
+)
+from ..schemas import (
+    AssignIn,
+    AssignmentOut,
+    AssignmentStudentOut,
+    AttemptBrief,
+    AttemptOut,
+    AttemptTask,
+    DraftIn,
+    FileRef,
+    SubmissionOut,
+)
+from .quizzes import own_test
+from .solving import _file_urls
+
+router = APIRouter(tags=["assignments"])
+teacher = auth.require(ROLE_TEACHER, ROLE_MODERATOR)
+
+
+# ---------- выдача ----------
+
+
+@router.post("/tests/{test_id}/assign", response_model=AssignmentOut, status_code=201)
+async def assign(
+    test_id: UUID, body: AssignIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> AssignmentOut:
+    """Выдать тест группе или ученику — как ДЗ или как тест на уроке. Состав теста фиксируется."""
+    test = await own_test(session, test_id, principal)
+    if not test.items:
+        raise ApiError(422, "test_empty", "Добавьте в тест хотя бы одну задачу")
+    if body.target_type == "group":
+        group = await classroom.get(f"/internal/groups/{body.target_id}", params={"teacher_id": str(principal.user_id)})
+        student_ids, target_title = [UUID(s) for s in group["member_ids"]], group["title"]
+        if not student_ids:
+            raise ApiError(422, "group_empty", "В группе нет учеников")
+    else:
+        if not await access.linked(session, principal.user_id, body.target_id):
+            raise ApiError(404, "student_not_found", "Ученик не привязан к вам")
+        student_ids = [body.target_id]
+        target_title = (await views.names(session, student_ids)).get(body.target_id, "Ученик")
+    if body.lesson_id:
+        await schedule.get(f"/internal/lessons/{body.lesson_id}", params={"teacher_id": str(principal.user_id)})
+    if body.deadline and body.deadline <= datetime.now(UTC):
+        raise ApiError(422, "deadline_past", "Дедлайн уже прошёл")
+
+    a = Assignment(
+        test_id=test.id, teacher_id=principal.user_id, title=test.title, description=test.description, kind=body.kind,
+        target_type=body.target_type, target_id=body.target_id, target_title=target_title, lesson_id=body.lesson_id,
+        deadline=body.deadline,
+        settings={"order_mode": test.order_mode, "shuffle_options": test.shuffle_options, "time_mode": test.time_mode,
+                  "time_limit_s": test.time_limit_s},
+        items=[{"task_id": str(i.task_id), "points": i.points} for i in test.items],
+        grade_to_journal=body.grade_to_journal, grade_type_id=body.grade_type_id if body.grade_to_journal else None,
+        students=[AssignmentStudent(student_id=s) for s in student_ids],
+    )
+    session.add(a)
+    await session.flush()
+    await outbox.event(
+        session, "assessment.assignment.created",
+        {"assignment_id": str(a.id), "title": a.title, "kind": a.kind, "teacher_id": str(a.teacher_id),
+         "student_ids": [str(s) for s in student_ids], "deadline": a.deadline.isoformat() if a.deadline else None,
+         "lesson_id": str(a.lesson_id) if a.lesson_id else None},
+        actor_id=principal.user_id,
+    )
+    await session.commit()
+    return await assignment_out(session, a, principal, teacher_view=True)
+
+
+async def _answered(session: AsyncSession, attempt_ids: list[UUID]) -> dict[UUID, int]:
+    if not attempt_ids:
+        return {}
+    rows = await session.execute(
+        select(AttemptAnswer.attempt_id, func.count()).where(AttemptAnswer.attempt_id.in_(attempt_ids)).group_by(AttemptAnswer.attempt_id)
+    )
+    return dict(rows.all())
+
+
+def _brief(t: Attempt, answered: int) -> AttemptBrief:
+    return AttemptBrief(
+        id=t.id, number=t.number, status=t.status, started_at=t.started_at, submitted_at=t.submitted_at,
+        auto_submitted=t.auto_submitted, answered=answered, total=len(t.task_order), score=t.score, max_score=t.max_score,
+        percent=t.percent, grade=t.grade, checked=t.checked,
+    )
+
+
+async def _sync_open(session: AsyncSession, a: Assignment, rows: list[Attempt]) -> None:
+    """Сдать просроченные попытки при просмотре — не дожидаясь фоновой задачи."""
+    now = datetime.now(UTC)
+    by_student = {r.student_id: r for r in a.students}
+    for t in rows:
+        if t.status == IN_PROGRESS and attempts.sync_timer(t, a, now, attempts.deadline_for(a, by_student.get(t.student_id))):
+            await attempts.finalize(session, t, a, auto=True)
+
+
+async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, teacher_view: bool) -> AssignmentOut:
+    now = datetime.now(UTC)
+    rows = a.students if teacher_view else [r for r in a.students if r.student_id == p.user_id]
+    query = select(Attempt).where(Attempt.assignment_id == a.id).order_by(Attempt.number)
+    if not teacher_view:
+        query = query.where(Attempt.student_id == p.user_id)
+    all_attempts = (await session.execute(query)).scalars().all()
+    await _sync_open(session, a, list(all_attempts))
+    answered = await _answered(session, [t.id for t in all_attempts])
+    names = await views.names(session, [r.student_id for r in rows] + [a.teacher_id])
+    students = sorted(
+        (
+            AssignmentStudentOut(
+                student_id=r.student_id, full_name=names.get(r.student_id, "Ученик"), allowed_attempts=r.allowed_attempts,
+                attempts=[_brief(t, answered.get(t.id, 0)) for t in all_attempts if t.student_id == r.student_id],
+            )
+            for r in rows
+        ),
+        key=lambda s: s.full_name,
+    )
+    own = rows[0] if rows and not teacher_view else None
+    deadline = attempts.deadline_for(a, own) if own else a.deadline
+    can_start = False
+    if own is not None:
+        mine = [t for t in all_attempts if t.student_id == p.user_id]
+        can_start = (
+            a.closed_at is None and not (deadline and now >= deadline)
+            and not any(t.status == IN_PROGRESS for t in mine) and len(mine) < own.allowed_attempts
+        )
+    return AssignmentOut(
+        id=a.id, test_id=a.test_id, title=a.title, description=a.description, kind=a.kind, target_type=a.target_type,
+        target_id=a.target_id, target_title=a.target_title, teacher_id=a.teacher_id,
+        teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, deadline=deadline,
+        overdue=bool(deadline and now >= deadline), closed=a.closed_at is not None, settings=a.settings,
+        tasks_count=len(a.items), max_score=sum(i["points"] for i in a.items), grade_to_journal=a.grade_to_journal,
+        grade_type_id=a.grade_type_id, created_at=a.created_at, students=students, can_start=can_start,
+    )
+
+
+@router.get("/assignments", response_model=list[AssignmentOut])
+async def list_assignments(
+    role: str = Query("student", pattern="^(teacher|student)$"),
+    lesson_id: UUID | None = None,
+    target_id: UUID | None = None,
+    principal: Principal = Depends(auth.principal),
+    session: AsyncSession = Depends(db.session),
+) -> list[AssignmentOut]:
+    """Педагогу — выданные им работы; ученику — выданные ему."""
+    as_teacher = role == "teacher"
+    if as_teacher:
+        if not principal.has_any(ROLE_TEACHER, ROLE_MODERATOR):
+            raise ApiError(403, "forbidden", "Недостаточно прав")
+        query = select(Assignment).where(Assignment.teacher_id == principal.user_id)
+    else:
+        query = select(Assignment).join(AssignmentStudent).where(AssignmentStudent.student_id == principal.user_id)
+    if lesson_id:
+        query = query.where(Assignment.lesson_id == lesson_id)
+    if target_id:
+        query = query.where(Assignment.target_id == target_id)
+    found = (await session.execute(query.order_by(Assignment.created_at.desc()).limit(100))).scalars().all()
+    out = [await assignment_out(session, a, principal, as_teacher) for a in found]
+    await session.commit()  # просроченные попытки могли сдаться при просмотре
+    return out
+
+
+async def _assignment(session: AsyncSession, assignment_id: UUID, p: Principal) -> tuple[Assignment, bool]:
+    """Работа и роль смотрящего: педагог-автор или ученик, которому выдано."""
+    a = await session.get(Assignment, assignment_id)
+    if a is not None:
+        if a.teacher_id == p.user_id:
+            return a, True
+        if any(r.student_id == p.user_id for r in a.students):
+            return a, False
+    raise ApiError(404, "assignment_not_found", "Задание не найдено")
+
+
+@router.get("/assignments/{assignment_id}", response_model=AssignmentOut)
+async def get_assignment(
+    assignment_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)
+) -> AssignmentOut:
+    """Педагогу — сводка по ученикам (на уроке — прогресс в реальном времени), ученику — его попытки."""
+    a, is_teacher = await _assignment(session, assignment_id, principal)
+    out = await assignment_out(session, a, principal, is_teacher)
+    await session.commit()
+    return out
+
+
+@router.post("/assignments/{assignment_id}/reassign", response_model=AssignmentOut)
+async def reassign(
+    assignment_id: UUID,
+    student_id: UUID = Query(),
+    deadline: datetime | None = Query(None, description="Новый личный дедлайн"),
+    principal: Principal = Depends(teacher),
+    session: AsyncSession = Depends(db.session),
+) -> AssignmentOut:
+    """Переназначить ученику: ещё одна попытка. Все прошлые попытки сохраняются."""
+    a, is_teacher = await _assignment(session, assignment_id, principal)
+    if not is_teacher:
+        raise ApiError(404, "assignment_not_found", "Задание не найдено")
+    row = next((r for r in a.students if r.student_id == student_id), None)
+    if row is None:
+        raise ApiError(404, "student_not_found", "Этому ученику задание не выдавалось")
+    tried = (await session.execute(select(Attempt).where(Attempt.assignment_id == a.id, Attempt.student_id == student_id))).scalars().all()
+    if any(t.status == IN_PROGRESS for t in tried):
+        raise ApiError(409, "attempt_in_progress", "Ученик ещё проходит тест")
+    if deadline is not None and (deadline.tzinfo is None or deadline <= datetime.now(UTC)):
+        raise ApiError(422, "deadline_past", "Укажите будущий дедлайн с часовым поясом")
+    row.allowed_attempts = len(tried) + 1
+    row.deadline = deadline
+    if a.kind == LIVE:
+        a.closed_at = None
+    await outbox.event(
+        session, "assessment.assignment.reassigned",
+        {"assignment_id": str(a.id), "title": a.title, "kind": a.kind, "teacher_id": str(a.teacher_id),
+         "student_id": str(student_id), "deadline": deadline.isoformat() if deadline else None},
+        actor_id=principal.user_id,
+    )
+    await session.commit()
+    return await assignment_out(session, a, principal, teacher_view=True)
+
+
+@router.post("/assignments/{assignment_id}/close", response_model=AssignmentOut)
+async def close(assignment_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> AssignmentOut:
+    """Завершить тест на уроке: незавершённые попытки сдаются с тем, что ученики успели ответить."""
+    a, is_teacher = await _assignment(session, assignment_id, principal)
+    if not is_teacher:
+        raise ApiError(404, "assignment_not_found", "Задание не найдено")
+    a.closed_at = a.closed_at or datetime.now(UTC)
+    for t in (await session.execute(select(Attempt).where(Attempt.assignment_id == a.id, Attempt.status == IN_PROGRESS))).scalars():
+        await attempts.finalize(session, t, a, auto=True)
+    await session.commit()
+    return await assignment_out(session, a, principal, teacher_view=True)
+
+
+# ---------- прохождение ----------
+
+
+@router.post("/assignments/{assignment_id}/start", response_model=AttemptOut)
+async def start(assignment_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> AttemptOut:
+    """Начать попытку (или вернуться к начатой). Порядок заданий и вариантов — свой у каждого ученика."""
+    a, is_teacher = await _assignment(session, assignment_id, principal)
+    if is_teacher:
+        raise ApiError(403, "forbidden", "Тест проходят ученики")
+    row = next(r for r in a.students if r.student_id == principal.user_id)
+    mine = (await session.execute(
+        select(Attempt).where(Attempt.assignment_id == a.id, Attempt.student_id == principal.user_id).with_for_update()
+    )).scalars().all()
+    await _sync_open(session, a, list(mine))
+    current = next((t for t in mine if t.status == IN_PROGRESS), None)
+    if current is None:
+        now = datetime.now(UTC)
+        deadline = attempts.deadline_for(a, row)
+        if a.closed_at is not None:
+            raise ApiError(409, "assignment_closed", "Педагог завершил тест")
+        if deadline and now >= deadline:
+            raise ApiError(409, "overdue", "Срок сдачи прошёл")
+        if len(mine) >= row.allowed_attempts:
+            raise ApiError(409, "already_submitted", "Работа уже сдана. Пройти ещё раз можно, если педагог переназначит")
+        order = [i["task_id"] for i in a.items]
+        rnd = random.SystemRandom()
+        if a.settings.get("order_mode") == "random":
+            rnd.shuffle(order)
+        option_orders = {}
+        if a.settings.get("shuffle_options"):
+            tasks = (await session.execute(select(Task).where(Task.id.in_([UUID(i) for i in order]), Task.type == CHOICE))).scalars()
+            for t in tasks:
+                ids = [str(o.id) for o in t.options]
+                rnd.shuffle(ids)
+                option_orders[str(t.id)] = ids
+        limit = a.settings.get("time_limit_s")
+        current = Attempt(
+            assignment_id=a.id, student_id=principal.user_id, number=len(mine) + 1, status=IN_PROGRESS, started_at=now,
+            ends_at=now + timedelta(seconds=limit) if a.settings.get("time_mode") == "total" else None,
+            task_order=order, option_orders=option_orders,
+            current_started_at=now if a.settings.get("time_mode") == "per_task" else None,
+        )
+        session.add(current)
+        await session.flush()
+        await outbox.event(
+            session, "assessment.attempt.started",
+            {"attempt_id": str(current.id), "assignment_id": str(a.id), "student_id": str(principal.user_id),
+             "teacher_id": str(a.teacher_id)},
+            actor_id=principal.user_id,
+        )
+    await session.commit()
+    return await attempt_out(session, current, a, principal, teacher_view=False)
+
+
+async def _attempt(session: AsyncSession, attempt_id: UUID, p: Principal, lock: bool = False) -> tuple[Attempt, Assignment, bool]:
+    t = await session.get(Attempt, attempt_id, with_for_update=lock)
+    if t is not None:
+        a = await session.get(Assignment, t.assignment_id)
+        if a.teacher_id == p.user_id:
+            return t, a, True
+        if t.student_id == p.user_id:
+            return t, a, False
+    raise ApiError(404, "attempt_not_found", "Попытка не найдена")
+
+
+async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Principal, teacher_view: bool) -> AttemptOut:
+    """Попытка: ученику — задания без ответов (до сдачи) и с результатами (после), педагогу — всё, с ключами."""
+    submitted = t.status == SUBMITTED
+    tasks = {x.id: x for x in (await session.execute(select(Task).where(Task.id.in_([UUID(i) for i in t.task_order])))).scalars()}
+    drafts = {d.task_id: d for d in (await session.execute(select(AttemptAnswer).where(AttemptAnswer.attempt_id == t.id))).scalars()}
+    subs = await attempts.latest_submissions(session, t.id) if submitted else {}
+    urls = await _file_urls([*subs.values(), *[_Files(d.files) for d in drafts.values()]])
+    points = {i["task_id"]: i["points"] for i in a.items}
+    per_task = a.settings.get("time_mode") == "per_task"
+
+    out: list[AttemptTask] = []
+    for n, task_id in enumerate(t.task_order):
+        task = tasks.get(UUID(task_id))
+        if task is None:
+            continue
+        # Таймер на каждое задание: следующие задания до своей очереди не показываются.
+        if per_task and not submitted and not teacher_view and n > t.current_index:
+            break
+        view = await views.full(session, task, p if teacher_view else None)
+        if order := t.option_orders.get(task_id):
+            pos = {oid: i for i, oid in enumerate(order)}
+            view.options.sort(key=lambda o: pos.get(str(o.id), 0))
+        if submitted:
+            view.explanation = task.explanation  # разбор — после сдачи
+        sub, draft = subs.get(task.id), drafts.get(task.id)
+        answer = sub.answer if sub else (draft.answer if draft else None)
+        files = sub.files if sub else (draft.files if draft else [])
+        out.append(AttemptTask(
+            task=view, points=points.get(task_id, 1), answer=answer,
+            files=[FileRef(**f, url=urls.get(f["id"])) for f in files],
+            locked=submitted or (per_task and n < t.current_index),
+            result=views.submission_out(sub, with_log=teacher_view, urls=urls) if sub else None,
+            earned=attempts._earned(sub, points.get(task_id, 1)) if submitted and t.checked else None,
+        ))
+    return AttemptOut(
+        id=t.id, assignment_id=a.id, title=a.title, student_id=t.student_id, number=t.number, status=t.status,
+        settings=a.settings, started_at=t.started_at, ends_at=t.ends_at, current_index=t.current_index,
+        current_ends_at=attempts.current_ends_at(t, a) if not submitted else None, submitted_at=t.submitted_at,
+        auto_submitted=t.auto_submitted, score=t.score if t.checked or teacher_view else None, max_score=t.max_score,
+        percent=t.percent, grade=t.grade, checked=t.checked, server_time=datetime.now(UTC), tasks=out,
+    )
+
+
+class _Files:
+    """Обёртка, чтобы получить ссылки на файлы черновиков тем же способом, что и для отправок."""
+
+    def __init__(self, files: list[dict]) -> None:
+        self.files = files
+
+
+async def _synced(session: AsyncSession, t: Attempt, a: Assignment) -> bool:
+    """Продвинуть таймер; если время вышло — сдать. Возвращает True, если попытка ещё идёт."""
+    row = next((r for r in a.students if r.student_id == t.student_id), None)
+    if t.status == IN_PROGRESS and attempts.sync_timer(t, a, datetime.now(UTC), attempts.deadline_for(a, row)):
+        await attempts.finalize(session, t, a, auto=True)
+    return t.status == IN_PROGRESS
+
+
+@router.get("/attempts/{attempt_id}", response_model=AttemptOut)
+async def get_attempt(attempt_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> AttemptOut:
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    await _synced(session, t, a)
+    await session.commit()
+    return await attempt_out(session, t, a, principal, teacher_view=is_teacher)
+
+
+@router.put("/attempts/{attempt_id}/answers/{task_id}", response_model=AttemptOut)
+async def save_answer(
+    attempt_id: UUID,
+    task_id: UUID,
+    body: DraftIn,
+    principal: Principal = Depends(auth.principal),
+    session: AsyncSession = Depends(db.session),
+) -> AttemptOut:
+    """Сохранить черновик ответа. Проверка — только после сдачи всей работы."""
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    if is_teacher:
+        raise ApiError(403, "forbidden", "Отвечает ученик")
+    if not await _synced(session, t, a):
+        await session.commit()
+        raise ApiError(409, "time_over", "Время вышло — работа сдана автоматически")
+    if str(task_id) not in t.task_order:
+        raise ApiError(404, "task_not_found", "Такого задания нет в работе")
+    if a.settings.get("time_mode") == "per_task" and t.task_order.index(str(task_id)) != t.current_index:
+        raise ApiError(409, "task_locked", "К этому заданию уже нельзя вернуться")
+    task = await session.get(Task, task_id)
+    draft = await session.get(AttemptAnswer, (t.id, task_id)) or AttemptAnswer(attempt_id=t.id, task_id=task_id, files=[])
+
+    files = [f for f in draft.files if UUID(f["id"]) in body.file_ids]
+    new_ids = [i for i in body.file_ids if str(i) not in {f["id"] for f in files}]
+    if (new_ids or files) and (task.type != LONG or task.file_mode == "none"):
+        raise ApiError(422, "files_not_allowed", "К этому заданию нельзя прикрепить файл")
+    if new_ids:
+        claimed = await media.post(
+            "/internal/files/claim",
+            json={"owner_id": str(principal.user_id), "purpose": "answer", "file_ids": [str(i) for i in new_ids], "claimed_by": "assessment"},
+        )
+        files += [{k: f[k] for k in ("id", "filename", "mime", "size")} for f in claimed]
+    draft.answer = body.answer.model_dump(exclude_none=True, mode="json")
+    draft.files = files
+    draft.updated_at = datetime.now(UTC)
+    session.add(draft)
+    await session.commit()
+    return await attempt_out(session, t, a, principal, teacher_view=False)
+
+
+@router.post("/attempts/{attempt_id}/next", response_model=AttemptOut)
+async def next_task(attempt_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> AttemptOut:
+    """Таймер на каждое задание: перейти к следующему (вернуться нельзя). После последнего — сдача."""
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    if is_teacher or a.settings.get("time_mode") != "per_task":
+        raise ApiError(409, "not_sequential", "В этой работе задания открыты все сразу")
+    if await _synced(session, t, a):
+        t.current_index += 1
+        t.current_started_at = datetime.now(UTC)
+        if t.current_index >= len(t.task_order):
+            await attempts.finalize(session, t, a, auto=False)
+    await session.commit()
+    return await attempt_out(session, t, a, principal, teacher_view=False)
+
+
+@router.post("/attempts/{attempt_id}/submit", response_model=AttemptOut)
+async def submit(attempt_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> AttemptOut:
+    """Сдать работу. Отправка — один раз; повторно — только после переназначения."""
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    if is_teacher:
+        raise ApiError(403, "forbidden", "Сдаёт ученик")
+    if t.status != IN_PROGRESS:
+        raise ApiError(409, "already_submitted", "Работа уже сдана")
+    if await _synced(session, t, a):
+        await attempts.finalize(session, t, a, auto=False)
+    await session.commit()
+    return await attempt_out(session, t, a, principal, teacher_view=False)
+
+
+@router.post("/submissions/{submission_id}/recheck", response_model=SubmissionOut)
+async def recheck(submission_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> SubmissionOut:
+    """Перепроверить код, если песочница была недоступна (в работе ученик не может отправить заново)."""
+    sub = await session.get(Submission, submission_id, with_for_update=True)
+    if sub is None or not await access.can_see_student_work(session, principal, sub.student_id):
+        raise ApiError(404, "submission_not_found", "Решение не найдено")
+    if sub.status != ERROR:
+        raise ApiError(409, "not_failed", "Решение уже проверено")
+    sub.status = CHECKING
+    await outbox.command(session, queue="assessment.code", type="assessment.code.check", data={"submission_id": str(sub.id)},
+                         actor_id=principal.user_id)
+    await session.commit()
+    return views.submission_out(sub, with_log=True)
