@@ -50,6 +50,9 @@ export default function Home() {
           <Link href="/login" className="rounded-xl border border-line bg-surface px-5 py-3 font-medium hover:bg-muted">
             У меня уже есть аккаунт
           </Link>
+          <Link href="/library" className="rounded-xl px-5 py-3 font-medium text-brand hover:bg-muted">
+            Открыть библиотеку →
+          </Link>
         </div>
 
         <div className="mt-16 grid gap-4 sm:grid-cols-3">

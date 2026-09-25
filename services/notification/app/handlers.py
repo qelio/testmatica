@@ -203,3 +203,28 @@ async def on_inapp_command(envelope: Envelope, session: AsyncSession) -> None:
                     user_id=user_id, kind=data["kind"], title=data["title"], body=data.get("body", ""), payload=payload
                 )
             )
+
+
+async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Автору — решение по курсу, отправленному в публичную библиотеку."""
+    d = envelope.data
+    if envelope.type == "content.course.published" and envelope.actor_id != UUID(d["author_id"]):
+        session.add(
+            Notification(
+                user_id=UUID(d["author_id"]),
+                kind="course_published",
+                title=f"Курс «{d['title']}» опубликован",
+                body="Курс прошёл проверку и появился в публичной библиотеке.",
+                payload={"course_id": d["course_id"]},
+            )
+        )
+    elif envelope.type == "content.course.rejected":
+        session.add(
+            Notification(
+                user_id=UUID(d["author_id"]),
+                kind="course_rejected",
+                title=f"Курс «{d['title']}» не прошёл проверку",
+                body=d.get("comment") or "",
+                payload={"course_id": d["course_id"]},
+            )
+        )

@@ -146,11 +146,19 @@ flowchart LR
 - Позже: КТП (этап 2), расширенная аналитика и экспорт (этап 5)
 
 ### content
-- `subjects` — id, name
-- `nodes` — id, parent_id, kind (course / section / module), subject_id, title, position, owner_id (null = публичный), visibility (public / private), moderation_status
-- `materials` — id, node_id, kind (text / video / pdf / link / theory_card), title, body (JSON редактора), media_id, url, linked_task_id, moderation_status, version
-- `material_progress` — user_id, material_id, viewed, position_sec, updated_at
-- `favorites` — user_id, material_id
+- `subjects` — справочник предметов (значения по умолчанию — в миграции)
+- `nodes` — курс / раздел / модуль (parent_id, course_id — корень), owner_id, title, description, position; у курса — status (private / pending / published / rejected), review_comment, published_at
+- `materials` — kind (text / card / video / pdf / file / link), body (Markdown с формулами LaTeX), файл из media (id, имя, тип, размер), url, position
+- `material_progress` — просмотрено, позиция видео; `favorites`
+- Реплики: `people` (имена авторов), `rel_links` (ученики видят приватную библиотеку своих педагогов)
+- Доступ: опубликованное — всем, включая гостей (`auth.optional`); приватное — автору, модераторам и привязанным ученикам; на модерации курс заблокирован для правок
+- Публикация: `content.course.submitted` → очередь moderation → `moderation.decision.made` → `content.course.published|rejected`; курсы модераторов публикуются сразу
+- Отчёт о просмотрах для педагога — по группе (`classroom /internal/groups`) или ученику
+
+### moderation
+- `queue_items` — kind, ref_id, title, author_id, details, priority, status (pending / approved / rejected / withdrawn), comment, decided_by; одна открытая заявка на объект
+- Очередь FIFO (сначала приоритет — для подписчиков на этапе 5, затем время поступления); отклонение — только с комментарием
+- Заявки создаются событиями других сервисов (`content.course.submitted`), решение уходит событием `moderation.decision.made`
 
 ### assessment
 - `tasks` — id, author_id, node_id, type (choice / short / long / code), statement, visibility, moderation_status, version

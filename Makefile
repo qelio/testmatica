@@ -1,6 +1,6 @@
 # Короткие команды для локальной разработки. Список: make help
 
-SERVICES := identity notification audit classroom schedule academic chat media
+SERVICES := identity notification audit classroom schedule academic chat media content moderation
 DC := docker compose
 
 .DEFAULT_GOAL := help
@@ -42,6 +42,10 @@ migration: ## Новая миграция: make migration s=identity m="add phon
 	$(DC) run --rm --no-deps -e RUN_BACKGROUND=false $(s) alembic revision --autogenerate -m "$(m)"
 
 snapshot: ## Разослать пользователей, группы и привязки сервисам (после добавления нового сервиса)
+	@# Сервис отвечает на /health только после подписки на события — иначе рассылка уйдёт «в никуда».
+	@for svc in $(SERVICES); do \
+		until curl -sf http://localhost:8080/api/$$svc/health >/dev/null; do echo "жду $$svc…"; sleep 2; done; \
+	done
 	$(DC) exec identity python -m app.cli publish-snapshot
 	$(DC) exec classroom python -m app.cli publish-snapshot
 

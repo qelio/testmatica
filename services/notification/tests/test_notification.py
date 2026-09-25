@@ -203,3 +203,18 @@ async def test_inapp_command_coalesces_unread_chat_notifications(client):
     await c.process(command("Объявление", key=None))
     items = (await client.get("/notifications", headers=bearer(user))).json()["items"]
     assert len(items) == 3
+
+
+async def test_course_decisions_notify_author(client):
+    author = uuid4()
+    c = consumer("notification.content", handlers.on_content_event)
+    data = {"course_id": str(uuid4()), "title": "Дроби", "author_id": str(author)}
+    await c.process(make_envelope("content.course.rejected", data | {"comment": "Нет примеров"}))
+    await c.process(make_envelope("content.course.published", data, actor_id=uuid4()))
+    # Сам опубликовал (штатный редактор) — уведомлять не нужно.
+    await c.process(make_envelope("content.course.published", data, actor_id=author))
+    items = (await client.get("/notifications", headers=bearer(author))).json()["items"]
+    assert sorted((n["title"], n["body"]) for n in items) == [
+        ("Курс «Дроби» не прошёл проверку", "Нет примеров"),
+        ("Курс «Дроби» опубликован", "Курс прошёл проверку и появился в публичной библиотеке."),
+    ]
