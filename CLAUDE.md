@@ -24,7 +24,9 @@
   в `SERVICE_DATABASES`, в `SERVICES` в Makefile; `make db-init`, `make migration s=<svc> m=initial`; если нужна реплика имён — `make snapshot`.
 - Синхронные вызовы между сервисами — только `/internal/...` через `InternalClient` (заголовок X-Internal-Token); наружу не публикуются.
 - Имена пользователей в других сервисах — локальная реплика `people`, заполняется событиями `identity.user.registered|updated|snapshot`.
-- Схема БД меняется только миграциями: `make migration s=<svc> m="..."`.
+- Схема БД меняется только миграциями: `make migration s=<svc> m="..."`. Автогенерация не видит изменений CHECK-ограничений —
+  их пересоздание (`op.drop_constraint` / `op.create_check_constraint`) дописывать в миграцию вручную.
+- Код учеников выполняется только в `code-runner` (изолированная сеть `sandbox`, read-only, без привилегий); доступ к нему — только у assessment.
 
 ## Правила веба
 

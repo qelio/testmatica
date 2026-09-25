@@ -218,3 +218,14 @@ async def test_course_decisions_notify_author(client):
         ("Курс «Дроби» не прошёл проверку", "Нет примеров"),
         ("Курс «Дроби» опубликован", "Курс прошёл проверку и появился в публичной библиотеке."),
     ]
+
+
+async def test_task_and_review_notifications(client):
+    author, pupil = uuid4(), uuid4()
+    c = consumer("notification.assessment", handlers.on_assessment_event)
+    await c.process(make_envelope("assessment.task.rejected", {"task_id": str(uuid4()), "title": "Сумма", "author_id": str(author), "comment": "Мало тестов"}))
+    await c.process(make_envelope("assessment.submission.reviewed", {
+        "submission_id": str(uuid4()), "task_id": str(uuid4()), "task_title": "Доказательство", "student_id": str(pupil),
+        "score": 0.8, "comment": "Не хватает вывода", "context_type": "assignment", "context_id": str(uuid4())}))
+    assert (await client.get("/notifications", headers=bearer(author, ["teacher"]))).json()["items"][0]["body"] == "Мало тестов"
+    assert (await client.get("/notifications", headers=bearer(pupil))).json()["items"][0]["title"] == "Педагог проверил решение: «Доказательство» — 80%"

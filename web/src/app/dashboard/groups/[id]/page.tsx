@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 
 import { AddStudentModal } from "@/components/add-student";
+import { ExamBoardView } from "@/components/exams";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Spinner } from "@/components/ui";
 import { classroom, type GroupDetail } from "@/lib/api";
 import { pluralStudents } from "@/lib/format";
@@ -85,7 +86,9 @@ export default function GroupPage() {
             <li key={m.student_id} className="flex items-center gap-3 px-5 py-3">
               <span className="w-6 text-right text-sm text-fg-soft">{i + 1}</span>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{m.full_name}</p>
+                <Link href={`/dashboard/students/${m.student_id}`} className="block truncate font-medium hover:underline">
+                  {m.full_name}
+                </Link>
                 {m.login && <p className="font-mono text-sm text-fg-soft">{m.login}</p>}
               </div>
               <Button
@@ -98,6 +101,13 @@ export default function GroupPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {g.members.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Подготовка к ЕГЭ и ОГЭ</h2>
+          <ExamBoardView targetType="group" targetId={g.id} />
+        </section>
       )}
 
       <div className="border-t border-line pt-4">

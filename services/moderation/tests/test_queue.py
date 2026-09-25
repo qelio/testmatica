@@ -56,3 +56,12 @@ async def test_withdrawn_course_leaves_queue(client):
 async def test_only_moderators(client):
     assert (await client.get("/queue", headers=bearer(uuid4(), ("teacher",)))).status_code == 403
     assert (await client.get("/queue", headers=bearer(uuid4(), ("admin",)))).status_code == 200
+
+
+async def test_tasks_enter_queue(client):
+    task, author = uuid4(), uuid4()
+    await apply(handlers.on_assessment_event, "assessment.task.submitted", task_id=task, title="Сумма двух чисел", author_id=author, type="code")
+    queue = (await client.get("/queue", headers=bearer(uuid4()))).json()
+    assert [(i["kind"], i["kind_label"], i["details"]) for i in queue] == [("task", "Задача в публичный банк", {"type": "code"})]
+    await apply(handlers.on_assessment_event, "assessment.task.unpublished", task_id=task, title="x", author_id=author)
+    assert (await client.get("/queue", headers=bearer(uuid4()))).json() == []

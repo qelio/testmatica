@@ -53,7 +53,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation
+      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation assessment
     ports:
       - "5433:5432"
     volumes:
@@ -389,6 +389,58 @@ services:
       - traefik.http.middlewares.moderation-strip.stripprefix.prefixes=/api/moderation
       - traefik.http.services.moderation.loadbalancer.server.port=8000
 
+  assessment:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: assessment, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/assessment
+      DATABASE_URL: postgresql+asyncpg://assessment:assessment_dev@postgres:5432/assessment
+      TEST_DATABASE_URL: postgresql+asyncpg://assessment:assessment_dev@postgres:5432/assessment_test
+      CODE_RUNNER_URL: http://code-runner:8000
+    volumes:
+      - ./services/assessment:/app
+      - *libs-volume
+    # Единственный сервис, которому видна песочница.
+    networks: [default, sandbox]
+    depends_on:
+      <<: *python-depends
+      code-runner:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=testmatica_default
+      - traefik.http.routers.assessment.rule=PathPrefix(`/api/assessment`) && !PathPrefix(`/api/assessment/internal`)
+      - traefik.http.routers.assessment.middlewares=assessment-strip,api-ratelimit@docker
+      - traefik.http.middlewares.assessment-strip.stripprefix.prefixes=/api/assessment
+      - traefik.http.services.assessment.loadbalancer.server.port=8000
+
+  # Песочница для кода учеников: только внутренняя сеть без выхода наружу,
+  # файловая система только для чтения, без привилегий, пользователь nobody.
+  code-runner:
+    build:
+      context: ./services/code-runner
+      args: { DEV: "1" }
+    environment:
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token}
+    networks: [sandbox]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+    restart: unless-stopped
+
   # ---------- Веб-клиент ----------
 
   web:
@@ -407,6 +459,12 @@ services:
       - traefik.http.routers.web.rule=PathPrefix(`/`)
       - traefik.http.routers.web.priority=1
       - traefik.http.services.web.loadbalancer.server.port=3000
+
+networks:
+  default: {}
+  # Внутренняя сеть песочницы: без доступа в интернет.
+  sandbox:
+    internal: true
 
 volumes:
   postgres-data:

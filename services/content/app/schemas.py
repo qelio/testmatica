@@ -76,6 +76,7 @@ class MaterialOut(BaseModel):
     body: str
     url: str | None
     file: FileInfo | None
+    task_id: UUID | None
     position_sec: int
     viewed: bool
     favorite: bool
@@ -121,11 +122,12 @@ class NodeUpdate(BaseModel):
 
 
 class MaterialCreate(BaseModel):
-    kind: Literal["text", "card", "video", "pdf", "file", "link"]
-    title: str = Field(min_length=1, max_length=200)
+    kind: Literal["text", "card", "video", "pdf", "file", "link", "task"]
+    title: str | None = Field(None, max_length=200, description="Для задачи — по умолчанию её название")
     body: str = Field("", max_length=200_000)
     file_id: UUID | None = None
     url: str | None = Field(None, max_length=500)
+    task_id: UUID | None = None
 
     _title = field_validator("title")(_clean)
 
@@ -145,6 +147,10 @@ class MaterialCreate(BaseModel):
             raise ValueError("Укажите ссылку")
         if self.kind in ("text", "card") and not self.body.strip():
             raise ValueError("Напишите текст")
+        if self.kind == "task" and self.task_id is None:
+            raise ValueError("Выберите задачу из банка")
+        if self.kind != "task" and not self.title:
+            raise ValueError("Укажите название")
         return self
 
 

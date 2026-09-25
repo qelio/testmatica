@@ -1,6 +1,6 @@
 # Короткие команды для локальной разработки. Список: make help
 
-SERVICES := identity notification audit classroom schedule academic chat media content moderation
+SERVICES := identity notification audit classroom schedule academic chat media content moderation assessment
 DC := docker compose
 
 .DEFAULT_GOAL := help
@@ -33,6 +33,7 @@ test: ## Прогнать тесты всех сервисов
 		echo "\n=== $$svc ==="; \
 		$(DC) run --rm --no-deps $$svc pytest -q || exit 1; \
 	done
+	$(DC) run --rm code-runner pytest -q -p no:cacheprovider
 	$(DC) exec -T web sh -c "npx tsc --noEmit && npm run lint"
 
 test-%: ## Тесты одного сервиса: make test-identity

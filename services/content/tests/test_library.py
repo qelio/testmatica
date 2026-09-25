@@ -190,3 +190,42 @@ async def test_progress_favorites_and_report(client, fakes):
 async def test_students_cannot_author(client, roles):
     resp = await client.post("/courses", json={"title": "Мой курс"}, headers=bearer(uuid4(), roles))
     assert resp.status_code == 403
+
+
+async def test_course_constructor_with_tasks(client, fakes):
+    t, other = uuid4(), uuid4()
+    course_id, _, m1, *_ = await build_course(client, t)
+    own = fakes.task(t, "Корень уравнения")
+    manual = fakes.task(t, "Докажите", type_="long")
+    foreign_private = fakes.task(other, "Чужая", status="private")
+    foreign_public = fakes.task(other, "Из банка", type_="code", status="published")
+
+    ok = await client.post(f"/modules/{m1}/materials", json={"kind": "task", "task_id": own}, headers=bearer(t))
+    assert ok.status_code == 201, ok.text
+    assert (ok.json()["kind"], ok.json()["title"], ok.json()["task_id"]) == ("task", "Корень уравнения", own)
+    named = await client.post(f"/modules/{m1}/materials", json={"kind": "task", "task_id": foreign_public, "title": "Закрепление"}, headers=bearer(t))
+    assert named.json()["title"] == "Закрепление"
+
+    no_manual = await client.post(f"/modules/{m1}/materials", json={"kind": "task", "task_id": manual}, headers=bearer(t))
+    assert no_manual.json()["error"]["code"] == "task_manual_check"
+    no_foreign = await client.post(f"/modules/{m1}/materials", json={"kind": "task", "task_id": foreign_private}, headers=bearer(t))
+    assert no_foreign.json()["error"]["code"] == "task_not_available"
+    assert (await client.post(f"/modules/{m1}/materials", json={"kind": "task"}, headers=bearer(t))).status_code == 422
+
+    kinds = [m["kind"] for m in (await client.get(f"/modules/{m1}", headers=bearer(t))).json()["materials"]]
+    assert kinds == ["text", "link", "task", "task"]
+
+    # Своя приватная задача уходит на проверку вместе с курсом, опубликованная чужая — нет.
+    assert (await client.post(f"/courses/{course_id}/submit", headers=bearer(t))).json()["status"] == "pending"
+    event = (await outbox("content.course.submitted"))[0]["data"]
+    assert (event["task_ids"], event["tasks_count"]) == ([own], 2)
+
+
+async def test_submit_fails_if_task_disappeared(client, fakes):
+    t = uuid4()
+    course_id, _, m1, *_ = await build_course(client, t)
+    tid = fakes.task(t, "Временная")
+    await client.post(f"/modules/{m1}/materials", json={"kind": "task", "task_id": tid}, headers=bearer(t))
+    del fakes.tasks[tid]  # задачу удалили в банке
+    resp = await client.post(f"/courses/{course_id}/submit", headers=bearer(t))
+    assert resp.json()["error"]["code"] == "tasks_unavailable"

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { UploadChips, useUploads } from "@/components/files";
+import { TaskPicker } from "@/components/task-picker";
 import { Markdown } from "@/components/markdown";
 import { KIND_LABELS, MaterialView } from "@/components/material-view";
 import { Alert, Button, Field, Select, Spinner } from "@/components/ui";
@@ -144,6 +145,7 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
+  const [taskId, setTaskId] = useState<string | null>(null);
   const uploads = useUploads("material", 1);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -171,10 +173,12 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
             body: kind === "text" || kind === "card" ? body : undefined,
             url: kind === "link" ? url : undefined,
             file_id: needsFile ? uploads.ids[0] : undefined,
+            task_id: kind === "task" ? taskId : undefined,
           });
           setTitle("");
           setBody("");
           setUrl("");
+          setTaskId(null);
           uploads.clear();
           setOpen(false);
           onAdded();
@@ -201,7 +205,14 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
           </option>
         ))}
       </Select>
-      <Field label="Название" required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
+      {kind === "task" ? (
+        <>
+          <TaskPicker selected={taskId} onSelect={(id, t) => { setTaskId(id); if (!title) setTitle(t); }} />
+          <Field label="Название в курсе (по умолчанию — название задачи)" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
+        </>
+      ) : (
+        <Field label="Название" required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
+      )}
       {(kind === "text" || kind === "card") && <MarkdownEditor value={body} onChange={setBody} />}
       {kind === "link" && (
         <Field label="Ссылка" type="url" required placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={(e) => setUrl(e.target.value)} />
@@ -231,7 +242,7 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
         <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
           Отмена
         </Button>
-        <Button type="submit" loading={busy || uploads.busy} disabled={!title.trim() || (needsFile && !uploads.ids.length)} className="flex-1">
+        <Button type="submit" loading={busy || uploads.busy} disabled={(kind === "task" ? !taskId : !title.trim()) || (needsFile && !uploads.ids.length)} className="flex-1">
           Добавить
         </Button>
       </div>

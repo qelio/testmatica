@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Computed, DateTime, ForeignKey, Index, Integer, String, Text, func, text
+from sqlalchemy import CheckConstraint, Computed, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSTZRANGE, ExcludeConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
@@ -87,6 +87,8 @@ class Lesson(Base):
     student_id: Mapped[UUID | None]
     subject: Mapped[str | None] = mapped_column(String(80))
     topic: Mapped[str | None] = mapped_column(String(300))
+    # Задания ЕГЭ/ОГЭ, которые разбираются на занятии (каталог — в assessment, здесь только id).
+    exam_item_ids: Mapped[list[UUID]] = mapped_column(ARRAY(Uuid), default=list, server_default="{}")
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # Интервал занятия для ограничения no_teacher_overlap; считается базой.

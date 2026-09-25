@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { AttachmentView } from "@/components/files";
 import { Markdown } from "@/components/markdown";
+import { TaskSolver } from "@/components/task-solver";
 import { Badge } from "@/components/ui";
 import { content, type Material } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -15,6 +16,7 @@ export const KIND_LABELS: Record<Material["kind"], string> = {
   pdf: "PDF",
   file: "Документ",
   link: "Ссылка",
+  task: "Задача",
 };
 
 /** Встраивание YouTube по ссылке вида youtube.com/watch?v=… или youtu.be/… */
@@ -101,6 +103,7 @@ export function MaterialView({ material, onFavorite }: { material: Material; onF
       </header>
 
       {(material.kind === "text" || material.kind === "card") && <Markdown text={material.body} />}
+      {material.kind === "task" && material.task_id && <TaskSolver taskId={material.task_id} contextId={material.id} />}
       {material.kind === "video" && <VideoPlayer material={material} signedIn={signedIn} />}
       {material.kind === "pdf" && material.file?.url && (
         <iframe src={material.file.url} title={material.title} className="h-[75vh] w-full rounded-xl border border-line" />

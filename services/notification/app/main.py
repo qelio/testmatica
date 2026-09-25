@@ -21,6 +21,11 @@ runtime.consumer("notification.classroom", [(EVENTS_EXCHANGE, "classroom.link.*"
 runtime.consumer("notification.academic", [(EVENTS_EXCHANGE, "academic.grade.*")], handlers.on_academic_event)
 runtime.consumer("notification.content", [(EVENTS_EXCHANGE, "content.course.*")], handlers.on_content_event)
 runtime.consumer(
+    "notification.assessment",
+    [(EVENTS_EXCHANGE, "assessment.task.*"), (EVENTS_EXCHANGE, "assessment.submission.reviewed")],
+    handlers.on_assessment_event,
+)
+runtime.consumer(
     "notification.schedule",
     [(EVENTS_EXCHANGE, "schedule.lesson.*"), (EVENTS_EXCHANGE, "schedule.reschedule.*")],
     handlers.on_schedule_event,

@@ -14,7 +14,7 @@ from testmatica_common.testing import TestTokens, make_envelope  # noqa: E402
 
 from app import handlers  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.deps import auth, classroom, db, media  # noqa: E402
+from app.deps import assessment, auth, classroom, db, media  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 
@@ -34,6 +34,22 @@ class FakeServices:
     def __init__(self) -> None:
         self.files: dict[str, dict] = {}
         self.groups: dict[str, dict] = {}
+        self.tasks: dict[str, dict] = {}
+
+    def task(self, owner: UUID, title: str, type_: str = "choice", status: str = "private") -> str:
+        tid = str(uuid4())
+        self.tasks[tid] = {"id": tid, "title": title, "type": type_, "status": status, "owner_id": str(owner)}
+        return tid
+
+    def assessment(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        out = []
+        for tid in body["task_ids"]:
+            t = self.tasks.get(tid)
+            if t:
+                out.append(t | {"auto_checked": t["type"] != "long",
+                                "usable": t["owner_id"] == body["user_id"] or t["status"] == "published"})
+        return httpx.Response(200, json=out)
 
     def file(self, owner: UUID, filename: str, mime: str) -> str:
         fid = str(uuid4())
@@ -63,6 +79,7 @@ def fakes() -> FakeServices:
     f = FakeServices()
     media.transport = httpx.MockTransport(f.media)
     classroom.transport = httpx.MockTransport(f.classroom)
+    assessment.transport = httpx.MockTransport(f.assessment)
     return f
 
 

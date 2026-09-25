@@ -104,6 +104,7 @@ async def create_lessons(
             student_id=body.student_id if body.kind == KIND_INDIVIDUAL else None,
             subject=subject,
             topic=body.topic,
+            exam_item_ids=list(dict.fromkeys(body.exam_item_ids or [])),
             starts_at=s,
             ends_at=s + duration,
             video_url=body.video_url,
@@ -175,6 +176,8 @@ async def update_lesson(
         await logic.flush_or_conflict(session)
         logic.plan_reminders(session, targets)
 
+    if "exam_item_ids" in data:
+        data["exam_item_ids"] = list(dict.fromkeys(data["exam_item_ids"] or []))
     for t in targets:
         for field, value in data.items():
             setattr(t, field, value)

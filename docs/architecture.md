@@ -15,7 +15,8 @@ flowchart LR
     end
     identity & classroom & schedule & content & assessment & academic & marketplace & billing & video & moderation -- события --> MQ
     MQ --> notification & audit & chat & academic & billing & schedule & moderation
-    assessment -- задачи на проверку --> MQ --> runner[code-runner<br/>песочница]
+    assessment -- команда assessment.code --> MQ --> assessment
+    assessment -- /run, сеть sandbox --> runner[code-runner<br/>песочница]
     video <--> LK[LiveKit]
     billing <--> YK[ЮKassa]
 ```
@@ -60,7 +61,7 @@ flowchart LR
 
 - Один topic-exchange `events`. Ключ маршрутизации = имя события, например `schedule.lesson.cancelled`.
 - Каждый сервис-получатель заводит свою очередь и подписывается на нужные шаблоны (`schedule.#`, `*.lesson.*`).
-- Для задач, которые нужно выполнить один раз (проверка кода, отправка письма), — отдельные рабочие очереди: `code-runner.jobs`, `notification.email`.
+- Для задач, которые нужно выполнить один раз (проверка кода, отправка письма), — отдельные рабочие очереди (команды): `assessment.code`, `notification.email`.
 - Неудачные сообщения — повтор с задержкой (3 попытки), затем dead-letter очередь для разбора.
 
 **Формат события:**
@@ -91,8 +92,8 @@ flowchart LR
 | `content.item.submitted` | content | moderation |
 | `assessment.task.submitted` | assessment | moderation |
 | `assessment.homework.assigned` / `graded` | assessment | notification, academic (автооценка) |
-| `assessment.code.submitted` | assessment | code-runner |
-| `coderunner.result.ready` | code-runner | assessment |
+| `assessment.task.published` / `rejected` / `unpublished` / `deleted` | assessment | moderation, notification |
+| `assessment.submission.checked` / `reviewed` | assessment | notification (проверка педагогом) |
 | `moderation.decision.made` | moderation | content / assessment / marketplace / billing, notification |
 | `marketplace.request.published` | marketplace | notification (репетиторам по предмету) |
 | `marketplace.request.agreed` | marketplace | classroom (привязка), schedule, notification |
@@ -136,6 +137,7 @@ flowchart LR
 - Проверка доступа при создании — синхронно `classroom /internal/groups/{id}`, `/internal/links`
 - Позже (этап 4): статус оплаты участника, автоотмена без оплаты
 
+- У занятия, кроме темы, — `exam_item_ids`: задания ЕГЭ/ОГЭ, которые на нём разбираются (каталог — в assessment, здесь только id)
 ### academic
 - `people` — реплика имён из identity
 - `grade_types` — справочник типов оценок (ведёт модератор, без весов; значения по умолчанию — в миграции)
@@ -148,11 +150,12 @@ flowchart LR
 ### content
 - `subjects` — справочник предметов (значения по умолчанию — в миграции)
 - `nodes` — курс / раздел / модуль (parent_id, course_id — корень), owner_id, title, description, position; у курса — status (private / pending / published / rejected), review_comment, published_at
-- `materials` — kind (text / card / video / pdf / file / link), body (Markdown с формулами LaTeX), файл из media (id, имя, тип, размер), url, position
+- `materials` — kind (text / card / video / pdf / file / link / task), task_id — задача из банка assessment (только с автопроверкой), body (Markdown с формулами LaTeX), файл из media (id, имя, тип, размер), url, position
 - `material_progress` — просмотрено, позиция видео; `favorites`
 - Реплики: `people` (имена авторов), `rel_links` (ученики видят приватную библиотеку своих педагогов)
 - Доступ: опубликованное — всем, включая гостей (`auth.optional`); приватное — автору, модераторам и привязанным ученикам; на модерации курс заблокирован для правок
 - Публикация: `content.course.submitted` → очередь moderation → `moderation.decision.made` → `content.course.published|rejected`; курсы модераторов публикуются сразу
+- Конструктор курсов: в модуль рядом с теорией добавляются задачи из банка (`assessment /internal/tasks/lookup` — доступна ли и с автопроверкой ли); при отправке курса на модерацию свои неопубликованные задачи идут вместе с ним
 - Отчёт о просмотрах для педагога — по группе (`classroom /internal/groups`) или ученику
 
 ### moderation
@@ -161,17 +164,24 @@ flowchart LR
 - Заявки создаются событиями других сервисов (`content.course.submitted`), решение уходит событием `moderation.decision.made`
 
 ### assessment
-- `tasks` — id, author_id, node_id, type (choice / short / long / code), statement, visibility, moderation_status, version
-- `task_choices` — task_id, text, is_correct
-- `task_answer_patterns` — task_id, mode (exact / regex), pattern
-- `task_code_spec` — task_id, language, time_limit_s, memory_limit_mb
-- `task_test_cases` — task_id, position, input, expected_output (скрыты от ученика)
-- `tests` — id, author_id, title, order_mode (fixed / random), shuffle_choices, time_limit_mode (none / total / per_task), time_limit_s, proctoring
-- `test_tasks` — test_id, task_id, position, points
-- `assignments` — id, test_id, teacher_id, target (group / student), kind (homework / live), deadline, auto_grade_to_journal, plan_lesson_id
-- `attempts` — id, assignment_id, student_id, attempt_no, started_at, submitted_at, status, score, task_order (JSON)
-- `answers` — attempt_id, task_id, payload, is_correct, score, teacher_comment, checked_at
-- `code_runs` — answer_id, status, failed_case_no, runtime_ms
+Этап 2.3 — банк задач и решения (тесты, ДЗ и КТП — этапы 2.4–2.5):
+- `topics` — общий рубрикатор «предмет → раздел → тема» (subject_id и название — из справочника content, parent_id — раздел); ведут модераторы, базовый набор создаётся фоновой задачей при пустой таблице
+- `tasks` — owner_id, topic_id (предмет задачи берётся из темы; без темы задачу нельзя отправить в публичный банк), type (choice / short / long / code), title, statement (Markdown + LaTeX), subject, difficulty 1–3, tags (GIN-индекс), explanation, file_mode (none / optional / required — файл с развёрнутым ответом), answers (JSON: exact / regex), для кода — language, starter_code, time_limit_s, memory_limit_mb; status (private / pending / published / rejected), based_on_id (копия из банка)
+- `task_options` — task_id, text, is_correct; `task_tests` — task_id, position, input, expected (скрыты от ученика)
+- `exams` / `exam_items` — каталог ЕГЭ и ОГЭ: экзамен по предмету и его задания по номерам (нумерация ФИПИ, правят модераторы); у задачи `exam_item_ids` — к каким заданиям она относится
+- `exam_marks` — отметки педагога по заданиям экзамена для ученика или группы: «пройдено» (с датой) и примечание (ученику не показывается)
+- Прогресс по заданию экзамена считается на лету из `submissions`: сколько разных задач пробовал, сколько решил верно, попытки; для группы — по составу из `classroom /internal/groups`
+- `course_tasks` — какие задачи стоят в курсах (для модерации пакетом с курсом)
+- `submissions` — student_id, task_id, context (practice — модуль курса / assignment — ДЗ), answer (JSON: варианты, текст или **полный код каждой попытки**), files (из media, purpose `answer`), status (checking / correct / incorrect / error / pending_review / reviewed), score, failed_case, failure, run_log (протокол по тестам — только педагогу), teacher_comment
+- Проверка: выбор и короткий ответ — сразу (нормализация регистра, пробелов, ё/е, запятой); код — команда `assessment.code` → code-runner; развёрнутый ответ — педагог ученика
+- Педагог видит историю ученика (`GET /students/{id}/submissions`) — только у привязанных учеников (реплика `rel_links`)
+- Реплики: `people`, `rel_links`
+
+### code-runner
+- Без БД и без брокера: только `POST /run` с внутренним токеном, во внутренней Docker-сети `sandbox` (`internal: true`) — выхода в интернет нет, из других сервисов доступен только assessment
+- Контейнер: read-only ФС, tmpfs /tmp, без capabilities, no-new-privileges, лимит процессов и памяти, пользователь nobody
+- Каждый запуск: отдельный процесс `python -I` с rlimit (CPU, память, размер файлов, дескрипторы, процессы), пустое окружение; остановка на первом упавшем тесте
+- В облаке — отдельная группа узлов (или gVisor/Firecracker) без доступа в сеть
 
 ### marketplace
 - `tutor_profiles` — user_id, bio, photo_media_id, subjects, levels, formats, price_from, rating_avg, rating_count, education_verified, payments_enabled, is_searchable
@@ -244,9 +254,9 @@ flowchart LR
 7. Если за час пришёл спор — платёж `disputed`, задача в **moderation**. Иначе escrow → баланс педагога минус 10% комиссии на счёт платформы.
 
 ### Проверка кода
-1. Ученик отправляет решение → **assessment** сохраняет ответ, кладёт задачу в очередь `code-runner.jobs`.
-2. **code-runner** запускает код в одноразовом контейнере без сети, с лимитами CPU/памяти/времени, прогоняет тест-кейсы.
-3. Результат (`passed` или номер упавшего кейса) → `coderunner.result.ready` → assessment → ученику через WebSocket.
+1. Ученик отправляет решение → **assessment** сохраняет код (статус `checking`) и в той же транзакции кладёт команду в очередь `assessment.code`.
+2. Обработчик очереди (по одному сообщению) вызывает **code-runner** `/run`: код выполняется без сети, с лимитами CPU/памяти/времени, по тест-кейсам.
+3. Результат (верно или номер упавшего теста и причина) сохраняется в попытке; ученик видит его в интерфейсе (опрос раз в ~1 с), педагог — ещё и протокол по тестам.
 
 ### Открытая заявка
 1. Ученик публикует заявку → **marketplace** → `marketplace.request.published` → **notification** рассылает репетиторам по предмету.

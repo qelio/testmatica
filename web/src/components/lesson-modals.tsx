@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { ExamItemsByIds, ExamItemsField } from "@/components/exams";
 import { Alert, Badge, Button, Field, Modal, Select } from "@/components/ui";
 import { classroom, type Lesson, type Repeat, schedule, type Scope } from "@/lib/api";
 import {
@@ -90,6 +91,8 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
   const [time, setTime] = useState(toTimeInput(initial));
   const [duration, setDuration] = useState(45);
   const [subject, setSubject] = useState("");
+  const [topic, setTopic] = useState("");
+  const [examItems, setExamItems] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState("");
   const [repeat, setRepeat] = useState(false);
   // null — пользователь дни не выбирал: повторяем в день недели выбранной даты.
@@ -127,6 +130,8 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
         starts_at: fromInputs(date, time).toISOString(),
         duration_min: duration,
         subject: subject || null,
+        topic: topic || null,
+        exam_item_ids: examItems,
         video_url: videoUrl || null,
         repeat: repeatBody,
         timezone: timezone(),
@@ -179,6 +184,8 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
         ))}
       </Select>
       <Field label="Предмет" placeholder="Если пусто — предмет группы" value={subject} onChange={(e) => setSubject(e.target.value)} />
+      <Field label="Тема урока" value={topic} maxLength={300} onChange={(e) => setTopic(e.target.value)} />
+      <ExamItemsField value={examItems} onChange={setExamItems} />
       <Field
         label="Ссылка на видеозвонок"
         placeholder="https://… (Zoom, Meet и т. д.)"
@@ -328,6 +335,14 @@ function LessonDetails({
           <>
             <dt className="text-fg-soft">Тема</dt>
             <dd>{lesson.topic}</dd>
+          </>
+        )}
+        {lesson.exam_item_ids.length > 0 && (
+          <>
+            <dt className="text-fg-soft">ЕГЭ / ОГЭ</dt>
+            <dd>
+              <ExamItemsByIds ids={lesson.exam_item_ids} />
+            </dd>
           </>
         )}
         {cancelled && lesson.cancel_reason && (
@@ -482,6 +497,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
   const [duration, setDuration] = useState(lesson.duration_min);
   const [subject, setSubject] = useState(lesson.subject ?? "");
   const [topic, setTopic] = useState(lesson.topic ?? "");
+  const [examItems, setExamItems] = useState(lesson.exam_item_ids);
   const [videoUrl, setVideoUrl] = useState(lesson.video_url ?? "");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
@@ -500,6 +516,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
             duration_min: duration,
             subject: subject || null,
             topic: topic || null,
+            exam_item_ids: examItems,
             video_url: videoUrl || null,
           });
           onDone();
@@ -521,6 +538,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
       </Select>
       <Field label="Предмет" value={subject} onChange={(e) => setSubject(e.target.value)} />
       <Field label="Тема урока" value={topic} onChange={(e) => setTopic(e.target.value)} />
+      <ExamItemsField value={examItems} onChange={setExamItems} />
       <Field label="Ссылка на видеозвонок" placeholder="https://…" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
       <div className="flex gap-2">
         <Button type="button" variant="secondary" onClick={onBack}>

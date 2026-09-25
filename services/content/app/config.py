@@ -6,6 +6,7 @@ class Settings(CommonSettings):
 
     media_url: str = "http://media:8000"
     classroom_url: str = "http://classroom:8000"
+    assessment_url: str = "http://assessment:8000"
 
 
 settings = Settings()
