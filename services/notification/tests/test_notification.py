@@ -251,3 +251,12 @@ async def test_assignment_notifications(client):
         "submission_id": str(uuid4()), "task_id": str(uuid4()), "task_title": "X", "student_id": str(a), "score": 1,
         "comment": "", "context_type": "assignment", "context_id": str(uuid4())}))
     assert len((await client.get("/notifications", headers=bearer(a))).json()["items"]) == 1
+
+
+async def test_plan_template_notifications(client):
+    author = uuid4()
+    c = consumer("notification.academic", handlers.on_academic_event)
+    await c.process(make_envelope("academic.plan_template.rejected", {
+        "template_id": str(uuid4()), "title": "Дроби", "author_id": str(author), "comment": "Нет результатов уроков"}))
+    item = (await client.get("/notifications", headers=bearer(author, ["teacher"]))).json()["items"][0]
+    assert (item["title"], item["body"]) == ("КТП «Дроби» не прошло проверку", "Нет результатов уроков")

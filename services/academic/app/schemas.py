@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 AttendanceStatus = Literal["present", "absent", "late", "sick"]
 
@@ -93,6 +93,7 @@ class JournalLesson(BaseModel):
     subject: str | None
     topic: str | None
     started: bool
+    ktp: list[str] = Field(default_factory=list, description="Темы уроков КТП, привязанных к занятию")
 
 
 class JournalStudent(BaseModel):
@@ -121,3 +122,167 @@ class SubjectGrades(BaseModel):
 class MyGrades(BaseModel):
     subjects: list[SubjectGrades]
     stats: Stats
+
+
+# ---------- КТП ----------
+
+
+def _squash(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = " ".join(value.split())
+    return value or None
+
+
+class PlanItem(BaseModel):
+    """Материал «к уроку» или «на дом»: модуль библиотеки, тест, ссылка или просто заметка."""
+
+    kind: Literal["module", "test", "link", "note"]
+    ref_id: UUID | None = None
+    title: str = Field(min_length=1, max_length=300)
+    url: str | None = Field(None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _check(self) -> "PlanItem":
+        if self.kind in ("module", "test") and self.ref_id is None:
+            raise ValueError("Не указан модуль или тест")
+        if self.kind == "link" and not (self.url or "").startswith(("http://", "https://")):
+            raise ValueError("Ссылка должна начинаться с http:// или https://")
+        return self
+
+
+class LessonIn(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+    goals: str = Field("", max_length=5000)
+    class_items: list[PlanItem] = Field(default_factory=list, max_length=20)
+    home_items: list[PlanItem] = Field(default_factory=list, max_length=20)
+    exam_item_ids: list[UUID] = Field(default_factory=list, max_length=10)
+
+    _topic = field_validator("topic")(_squash)
+
+
+class TemplateIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    subject: str | None = Field(None, max_length=80)
+    level: str | None = Field(None, max_length=40)
+    description: str = Field("", max_length=5000)
+    lessons: list[LessonIn] = Field(default_factory=list, max_length=300)
+
+    _title = field_validator("title", "subject", "level")(_squash)
+
+
+class TemplateLessonOut(LessonIn):
+    id: UUID
+
+
+class TemplateSummary(BaseModel):
+    id: UUID
+    title: str
+    subject: str | None
+    level: str | None
+    status: str
+    owner_id: UUID
+    author_name: str
+    lessons_count: int
+    updated_at: datetime
+
+
+class TemplateOut(TemplateSummary):
+    description: str
+    review_comment: str | None
+    based_on_id: UUID | None
+    can_edit: bool
+    lessons: list[TemplateLessonOut]
+
+
+class PlanCreate(BaseModel):
+    target_type: Literal["student", "group"]
+    target_id: UUID
+    title: str | None = Field(None, max_length=200)
+    subject: str | None = Field(None, max_length=80)
+    template_id: UUID | None = Field(None, description="Взять уроки из шаблона; без него — пустой план (с нуля или постепенно)")
+    start_date: date | None = None
+    distribute: bool = Field(True, description="Сразу разложить уроки по занятиям расписания с даты начала")
+
+    _title = field_validator("title", "subject")(_squash)
+
+
+class PlanUpdate(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=200)
+    subject: str | None = Field(None, max_length=80)
+    start_date: date | None = None
+
+    _title = field_validator("title", "subject")(_squash)
+
+
+class PlanLessonUpdate(BaseModel):
+    topic: str | None = Field(None, min_length=1, max_length=300)
+    goals: str | None = Field(None, max_length=5000)
+    class_items: list[PlanItem] | None = Field(None, max_length=20)
+    home_items: list[PlanItem] | None = Field(None, max_length=20)
+    exam_item_ids: list[UUID] | None = Field(None, max_length=10)
+    planned_date: date | None = None
+    schedule_lesson_id: UUID | None = None
+    done: bool | None = None
+
+    _topic = field_validator("topic")(_squash)
+
+
+class PlanLessonOut(LessonIn):
+    id: UUID
+    position: int
+    planned_date: date | None
+    schedule_lesson_id: UUID | None
+    done: bool
+
+
+class Slot(BaseModel):
+    """Занятие цели в расписании — куда можно поставить урок КТП."""
+
+    id: UUID
+    starts_at: datetime
+    topic: str | None
+
+
+class PlanSummary(BaseModel):
+    id: UUID
+    title: str
+    subject: str | None
+    target_type: str
+    target_id: UUID
+    target_title: str
+    lessons_count: int
+    done_count: int
+    next_topic: str | None
+    next_date: date | None
+    updated_at: datetime
+
+
+class PlanOut(BaseModel):
+    id: UUID
+    title: str
+    subject: str | None
+    target_type: str
+    target_id: UUID
+    target_title: str
+    template_id: UUID | None
+    start_date: date | None
+    lessons: list[PlanLessonOut]
+    slots: list[Slot] = Field(description="Занятия цели от даты начала — для привязки уроков")
+    updated_at: datetime
+
+
+class DistributeIn(BaseModel):
+    from_date: date | None = Field(None, description="С какого дня раскладывать; по умолчанию — дата начала плана или сегодня")
+    tz: str = Field("Europe/Moscow", max_length=64)
+
+
+class DistributeOut(BaseModel):
+    placed: int
+    left: int = Field(description="Урокам не хватило занятий в расписании")
+
+
+class LessonKtp(BaseModel):
+    plan_id: UUID
+    plan_title: str
+    lesson: PlanLessonOut

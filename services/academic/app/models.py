@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, SmallInteger, String, Text, func, text
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, SmallInteger, String, Text, Uuid, func, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from testmatica_common.ids import uuid7
 from testmatica_common.messaging import messaging_tables
 
@@ -98,3 +99,96 @@ class Attendance(Base):
     subject: Mapped[str | None] = mapped_column(String(80))
     status: Mapped[str] = mapped_column(String(10))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ---------- учебное планирование (КТП) ----------
+# Материалы «к уроку» и «на дом» — список ссылок: [{"kind": "module" | "test" | "link" | "note", "ref_id", "title", "url"}].
+# Модули лежат в content, тесты — в assessment; здесь только ссылки и названия для показа.
+
+TEMPLATE_PRIVATE, TEMPLATE_PENDING, TEMPLATE_PUBLISHED, TEMPLATE_REJECTED = "private", "pending", "published", "rejected"
+
+
+class PlanTemplate(Base):
+    """Шаблон КТП: список уроков без дат. Свой, чужой из библиотеки (копия) или публикуемый через модерацию."""
+
+    __tablename__ = "plan_templates"
+    __table_args__ = (
+        CheckConstraint("status IN ('private', 'pending', 'published', 'rejected')", name="status_valid"),
+        Index("ix_plan_templates_owner", "owner_id", "updated_at"),
+        Index("ix_plan_templates_catalog", "status", "subject"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    owner_id: Mapped[UUID]
+    title: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str | None] = mapped_column(String(80))
+    level: Mapped[str | None] = mapped_column(String(40))  # «7 класс», «ОГЭ», «Начинающие»
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(10), default=TEMPLATE_PRIVATE)
+    review_comment: Mapped[str | None] = mapped_column(Text)
+    based_on_id: Mapped[UUID | None]
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    lessons: Mapped[list["TemplateLesson"]] = relationship(
+        lazy="selectin", cascade="all, delete-orphan", order_by="TemplateLesson.position"
+    )
+
+
+class TemplateLesson(Base):
+    __tablename__ = "template_lessons"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    template_id: Mapped[UUID] = mapped_column(ForeignKey("plan_templates.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    topic: Mapped[str] = mapped_column(String(300))
+    goals: Mapped[str] = mapped_column(Text, default="")  # планируемые результаты
+    class_items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    home_items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    exam_item_ids: Mapped[list[UUID]] = mapped_column(ARRAY(Uuid), default=list, server_default="{}")
+
+
+class Plan(Base):
+    """КТП класса, группы или ученика: уроки с датами. Создаётся с нуля, постепенно или из шаблона
+    (один шаблон — много привязок, у каждой свои даты)."""
+
+    __tablename__ = "plans"
+    __table_args__ = (
+        CheckConstraint("target_type IN ('student', 'group')", name="target_type_valid"),
+        Index("ix_plans_teacher", "teacher_id", "updated_at"),
+        Index("ix_plans_target", "target_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    teacher_id: Mapped[UUID]
+    target_type: Mapped[str] = mapped_column(String(10))
+    target_id: Mapped[UUID]
+    target_title: Mapped[str] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(String(200))
+    subject: Mapped[str | None] = mapped_column(String(80))
+    template_id: Mapped[UUID | None]
+    start_date: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    lessons: Mapped[list["PlanLesson"]] = relationship(lazy="selectin", cascade="all, delete-orphan", order_by="PlanLesson.position")
+
+
+class PlanLesson(Base):
+    """Урок КТП. Привязывается к занятию в расписании; к одному занятию — несколько уроков КТП (ТЗ)."""
+
+    __tablename__ = "plan_lessons"
+    __table_args__ = (Index("ix_plan_lessons_schedule", "schedule_lesson_id"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    plan_id: Mapped[UUID] = mapped_column(ForeignKey("plans.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    topic: Mapped[str] = mapped_column(String(300))
+    goals: Mapped[str] = mapped_column(Text, default="")
+    class_items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    home_items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    exam_item_ids: Mapped[list[UUID]] = mapped_column(ARRAY(Uuid), default=list, server_default="{}")
+    planned_date: Mapped[date | None] = mapped_column(Date)
+    schedule_lesson_id: Mapped[UUID | None]
+    done: Mapped[bool] = mapped_column(Boolean, default=False)
