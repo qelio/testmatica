@@ -94,3 +94,31 @@ class Recording(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ProctorRecording(Base):
+    """Запись экрана ученика в тесте с прокторингом (WebM в S3, по дорожке). Хранится 14 дней, видит педагог (ТЗ, раздел 7).
+    Если ученик перезапускал показ экрана — у попытки несколько файлов."""
+
+    __tablename__ = "proctor_recordings"
+    __table_args__ = (
+        CheckConstraint("status IN ('recording', 'ready', 'failed', 'expired')", name="status_valid"),
+        Index("ix_proctor_recordings_assignment", "assignment_id", "student_id", "started_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    assignment_id: Mapped[UUID]
+    teacher_id: Mapped[UUID]
+    student_id: Mapped[UUID]
+    attempt_id: Mapped[UUID | None]
+    title: Mapped[str] = mapped_column(String(200))
+    track_sid: Mapped[str] = mapped_column(String(64))
+    egress_id: Mapped[str] = mapped_column(String(64), unique=True)
+    key: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(10), default=RECORDING)
+    size: Mapped[int | None] = mapped_column(BigInteger)
+    duration_s: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(String(300))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

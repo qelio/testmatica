@@ -9,6 +9,7 @@ class Settings(CommonSettings):
     classroom_url: str = "http://classroom:8000"
     content_url: str = "http://content:8000"
     schedule_url: str = "http://schedule:8000"
+    billing_url: str = "http://billing:8000"
 
     # Не чаще одной отправки кода в N секунд от одного ученика — песочница общая.
     code_submit_interval_seconds: float = 3

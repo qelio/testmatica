@@ -396,6 +396,7 @@ class AssignIn(BaseModel):
     max_attempts: int | None = Field(1, ge=1, le=50, description="Сколько попыток; null — без ограничений (засчитывается лучшая)")
     grade_to_journal: bool = False
     grade_type_id: UUID | None = None
+    proctoring: bool = Field(False, description="Прокторинг — тариф «Базовый»; ученик даёт согласие при старте")
 
     _title = field_validator("title")(_clean)
 
@@ -436,6 +437,7 @@ class AssignmentStudentOut(BaseModel):
     full_name: str
     allowed_attempts: int
     attempts: list[AttemptBrief]
+    proctor_alerts: int = Field(0, description="Прокторинг: сколько раз уходил со вкладки или прекращал показ экрана")
 
 
 class AssignmentOut(BaseModel):
@@ -445,6 +447,7 @@ class AssignmentOut(BaseModel):
     test_title: str = Field(description="Название теста на момент назначения — для педагога")
     description: str
     kind: str
+    proctoring: bool = False
     target_type: str
     target_id: UUID
     target_title: str
@@ -501,9 +504,42 @@ class AttemptOut(BaseModel):
     grade: int | None
     checked: bool
     server_time: datetime = Field(description="Для точного таймера на клиенте")
+    proctoring: bool = False
     tasks: list[AttemptTask]
 
 
 class DraftIn(BaseModel):
     answer: AnswerIn
     file_ids: list[UUID] = Field(default_factory=list, max_length=5)
+
+
+class StartIn(BaseModel):
+    consent: bool = Field(False, description="Согласие на прокторинг — обязательно, если он включён")
+
+
+class ProctorEventIn(BaseModel):
+    kind: Literal["screen_share_started", "screen_share_stopped", "tab_hidden", "tab_visible", "focus_lost", "focus_back",
+                  "camera_requested", "camera_on", "camera_off"]
+
+
+class ProctorEventOut(BaseModel):
+    kind: str
+    at: datetime
+
+
+class ProctorStudent(BaseModel):
+    id: UUID
+    full_name: str
+    attempt_id: UUID | None = Field(description="Идущая попытка")
+
+
+class ProctorAccess(BaseModel):
+    """Для video: кто этот пользователь в прокторинге назначения."""
+
+    role: Literal["teacher", "student"]
+    assignment_id: UUID
+    teacher_id: UUID
+    title: str
+    closed: bool
+    attempt_id: UUID | None = Field(None, description="Ученику — идущая попытка (без неё к экрану не подключиться)")
+    students: list[ProctorStudent] = Field(default_factory=list, description="Педагогу — ученики назначения")

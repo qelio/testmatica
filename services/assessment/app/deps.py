@@ -2,6 +2,7 @@ from testmatica_common.auth import Auth, TokenVerifier
 from testmatica_common.db import Database
 from testmatica_common.internal import InternalClient
 from testmatica_common.messaging import Outbox
+from testmatica_common.plans import Plans
 
 from .config import settings
 
@@ -13,3 +14,5 @@ media = InternalClient(settings.media_url, settings.internal_token)
 content = InternalClient(settings.content_url, settings.internal_token)
 classroom = InternalClient(settings.classroom_url, settings.internal_token)
 schedule = InternalClient(settings.schedule_url, settings.internal_token)
+billing = InternalClient(settings.billing_url, settings.internal_token)
+plans = Plans(billing)

@@ -8,7 +8,7 @@ from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import people, rooms, storage
-from .api import internal, recordings
+from .api import internal, proctoring, recordings
 from .api import rooms as rooms_api
 from .config import settings
 from .deps import db
@@ -39,4 +39,5 @@ install_error_handlers(app)
 app.include_router(health_router(db))
 app.include_router(rooms_api.router)
 app.include_router(recordings.router)
+app.include_router(proctoring.router)
 app.include_router(internal.router)

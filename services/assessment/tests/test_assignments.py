@@ -282,3 +282,44 @@ async def test_plain_test_unlimited_attempts(client, fakes):
         await client.post(f"/attempts/{t['id']}/submit", headers=student(pupil))
     view = (await client.get(f"/assignments/{a['id']}", headers=student(pupil))).json()
     assert view["can_start"] and view["attempts_left"] is None
+
+
+async def test_proctoring(client, fakes):
+    from .conftest import BASIC_TEACHERS, INTERNAL
+
+    teacher, pupil, other = uuid4(), uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:1])
+    await link(teacher, pupil)
+    # Прокторинг — только на «Базовом».
+    free = await client.post(f"/tests/{test['id']}/assign", json={"target_type": "student", "target_id": str(pupil), "proctoring": True},
+                             headers=bearer(teacher))
+    assert free.status_code == 403 and free.json()["error"]["code"] == "plan_required"
+    BASIC_TEACHERS.add(str(teacher))
+    a = await assign(client, teacher, test, target_type="student", target_id=str(pupil), proctoring=True)
+    assert a["proctoring"] is True
+
+    # Без согласия не начать; с согласием — попытка и событие «согласие».
+    no = await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))
+    assert no.json()["error"]["code"] == "consent_required"
+    t = (await client.post(f"/assignments/{a['id']}/start", json={"consent": True}, headers=student(pupil))).json()
+    assert t["proctoring"] is True
+    again = await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))  # вернуться к идущей — без повторного согласия
+    assert again.json()["id"] == t["id"]
+
+    for kind in ("screen_share_started", "tab_hidden", "tab_visible", "focus_lost", "focus_back"):
+        assert (await client.post(f"/attempts/{t['id']}/proctor-events", json={"kind": kind}, headers=student(pupil))).status_code == 204
+    assert (await client.post(f"/attempts/{t['id']}/proctor-events", json={"kind": "consent"}, headers=student(pupil))).status_code == 422
+    assert (await client.post(f"/attempts/{t['id']}/proctor-events", json={"kind": "tab_hidden"}, headers=student(other))).status_code == 404
+    events = (await client.get(f"/attempts/{t['id']}/proctor-events", headers=bearer(teacher))).json()
+    assert [e["kind"] for e in events] == ["consent", "screen_share_started", "tab_hidden", "tab_visible", "focus_lost", "focus_back"]
+    view = (await client.get(f"/assignments/{a['id']}", headers=bearer(teacher))).json()
+    assert view["students"][0]["proctor_alerts"] == 2  # вкладка и окно
+
+    # Доступ к комнате прокторинга — для video.
+    who = (await client.get(f"/internal/proctoring/{a['id']}", params={"user_id": str(pupil)}, headers=INTERNAL)).json()
+    assert who["role"] == "student" and who["attempt_id"] == t["id"]
+    boss = (await client.get(f"/internal/proctoring/{a['id']}", params={"user_id": str(teacher)}, headers=INTERNAL)).json()
+    assert boss["role"] == "teacher" and boss["students"][0]["attempt_id"] == t["id"]
+    stranger = await client.get(f"/internal/proctoring/{a['id']}", params={"user_id": str(other)}, headers=INTERNAL)
+    assert stranger.status_code == 404

@@ -13,7 +13,7 @@ from testmatica_common.testing import TestTokens  # noqa: E402
 
 from app import storage  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.deps import auth, billing, db, livekit, plans, schedule  # noqa: E402
+from app.deps import assessment, auth, billing, db, livekit, plans, schedule  # noqa: E402
 from app.lk import LiveKitError, WebhookEvent  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
@@ -42,6 +42,15 @@ class FakeLiveKit:
     def token(self, room, identity, name, teacher, screen_share, ttl):
         self.tokens.append({"room": room, "identity": identity, "name": name, "teacher": teacher, "screen_share": screen_share})
         return f"token-{identity}"
+
+    def proctor_token(self, room, identity, name, teacher, metadata, ttl):
+        self.tokens.append({"room": room, "identity": identity, "name": name, "teacher": teacher, "metadata": metadata})
+        return f"proctor-token-{identity}"
+
+    async def start_track_recording(self, room, track_sid, filepath):
+        egress_id = f"EG_T{len(self.egress) + 1}"
+        self.egress[egress_id] = filepath
+        return egress_id
 
     async def create_room(self, name, max_participants):
         self.rooms[name] = max_participants
@@ -93,7 +102,8 @@ class FakeSchedule:
 @pytest.fixture(autouse=True)
 def lk(monkeypatch) -> FakeLiveKit:
     fake = FakeLiveKit()
-    for name in ("token", "create_room", "delete_room", "set_screen_share", "start_recording", "stop_recording"):
+    for name in ("token", "proctor_token", "create_room", "delete_room", "set_screen_share", "start_recording", "stop_recording",
+                 "start_track_recording"):
         monkeypatch.setattr(livekit, name, getattr(fake, name))
     monkeypatch.setattr(livekit, "public_url", fake.public_url)
     return fake
@@ -129,6 +139,34 @@ def fake_billing():
     billing.transport = httpx.MockTransport(handle)
     plans.reset()
     BASIC_TEACHERS.clear()
+
+
+class FakeAssessment:
+    """Доступ к прокторингу: assignment_id → {teacher_id, students: {id: attempt_id|None}}."""
+
+    def __init__(self) -> None:
+        self.assignments: dict[str, dict] = {}
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        a = self.assignments.get(request.url.path.split("/")[3])
+        user = request.url.params["user_id"]
+        not_found = httpx.Response(404, json={"error": {"code": "assignment_not_found", "message": "Не найден"}})
+        if a is None:
+            return not_found
+        base = {"assignment_id": request.url.path.split("/")[3], "teacher_id": a["teacher_id"], "title": "Контрольная", "closed": False}
+        if user == a["teacher_id"]:
+            students = [{"id": sid, "full_name": "Ученик", "attempt_id": att} for sid, att in a["students"].items()]
+            return httpx.Response(200, json=base | {"role": "teacher", "students": students, "attempt_id": None})
+        if user in a["students"]:
+            return httpx.Response(200, json=base | {"role": "student", "attempt_id": a["students"][user], "students": []})
+        return not_found
+
+
+@pytest.fixture(autouse=True)
+def proctored() -> FakeAssessment:
+    fake = FakeAssessment()
+    assessment.transport = httpx.MockTransport(fake.handler)
+    return fake
 
 
 @pytest.fixture(autouse=True)

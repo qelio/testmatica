@@ -946,8 +946,9 @@ export type Assignment = {
   max_score: number;
   grade_to_journal: boolean;
   grade_type_id: string | null;
+  proctoring: boolean;
   created_at: string;
-  students: { student_id: string; full_name: string; allowed_attempts: number; attempts: AttemptBrief[] }[];
+  students: { student_id: string; full_name: string; allowed_attempts: number; attempts: AttemptBrief[]; proctor_alerts: number }[];
   can_start: boolean;
 };
 export type AssignmentKind = "test" | "homework" | "live";
@@ -962,6 +963,7 @@ export type AssignInput = {
   deadline?: string | null;
   grade_to_journal?: boolean;
   grade_type_id?: string | null;
+  proctoring?: boolean;
 };
 export type AttemptTask = {
   task: TaskFull;
@@ -992,6 +994,7 @@ export type Attempt = {
   grade: number | null;
   checked: boolean;
   server_time: string;
+  proctoring: boolean;
   tasks: AttemptTask[];
 };
 
@@ -1084,7 +1087,11 @@ export const assessment = {
     return api<Assignment>(`${AS}/assignments/${id}/reassign?${qs}`, { method: "POST" });
   },
   closeAssignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}/close`, { method: "POST" }),
-  start: (assignmentId: string) => api<Attempt>(`${AS}/assignments/${assignmentId}/start`, { method: "POST" }),
+  start: (assignmentId: string, consent = false) =>
+    api<Attempt>(`${AS}/assignments/${assignmentId}/start`, { method: "POST", body: { consent } }),
+  proctorEvent: (attemptId: string, kind: ProctorEventKind) =>
+    api<void>(`${AS}/attempts/${attemptId}/proctor-events`, { method: "POST", body: { kind } }),
+  proctorEvents: (attemptId: string) => api<{ kind: string; at: string }[]>(`${AS}/attempts/${attemptId}/proctor-events`),
   attempt: (id: string) => api<Attempt>(`${AS}/attempts/${id}`),
   saveAnswer: (attemptId: string, taskId: string, answer: Submission["answer"], fileIds: string[] = []) =>
     api<Attempt>(`${AS}/attempts/${attemptId}/answers/${taskId}`, { method: "PUT", body: { answer, file_ids: fileIds } }),
@@ -1141,6 +1148,38 @@ export const video = {
   end: (lessonId: string) => api<VideoRoom>(`${VD}/rooms/${lessonId}/end`, { method: "POST" }),
   recordings: (lessonId?: string) => api<LessonRecording[]>(`${VD}/recordings${lessonId ? `?lesson_id=${lessonId}` : ""}`),
   deleteRecording: (id: string) => api<void>(`${VD}/recordings/${id}`, { method: "DELETE" }),
+  proctorJoin: (assignmentId: string) => api<ProctorJoin>(`${VD}/proctoring/${assignmentId}/join`, { method: "POST" }),
+  proctorRecordings: (assignmentId: string) => api<ProctorRecording[]>(`${VD}/proctoring/${assignmentId}/recordings`),
+};
+
+export type ProctorEventKind =
+  | "screen_share_started"
+  | "screen_share_stopped"
+  | "tab_hidden"
+  | "tab_visible"
+  | "focus_lost"
+  | "focus_back"
+  | "camera_requested"
+  | "camera_on"
+  | "camera_off";
+export type ProctorJoin = {
+  url: string;
+  token: string;
+  role: "teacher" | "student";
+  title: string;
+  students: { id: string; full_name: string; attempt_id: string | null }[];
+};
+export type ProctorRecording = {
+  id: string;
+  student_id: string;
+  student_name: string;
+  attempt_id: string | null;
+  status: "recording" | "ready" | "failed";
+  started_at: string;
+  duration_s: number | null;
+  url: string | null;
+  download_url: string | null;
+  expires_at: string | null;
 };
 
 // ---------- маркетплейс ----------

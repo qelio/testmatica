@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, SmallInteger, String, Text, UniqueConstraint, Uuid, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, SmallInteger, String, Text, UniqueConstraint, Uuid, false, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from testmatica_common.ids import uuid7
@@ -313,6 +313,8 @@ class Assignment(Base):
     items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     grade_to_journal: Mapped[bool] = mapped_column(Boolean, default=False)
     grade_type_id: Mapped[UUID | None]
+    # Прокторинг (тариф «Базовый»): демонстрация экрана ученика, камера по запросу, сигналы о смене вкладки (ТЗ, раздел 7).
+    proctoring: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # тест на уроке завершён
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -361,6 +363,7 @@ class Attempt(Base):
     percent: Mapped[float | None] = mapped_column(Float)
     grade: Mapped[int | None] = mapped_column(SmallInteger)
     checked: Mapped[bool] = mapped_column(Boolean, default=False)  # все ответы проверены (код, развёрнутые)
+    proctor_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # согласие на мониторинг
 
 
 class AttemptAnswer(Base):
@@ -373,3 +376,29 @@ class AttemptAnswer(Base):
     answer: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     files: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+PROCTOR_KINDS = (
+    "consent", "screen_share_started", "screen_share_stopped", "tab_hidden", "tab_visible", "focus_lost", "focus_back",
+    "camera_requested", "camera_on", "camera_off",
+)
+# Что считается нарушением — педагог видит их число у ученика.
+PROCTOR_ALERTS = ("screen_share_stopped", "tab_hidden", "focus_lost")
+
+
+class ProctorEvent(Base):
+    """Журнал прокторинга попытки: согласие, демонстрация экрана, смена вкладки, камера."""
+
+    __tablename__ = "proctor_events"
+    __table_args__ = (
+        CheckConstraint("kind IN (" + ", ".join(f"'{k}'" for k in PROCTOR_KINDS) + ")", name="kind_valid"),
+        Index("ix_proctor_events_attempt", "attempt_id", "at"),
+        Index("ix_proctor_events_assignment", "assignment_id", "at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    attempt_id: Mapped[UUID] = mapped_column(ForeignKey("attempts.id", ondelete="CASCADE"))
+    assignment_id: Mapped[UUID]
+    student_id: Mapped[UUID]
+    kind: Mapped[str] = mapped_column(String(24))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

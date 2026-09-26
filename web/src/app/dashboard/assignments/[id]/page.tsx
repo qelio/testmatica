@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Markdown } from "@/components/markdown";
-import { Alert, Badge, Button, Field, Spinner } from "@/components/ui";
+import { Alert, Badge, Button, Field, Modal, Spinner } from "@/components/ui";
 import { type Assignment, assessment } from "@/lib/api";
 import { attemptsText, bestAttempt, fmtLimit, KIND_LABELS, lastAttempt, studentStatus, summary } from "@/lib/assignments";
 import { fmtDateTime, fromInputs } from "@/lib/dates";
@@ -69,6 +69,7 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
           `баллов: ${a.max_score}`,
           fmtLimit(a.settings),
           a.grade_to_journal ? "оценка в журнал" : null,
+          a.proctoring ? "с прокторингом" : null,
         ]
           .filter(Boolean)
           .join(" · ")}
@@ -91,6 +92,14 @@ function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
         {s.inProgress > 0 && <span className="text-brand">решают сейчас: {s.inProgress}</span>}
         {s.toReview > 0 && <span className="text-tutor">ждут вашей проверки: {s.toReview}</span>}
         {s.avg !== null && <span>средний результат: {s.avg}%</span>}
+        {a.proctoring && (
+          <Link
+            href={`/dashboard/assignments/${a.id}/proctoring`}
+            className="rounded-xl bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-strong"
+          >
+            Наблюдение{s.inProgress ? ` · решают ${s.inProgress}` : ""}
+          </Link>
+        )}
         {a.kind === "live" && !a.closed && (
           <Button
             variant="secondary"
@@ -161,6 +170,7 @@ function StudentRow({
           </span>
         )}
         <Badge tone={st.tone}>{st.text}</Badge>
+        {a.proctoring && row.proctor_alerts > 0 && <Badge tone="warn">нарушений прокторинга: {row.proctor_alerts}</Badge>}
         {row.attempts.map((t) => (
           <Link key={t.id} href={`/dashboard/attempts/${t.id}`} className="text-sm text-brand hover:underline">
             {row.attempts.length > 1 ? `попытка ${t.number}` : "открыть"}
@@ -211,13 +221,18 @@ function StudentPanel({ a }: { a: Assignment }) {
   const st = studentStatus(a, row);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [consenting, setConsenting] = useState(false);
   const limit = fmtLimit(a.settings);
 
-  async function go() {
+  async function go(consent = false) {
+    if (a.proctoring && !consent) {
+      setConsenting(true);
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
-      const attempt = await assessment.start(a.id);
+      const attempt = await assessment.start(a.id, consent);
       router.push(`/dashboard/attempts/${attempt.id}`);
     } catch (e) {
       setError(errorText(e));
@@ -245,6 +260,7 @@ function StudentPanel({ a }: { a: Assignment }) {
             </li>
           )}
           <li>Ответы сохраняются сами; проверка — после того как вы сдадите работу.</li>
+          {a.proctoring && <li>Тест с прокторингом: педагог видит ваш экран, пока вы решаете.</li>}
           {a.not_open_yet && a.opens_at && <li>Тест откроется {fmtDateTime(a.opens_at)}.</li>}
           <li>
             {a.max_attempts === 1
@@ -258,12 +274,38 @@ function StudentPanel({ a }: { a: Assignment }) {
           <Button onClick={() => router.push(`/dashboard/attempts/${last.id}`)}>Продолжить</Button>
         ) : (
           a.can_start && (
-            <Button onClick={go} loading={busy}>
+            <Button onClick={() => go()} loading={busy}>
               {row?.attempts.length ? "Пройти ещё раз" : "Начать"}
             </Button>
           )
         )}
       </div>
+      <Modal open={consenting} onClose={() => setConsenting(false)} title="Тест с прокторингом">
+        <div className="space-y-3 text-sm">
+          <p>Во время теста педагог наблюдает за прохождением:</p>
+          <ul className="list-inside list-disc space-y-1 text-fg-soft">
+            <li>вы показываете <b className="text-fg">весь экран</b> — без этого тест закрыт;</li>
+            <li>педагог сразу видит, если вы переключились на другую вкладку, окно или свернули браузер;</li>
+            <li>педагог может включить вашу камеру — на это время появится отметка «камера включена»;</li>
+            <li>экран записывается, запись хранится 2 недели и доступна только педагогу.</li>
+          </ul>
+          <p className="text-fg-soft">Анализ лица и автоматические решения не применяются. Чат с педагогом работает как обычно.</p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button
+              loading={busy}
+              onClick={() => {
+                setConsenting(false);
+                void go(true);
+              }}
+            >
+              Согласен, начать тест
+            </Button>
+            <Button variant="secondary" onClick={() => setConsenting(false)}>
+              Отмена
+            </Button>
+          </div>
+        </div>
+      </Modal>
       {row && row.attempts.some((t) => t.status === "submitted") && (
         <div className="rounded-2xl border border-line bg-surface">
           <h2 className="border-b border-line px-5 py-3 font-medium">Мои попытки</h2>

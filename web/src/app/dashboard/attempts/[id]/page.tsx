@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { AttemptView } from "@/components/attempt-view";
+import { ProctorGuard, ProctorLog } from "@/components/proctor-guard";
 import { Alert, Spinner } from "@/components/ui";
 import { assessment } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -25,7 +26,16 @@ export default function AttemptPage() {
         {attempt.data.title}
         {attempt.data.number > 1 && <span className="text-fg-soft"> · попытка {attempt.data.number}</span>}
       </h1>
-      <AttemptView attempt={attempt.data} teacher={teacher} reload={attempt.reload} />
+      {attempt.data.proctoring && !teacher && attempt.data.status === "in_progress" ? (
+        <ProctorGuard attemptId={attempt.data.id} assignmentId={attempt.data.assignment_id}>
+          <AttemptView attempt={attempt.data} teacher={teacher} reload={attempt.reload} />
+        </ProctorGuard>
+      ) : (
+        <>
+          {attempt.data.proctoring && teacher && <ProctorLog attemptId={attempt.data.id} />}
+          <AttemptView attempt={attempt.data} teacher={teacher} reload={attempt.reload} />
+        </>
+      )}
     </div>
   );
 }

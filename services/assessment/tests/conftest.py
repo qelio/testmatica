@@ -14,7 +14,7 @@ from testmatica_common.testing import TestTokens, make_envelope  # noqa: E402
 
 from app import handlers, runner  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.deps import auth, classroom, code_runner, db, media, schedule  # noqa: E402
+from app.deps import auth, billing, classroom, code_runner, db, media, plans, schedule  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base, Topic  # noqa: E402
 
@@ -32,6 +32,10 @@ def bearer(user_id: UUID, roles=("teacher",)) -> dict:
 
 def student(user_id: UUID) -> dict:
     return bearer(user_id, ("student",))
+
+
+BASIC_TEACHERS: set[str] = set()  # педагоги на тарифе «Базовый»
+INTERNAL = {"X-Internal-Token": settings.internal_token}
 
 
 class Fakes:
@@ -96,6 +100,11 @@ def fakes() -> Fakes:
     media.transport = httpx.MockTransport(f.media)
     classroom.transport = httpx.MockTransport(f.classroom)
     schedule.transport = httpx.MockTransport(f.schedule)
+    billing.transport = httpx.MockTransport(
+        lambda r: httpx.Response(200, json={u: "basic" if u in BASIC_TEACHERS else "free" for u in json.loads(r.content)["user_ids"]})
+    )
+    plans.reset()
+    BASIC_TEACHERS.clear()
     return f
 
 

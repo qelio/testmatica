@@ -47,3 +47,33 @@ class RecordingOut(BaseModel):
     url: str | None = Field(None, description="Просмотр")
     download_url: str | None = None
     can_delete: bool
+
+
+# ---------- прокторинг ----------
+
+
+class ProctorStudentOut(BaseModel):
+    id: UUID
+    full_name: str
+    attempt_id: UUID | None
+
+
+class ProctorJoinOut(BaseModel):
+    url: str
+    token: str
+    role: str = Field(description="teacher — смотрит экраны; student — показывает свой")
+    title: str
+    students: list[ProctorStudentOut] = Field(default_factory=list, description="Педагогу — ученики назначения")
+
+
+class ProctorRecordingOut(BaseModel):
+    id: UUID
+    student_id: UUID
+    student_name: str
+    attempt_id: UUID | None
+    status: str
+    started_at: datetime
+    duration_s: int | None
+    url: str | None
+    download_url: str | None
+    expires_at: datetime | None
