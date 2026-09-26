@@ -308,6 +308,7 @@ export type Lesson = {
   series_id: string | null;
   teacher: PersonRef;
   paid: boolean;
+  trial: boolean;
   kind: "individual" | "group";
   group_id: string | null;
   title: string;
@@ -328,6 +329,7 @@ export type Repeat = { weekdays: number[]; interval_weeks: number; until?: strin
 
 export type LessonCreate = {
   kind: "individual" | "group";
+  trial?: boolean;
   group_id?: string | null;
   student_id?: string | null;
   starts_at: string;
@@ -352,7 +354,7 @@ export const schedule = {
   create: (data: LessonCreate) => api<{ count: number; lessons: Lesson[] }>(`${SC}/lessons`, { method: "POST", body: data }),
   update: (
     id: string,
-    data: { scope: Scope; starts_at?: string; duration_min?: number; subject?: string | null; topic?: string | null; exam_item_ids?: string[]; paid?: boolean; video_url?: string | null },
+    data: { scope: Scope; starts_at?: string; duration_min?: number; subject?: string | null; topic?: string | null; exam_item_ids?: string[]; paid?: boolean; trial?: boolean; video_url?: string | null },
   ) => api<Lesson>(`${SC}/lessons/${id}`, { method: "PATCH", body: data }),
   cancel: (id: string, scope: Scope, reason?: string | null) =>
     api<Lesson>(`${SC}/lessons/${id}/cancel`, { method: "POST", body: { scope, reason } }),
@@ -1250,6 +1252,85 @@ export const marketplace = {
     api<TutorReview>(`${MK}/reviews/${id}/dispute`, { method: "POST", body: { reason } }),
   removeReview: (id: string, reason: string) =>
     api<void>(`${MK}/moderation/reviews/${id}`, { method: "DELETE", body: { reason } }),
+
+  offers: (params: { subject_id?: string; level?: string; price_max?: number | "" }, authed: boolean) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    return api<GroupOffer[]>(`${MK}/offers?${qs}`, readOpts(authed));
+  },
+  offer: (id: string, authed: boolean) => api<GroupOffer>(`${MK}/offers/${id}`, readOpts(authed)),
+  tutorOffers: (tutorId: string, authed: boolean) => api<GroupOffer[]>(`${MK}/tutors/${tutorId}/offers`, readOpts(authed)),
+  myOffers: () => api<GroupOffer[]>(`${MK}/offers/mine`),
+  enrolledOffers: () => api<GroupOffer[]>(`${MK}/offers/enrolled`),
+  createOffer: (data: OfferInput) => api<GroupOffer>(`${MK}/offers`, { method: "POST", body: data }),
+  updateOffer: (id: string, data: OfferInput) => api<GroupOffer>(`${MK}/offers/${id}`, { method: "PUT", body: data }),
+  extendOffer: (id: string, enrollUntil: string, startDate?: string) =>
+    api<GroupOffer>(`${MK}/offers/${id}/extend`, { method: "POST", body: { enroll_until: enrollUntil, start_date: startDate ?? null } }),
+  startOffer: (id: string) => api<GroupOffer>(`${MK}/offers/${id}/start`, { method: "POST" }),
+  cancelOffer: (id: string) => api<GroupOffer>(`${MK}/offers/${id}/cancel`, { method: "POST" }),
+  joinOffer: (id: string) => api<GroupOffer>(`${MK}/offers/${id}/join`, { method: "POST" }),
+  leaveOffer: (id: string) => api<GroupOffer>(`${MK}/offers/${id}/leave`, { method: "POST" }),
+
+  pendingTrials: () => api<TrialFollowup[]>(`${MK}/trials/pending`),
+  answerTrial: (lessonId: string, decision: "continue" | "stop", comment: string) =>
+    api<TrialFollowup>(`${MK}/trials/${lessonId}/answer`, { method: "POST", body: { decision, comment } }),
+};
+
+export type OfferSchedule = {
+  weekdays: number[];
+  time: string;
+  duration_min: 30 | 45 | 60 | 90 | 120;
+  start_date: string;
+  lessons_count: number | null;
+  timezone: string;
+};
+export type OfferStatus = "recruiting" | "underfilled" | "started" | "closed" | "cancelled";
+export type GroupOffer = {
+  id: string;
+  tutor: { id: string; full_name: string; photo_url: string | null; rating: number | null; reviews_count: number };
+  title: string;
+  subject: SubjectRef;
+  levels: TutorLevel[];
+  description: string;
+  program: string[];
+  schedule: OfferSchedule;
+  price: number;
+  min_students: number;
+  max_students: number;
+  enroll_until: string;
+  private: boolean;
+  status: OfferStatus;
+  enrolled_count: number;
+  seats_left: number;
+  joinable: boolean;
+  enrolled: boolean;
+  is_owner: boolean;
+  share_url: string;
+  students: { id: string; full_name: string; enrolled_at: string }[] | null;
+  started_at: string | null;
+  created_at: string;
+};
+export type OfferInput = {
+  title: string;
+  subject_id: string;
+  levels: TutorLevel[];
+  description: string;
+  program: string[];
+  schedule: OfferSchedule;
+  price: number;
+  min_students: number;
+  max_students: number;
+  enroll_until: string;
+  private: boolean;
+};
+export type TrialFollowup = {
+  lesson_id: string;
+  tutor: { id: string; full_name: string; photo_url: string | null; rating: number | null; reviews_count: number };
+  title: string;
+  lesson_starts_at: string;
+  status: "pending" | "continue" | "stop";
+  comment: string;
+  answered_at: string | null;
+  reviewed: boolean;
 };
 
 export type ReviewStatus = "pending" | "approved" | "rejected" | "removed";

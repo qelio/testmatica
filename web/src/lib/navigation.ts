@@ -28,6 +28,7 @@ import {
   UserCog,
   UserRound,
   Users,
+  UsersRound,
   Wallet,
 } from "lucide-react";
 
@@ -55,6 +56,7 @@ export const NAV = {
     { title: "Тариф", href: "/dashboard/subscription", icon: Sparkles, ready: true },
     { title: "Профиль репетитора", href: "/dashboard/profile", icon: UserRound, ready: true },
     { title: "Заявки учеников", href: "/dashboard/requests", icon: Inbox, ready: true },
+    { title: "Наборы в группы", href: "/dashboard/offers", icon: UsersRound, ready: true },
     soon("Поддержка", "/dashboard/support", LifeBuoy),
   ],
   student: [
@@ -67,6 +69,7 @@ export const NAV = {
     { title: "ЕГЭ и ОГЭ", href: "/dashboard/exams", icon: Target, ready: true },
     { title: "Библиотека", href: "/dashboard/library", icon: BookOpen, ready: true },
     { title: "Найти репетитора", href: "/tutors", icon: Search, ready: true },
+    { title: "Группы", href: "/groups", icon: UsersRound, ready: true },
     { title: "Мои заявки", href: "/dashboard/requests", icon: FileText, ready: true },
     soon("Баланс", "/dashboard/balance", Wallet),
     soon("Поддержка", "/dashboard/support", LifeBuoy),

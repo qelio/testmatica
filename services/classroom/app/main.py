@@ -16,7 +16,15 @@ configure_logging(settings.service_name, settings.log_level)
 runtime = ServiceRuntime(settings, db)
 runtime.consumer("classroom.subjects", [(EVENTS_EXCHANGE, "content.subject.updated")], subjects_sync.on_subject_updated)
 runtime.consumer("classroom.identity", [(EVENTS_EXCHANGE, "identity.user.*")], people.on_identity_event)
-runtime.consumer("classroom.marketplace", [(EVENTS_EXCHANGE, "marketplace.deal.agreed")], deals.on_marketplace_event)
+runtime.consumer(
+    "classroom.marketplace",
+    [
+        (EVENTS_EXCHANGE, "marketplace.deal.agreed"),
+        (EVENTS_EXCHANGE, "marketplace.group_offer.started"),
+        (EVENTS_EXCHANGE, "marketplace.group_offer.joined"),
+    ],
+    deals.on_marketplace_event,
+)
 
 
 @asynccontextmanager

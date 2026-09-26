@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
 import { MonthGrid, rangeFor, TimeGrid, type View } from "@/components/calendar";
-import { CreateLessonModal, LessonModal } from "@/components/lesson-modals";
+import { CreateLessonModal, LessonModal, type LessonPreset } from "@/components/lesson-modals";
 import { Alert, Button, Spinner } from "@/components/ui";
 import { type Lesson, schedule } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { addDays, fmtDate, fmtDateTime } from "@/lib/dates";
+import { addDays, fmtDate, fmtDateTime, fromInputs } from "@/lib/dates";
 import { useLoad } from "@/lib/hooks";
 
 const VIEWS: { value: View; label: string }[] = [
@@ -30,12 +31,40 @@ function title(view: View, anchor: Date, days: Date[]): string {
 }
 
 export default function SchedulePage() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <Schedule />
+    </Suspense>
+  );
+}
+
+/** ?group=&date=&time=&duration=&weekdays=0,2&count= — серия занятий группы (из запущенного набора). */
+function presetFrom(params: URLSearchParams): { at: Date; preset: LessonPreset } | null {
+  const group = params.get("group");
+  const date = params.get("date");
+  if (!group || !date) return null;
+  const weekdays = (params.get("weekdays") ?? "").split(",").filter(Boolean).map(Number);
+  return {
+    at: fromInputs(date, params.get("time") ?? "18:00"),
+    preset: {
+      groupId: group,
+      weekdays,
+      duration: Number(params.get("duration")) || undefined,
+      count: Number(params.get("count")) || undefined,
+    },
+  };
+}
+
+function Schedule() {
   const { user } = useAuth();
+  const params = useSearchParams();
+  const router = useRouter();
+  const [fromLink] = useState(() => presetFrom(params));
   const isTeacher = !!user?.roles.includes("teacher");
   const [view, setView] = useState<View>("week");
-  const [anchor, setAnchor] = useState(() => new Date());
+  const [anchor, setAnchor] = useState(() => fromLink?.at ?? new Date());
   const [open, setOpen] = useState<Lesson | null>(null);
-  const [creating, setCreating] = useState<Date | null | false>(false);
+  const [creating, setCreating] = useState<Date | null | false>(fromLink?.at ?? false);
   const [notice, setNotice] = useState<string>();
 
   const { from, to, days } = rangeFor(view, anchor);
@@ -166,8 +195,15 @@ export default function SchedulePage() {
         <CreateLessonModal
           open={creating !== false}
           initial={creating || null}
-          onClose={() => setCreating(false)}
-          onCreated={(msg) => refresh(msg)}
+          preset={creating && fromLink && creating === fromLink.at ? fromLink.preset : undefined}
+          onClose={() => {
+            setCreating(false);
+            if (fromLink) router.replace("/dashboard/schedule");
+          }}
+          onCreated={(msg) => {
+            refresh(msg);
+            if (fromLink) router.replace("/dashboard/schedule");
+          }}
         />
       )}
     </div>

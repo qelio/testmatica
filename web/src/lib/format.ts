@@ -110,3 +110,33 @@ export function fmtSchedule(s: { weekdays: number[] }): string {
   return s.weekdays.length ? s.weekdays.map((d) => days[d]).join(", ") : "любые дни";
 }
 
+
+
+const WEEKDAY_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
+
+/** «пн, ср в 18:00 · 60 мин · с 5 октября · 16 занятий». */
+export function fmtOfferSchedule(s: { weekdays: number[]; time: string; duration_min: number; start_date: string; lessons_count: number | null }): string {
+  const start = new Date(`${s.start_date}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return [
+    `${s.weekdays.map((d) => WEEKDAY_SHORT[d]).join(", ")} в ${s.time}`,
+    `${s.duration_min} мин`,
+    `с ${start}`,
+    s.lessons_count ? `${s.lessons_count} ${pluralWord(s.lessons_count, "занятие", "занятия", "занятий")}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+export function pluralWord(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  return mod10 === 1 && mod100 !== 11 ? one : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? few : many;
+}
+
+export const OFFER_STATUS = {
+  recruiting: { text: "идёт набор", tone: "brand" },
+  underfilled: { text: "недобор", tone: "warn" },
+  started: { text: "группа занимается", tone: "ok" },
+  closed: { text: "набор закрыт", tone: "neutral" },
+  cancelled: { text: "набор отменён", tone: "warn" },
+} as const;

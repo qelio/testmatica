@@ -78,6 +78,10 @@ async def run_due_jobs(batch: int = 100) -> int:
             lesson = await session.get(Lesson, job.lesson_id)
             if lesson is None or lesson.status != STATUS_SCHEDULED or lesson.starts_at != job.lesson_starts_at:
                 continue
+            if job.kind == logic.JOB_TRIAL:
+                if lesson.trial:  # пометку «пробное» могли снять
+                    await logic.publish(session, "schedule.lesson.trial_finished", [lesson], lesson.teacher_id)
+                continue
             await logic.publish(
                 session, "schedule.lesson.reminder", [lesson], lesson.teacher_id, {"hours": job.payload.get("hours")}
             )

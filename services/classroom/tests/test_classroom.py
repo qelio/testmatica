@@ -280,3 +280,36 @@ async def test_free_plan_group_limit(client):
     BASIC_TEACHERS.add(str(teacher))
     assert (await client.post(f"/groups/{ids[0]}/restore", headers=bearer(teacher))).status_code == 200
     await create_group(client, teacher, "Пятая")
+
+
+async def test_group_offer_started_creates_group(client):
+    from app import deals
+
+    teacher, a, b, c = uuid4(), uuid4(), uuid4(), uuid4()
+    offer = uuid4()
+    base = {"offer_id": str(offer), "tutor_id": str(teacher), "title": "ОГЭ по математике, 9 класс", "subject": "Математика",
+            "price": 900, "description": "Готовимся к ОГЭ"}
+
+    async def apply(type_, **data):
+        async with db.sessionmaker() as s, s.begin():
+            await deals.on_marketplace_event(make_envelope(type_, base | data), s)
+
+    await apply("marketplace.group_offer.started", student_ids=[str(a), str(b)])
+    await apply("marketplace.group_offer.started", student_ids=[str(a), str(b)])  # повтор события — без дублей
+    group = (await client.get(f"/groups/{offer}", headers=bearer(teacher))).json()
+    assert group["title"] == "ОГЭ по математике, 9 класс" and group["paid"] is True
+    assert sorted(m["student_id"] for m in group["members"]) == sorted([str(a), str(b)])
+    await apply("marketplace.group_offer.joined", student_id=str(c))
+    group = (await client.get(f"/groups/{offer}", headers=bearer(teacher))).json()
+    assert len(group["members"]) == 3
+    links = (await outbox("classroom.link.created"))
+    assert {e["data"]["source"] for e in links} == {"marketplace"} and len(links) == 3
+
+    limit = (await client.get("/internal/group-limit", params={"teacher_id": str(teacher)},
+                              headers={"X-Internal-Token": "dev-internal-token"})).json()
+    assert limit == {"allowed": True, "message": None}
+    for n in range(2):
+        await create_group(client, teacher, f"Ещё {n}")
+    limit = (await client.get("/internal/group-limit", params={"teacher_id": str(teacher)},
+                              headers={"X-Internal-Token": "dev-internal-token"})).json()
+    assert limit["allowed"] is False and "3 активных" in limit["message"]

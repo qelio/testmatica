@@ -28,6 +28,7 @@ from .models import (
 from .schemas import LessonOut, Person, RescheduleOut
 
 JOB_REMINDER = "reminder"
+JOB_TRIAL = "trial_finished"  # после пробного занятия — опрос ученика
 
 
 def now() -> datetime:
@@ -113,7 +114,16 @@ async def flush_or_conflict(session: AsyncSession) -> None:
 # ---------- напоминания ----------
 
 
+def plan_trial_followup(session: AsyncSession, lessons: Sequence[Lesson]) -> None:
+    """Через 5 минут после конца пробного занятия — событие для опроса ученика (отзыв и продолжение)."""
+    for lesson in lessons:
+        if lesson.trial and lesson.ends_at > now():
+            session.add(ScheduledJob(kind=JOB_TRIAL, lesson_id=lesson.id, lesson_starts_at=lesson.starts_at, payload={},
+                                     run_at=lesson.ends_at + timedelta(minutes=5)))
+
+
 def plan_reminders(session: AsyncSession, lessons: Sequence[Lesson]) -> None:
+    plan_trial_followup(session, lessons)
     moment = now()
     for lesson in lessons:
         for hours in settings.reminder_hours:
@@ -163,6 +173,7 @@ async def publish(
             "title": await lesson_title(session, first),
             "subject": first.subject,
             "paid": first.paid,
+            "trial": first.trial,
             "kind": first.kind,
             "starts_at": first.starts_at.isoformat(),
             "ends_at": first.ends_at.isoformat(),
@@ -248,6 +259,7 @@ async def serialize(session: AsyncSession, lessons: Sequence[Lesson], principal:
                 series_id=lesson.series_id,
                 teacher=Person(id=lesson.teacher_id, full_name=name(lesson.teacher_id)),
                 paid=lesson.paid,
+                trial=lesson.trial,
                 kind=lesson.kind,
                 group_id=lesson.group_id,
                 # Педагогу индивидуальное занятие подписано именем ученика, ученику — именем педагога.

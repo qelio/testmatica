@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { OfferCard } from "@/components/offers";
 import { RequestForm } from "@/components/request-form";
 import { Avatar } from "@/components/tutor-card";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
@@ -32,6 +33,22 @@ function RequestSummary({ r }: { r: LessonRequest }) {
   );
 }
 
+/** Записи в группы из каталога — место зарезервировано до запуска группы. */
+function MyEnrollments() {
+  const list = useLoad(() => marketplace.enrolledOffers(), []);
+  if (!list.data?.length) return null;
+  return (
+    <section className="space-y-2">
+      <h2 className="font-semibold">Мои записи в группы</h2>
+      <div className="grid gap-3 md:grid-cols-2">
+        {list.data.map((o) => (
+          <OfferCard key={o.id} offer={o} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function StudentView() {
   const list = useLoad(() => marketplace.myRequests(), []);
   const [creating, setCreating] = useState(false);
@@ -50,6 +67,7 @@ function StudentView() {
       <p className="text-sm text-fg-soft">
         Выберите репетитора в поиске («Хочу с вами заниматься») или опубликуйте открытую заявку — откликнуться смогут все репетиторы по предмету.
       </p>
+      <MyEnrollments />
       {(list.error || error) && <Alert>{list.error || error}</Alert>}
       {!list.data ? (
         !list.error && <Spinner />

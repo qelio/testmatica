@@ -36,7 +36,7 @@ MAX_OPEN_PER_STUDENT = 5
 # ---------- сборка ответов ----------
 
 
-async def _briefs(session: AsyncSession, ids: set[UUID]) -> dict[UUID, PersonBrief]:
+async def briefs(session: AsyncSession, ids: set[UUID]) -> dict[UUID, PersonBrief]:
     names = await profiles.names(session, ids)
     rows = (await session.execute(select(TutorProfile).where(TutorProfile.user_id.in_(ids)))).scalars().all() if ids else []
     photos = await profiles.photo_urls([p.photo_file_id for p in rows if p.photo_file_id])
@@ -65,7 +65,7 @@ async def _requests_out(session: AsyncSession, requests: list[LessonRequest], vi
     )).scalars().all()
     comp_ids = {c for r in requests for c in [*r.current_ids, *r.desired_ids]}
     titles = dict((await session.execute(select(Competency.id, Competency.title).where(Competency.id.in_(comp_ids)))).all()) if comp_ids else {}
-    people = await _briefs(session, {r.student_id for r in requests} | {x.tutor_id for x in responses})
+    people = await briefs(session, {r.student_id for r in requests} | {x.tutor_id for x in responses})
     out = []
     for req in requests:
         mine = [x for x in responses if x.request_id == req.id and (req.student_id == viewer or x.tutor_id == viewer)]

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { OfferCard } from "@/components/offers";
 import { RequestForm } from "@/components/request-form";
 import { TutorReviewsSection } from "@/components/reviews";
 import { Avatar, PresenceDot, Rating } from "@/components/tutor-card";
@@ -19,6 +20,7 @@ export default function TutorPage() {
   const { status, user } = useAuth();
   const authed = status === "authenticated";
   const tutor = useLoad(() => marketplace.tutor(id, authed), [id, authed]);
+  const offers = useLoad(() => marketplace.tutorOffers(id, authed), [id, authed]);
   const [copied, setCopied] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const router = useRouter();
@@ -129,6 +131,17 @@ export default function TutorPage() {
               , чтобы увидеть список.
             </p>
           )}
+        </section>
+      )}
+
+      {offers.data && offers.data.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">Группы</h2>
+          <div className="grid gap-3">
+            {offers.data.map((o) => (
+              <OfferCard key={o.id} offer={o} showTutor={false} />
+            ))}
+          </div>
         </section>
       )}
 

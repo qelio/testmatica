@@ -101,6 +101,7 @@ async def create_lessons(
             series_id=series.id if series else None,
             teacher_id=principal.user_id,
             paid=paid,
+            trial=body.trial,
             kind=body.kind,
             group_id=body.group_id if body.kind == KIND_GROUP else None,
             group_title=group_title,
@@ -179,8 +180,9 @@ async def update_lesson(
         await logic.flush_or_conflict(session)
         logic.plan_reminders(session, targets)
 
-    if data.get("paid") is None:
-        data.pop("paid", None)
+    for flag in ("paid", "trial"):
+        if data.get(flag) is None:
+            data.pop(flag, None)
     if data.get("subject") and data["subject"] != lesson.subject:
         await subjects.check(data["subject"])
     if "exam_item_ids" in data:
@@ -188,6 +190,8 @@ async def update_lesson(
     for t in targets:
         for field, value in data.items():
             setattr(t, field, value)
+    if data.get("trial"):
+        logic.plan_trial_followup(session, targets)
 
     if delta or duration or data:
         await logic.publish(session, "schedule.lesson.updated", targets, principal.user_id, {"scope": body.scope})
