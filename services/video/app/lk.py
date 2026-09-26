@@ -175,5 +175,16 @@ class LiveKit:
             else:
                 f = None
             if f is not None:
-                out.file_size, out.file_duration_s, out.file_name = int(f.size), int(f.duration // 1_000_000_000), f.filename or None
+                out.file_size, out.file_name = int(f.size), f.filename or None
+                out.file_duration_s = _duration_s(f.duration, info.started_at, info.ended_at)
         return out
+
+
+def _duration_s(duration_ns: int, started_ns: int, ended_ns: int) -> int | None:
+    """Длительность файла в секундах. У записи отдельной дорожки egress присылает в duration мусор
+    (отрицательное число) — тогда считаем по времени начала и конца egress; не вышло — None."""
+    for value in (duration_ns, ended_ns - started_ns if started_ns and ended_ns else 0):
+        seconds = int(value // 1_000_000_000)
+        if 0 < seconds < 24 * 3600:
+            return seconds
+    return None

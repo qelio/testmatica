@@ -29,9 +29,10 @@ async def test_proctoring_join_and_screen_recording(client, lk, proctored, s3):
 
     # Ученик включил показ экрана — дорожка пишется в отдельный файл; камера не пишется.
     room = f"proctor-{assignment}"
-    meta = lk.tokens[1]["metadata"]
-    await webhook("track_published", room, identity=str(pupil), metadata=meta, track_sid="TR_cam", track_source="CAMERA")
-    await webhook("track_published", room, identity=str(pupil), metadata=meta, track_sid="TR_screen", track_source="SCREEN_SHARE")
+    # Как в настоящих вебхуках о дорожках: только идентификатор участника, без метаданных пропуска.
+    await webhook("track_published", room, identity=str(pupil), track_sid="TR_cam", track_source="CAMERA")
+    await webhook("track_published", room, identity=str(teacher), track_sid="TR_x", track_source="SCREEN_SHARE")  # не ученик
+    await webhook("track_published", room, identity=str(pupil), track_sid="TR_screen", track_source="SCREEN_SHARE")
     [(egress_id, path)] = lk.egress.items()
     assert path.startswith(f"proctoring/{assignment}/{pupil}/") and path.endswith("TR_screen")
     await webhook("egress_ended", room, egress_id=egress_id, egress_status="EGRESS_COMPLETE", file_size=5000, file_duration_s=900,
@@ -48,3 +49,12 @@ async def test_proctoring_join_and_screen_recording(client, lk, proctored, s3):
     await rooms.enforce_limits()
     assert s3 == [f"{path}.webm"]
     assert (await client.get(f"/proctoring/{assignment}/recordings", headers=bearer(teacher, T))).json() == []
+
+
+def test_egress_duration_sanity():
+    from app.lk import _duration_s
+
+    started = 1_790_455_815 * 10**9
+    assert _duration_s(-started, started, started + 27 * 10**9) == 27  # мусор в duration — по началу и концу
+    assert _duration_s(600 * 10**9, 0, 0) == 600
+    assert _duration_s(-started, 0, 0) is None
