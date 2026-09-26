@@ -196,6 +196,13 @@ function Tile({
   );
 }
 
+function fmtDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds} с`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s ? `${m} мин ${s} с` : `${m} мин`;
+}
+
 function Recordings({ assignmentId }: { assignmentId: string }) {
   const list = useLoad(() => video.proctorRecordings(assignmentId), [assignmentId]);
   if (!list.data?.length) return null;
@@ -208,7 +215,7 @@ function Recordings({ assignmentId }: { assignmentId: string }) {
           <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
             <span className="min-w-0 flex-1">
               <b>{r.student_name}</b> · {fmtDateTime(r.started_at)}
-              {r.duration_s ? ` · ${Math.round(r.duration_s / 60)} мин` : ""}
+              {r.duration_s && r.duration_s > 0 ? ` · ${fmtDuration(r.duration_s)}` : ""}
             </span>
             {r.status === "recording" && <Badge tone="brand">идёт запись</Badge>}
             {r.status === "failed" && <Badge tone="warn">не записалось</Badge>}
