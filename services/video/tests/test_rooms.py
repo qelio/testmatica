@@ -180,3 +180,34 @@ async def test_paid_lessons_have_no_time_limit(client, lessons):
     await webhook("participant_joined", f"lesson-{lesson}", identity=str(teacher), participant_sid="PA_1")
     room = (await client.get(f"/rooms/{lesson}", headers=bearer(teacher, T))).json()
     assert room["status"] == "active" and room["limit_ends_at"] is None
+
+
+async def test_basic_plan_removes_limits(client, lessons, s3):
+    from .conftest import BASIC_TEACHERS
+
+    teacher, pupil = uuid4(), uuid4()
+    # Педагог подключил «Базовый» во время бесплатного занятия — таймер снимается, звонок не обрывается.
+    lesson = lessons.lesson(teacher, [pupil])
+    await client.post(f"/rooms/{lesson}/join", headers=bearer(teacher, T))
+    await webhook("participant_joined", f"lesson-{lesson}", identity=str(teacher), participant_sid="PA_1")
+    assert (await client.get(f"/rooms/{lesson}", headers=bearer(teacher, T))).json()["limit_ends_at"] is not None
+    BASIC_TEACHERS.add(str(teacher))
+    async with db.sessionmaker() as s, s.begin():
+        await s.execute(update(Room).values(started_at=datetime.now(UTC) - timedelta(minutes=45)))
+    await rooms.enforce_limits()
+    room = (await client.get(f"/rooms/{lesson}", headers=bearer(teacher, T))).json()
+    assert room["status"] == "active" and room["limit_ends_at"] is None
+
+    # Новые комнаты — сразу без лимита; записи не вытесняются.
+    other = lessons.lesson(teacher, [pupil])
+    await client.post(f"/rooms/{other}/join", headers=bearer(teacher, T))
+    await webhook("participant_joined", f"lesson-{other}", identity=str(teacher), participant_sid="PA_2")
+    assert (await client.get(f"/rooms/{other}", headers=bearer(teacher, T))).json()["limit_ends_at"] is None
+    async with db.sessionmaker() as s, s.begin():
+        room_id = await s.scalar(select(Room.id).limit(1))
+        for i in range(5):
+            s.add(Recording(room_id=room_id, lesson_id=lesson, teacher_id=teacher, title=f"R{i}", viewer_ids=[pupil],
+                            egress_id=f"EG_b{i}", key=f"b{i}", status="ready", started_at=datetime.now(UTC) - timedelta(days=i)))
+    async with db.sessionmaker() as s, s.begin():
+        await rooms.apply_retention(s, teacher)
+    assert s3 == []

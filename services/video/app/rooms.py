@@ -10,17 +10,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import storage
 from .config import settings
-from .deps import db, livekit, outbox
+from testmatica_common.plans import BASIC, FREE
+
+from .deps import db, livekit, outbox, plans
 from .lk import WebhookEvent
 from .models import EXPIRED, FAILED, READY, RECORDING, Connection, Recording, Room
 
 log = logging.getLogger(__name__)
 
 
-def time_limit_for(lesson: dict) -> int | None:
-    """Бесплатные занятия — до 40 минут (бесплатный тариф). Платные — без лимита (решение №5).
-    Подписка педагога (этап 5) снимет лимит и с бесплатных."""
-    return None if lesson.get("paid") else settings.free_time_limit_min
+def time_limit_for(lesson: dict, plan: str) -> int | None:
+    """Бесплатные занятия на бесплатном тарифе — до 40 минут. Платные и все занятия на «Базовом» — без лимита (решение №5)."""
+    return None if lesson.get("paid") or plan == BASIC else settings.free_time_limit_min
+
+
+async def teacher_plan(teacher_id: UUID) -> str:
+    """Тариф педагога; если billing недоступен — действуем по бесплатному, чтобы занятие не сорвалось."""
+    return await plans.of(teacher_id, fallback=FREE)
 
 
 def limit_ends_at(room: Room) -> datetime | None:
@@ -103,7 +109,8 @@ async def _on_egress(session: AsyncSession, ev: WebhookEvent, now: datetime) -> 
     rec.ended_at = now
     if ev.egress_status == "EGRESS_COMPLETE" and ev.file_size:
         rec.status, rec.size, rec.duration_s = READY, ev.file_size, ev.file_duration_s
-        rec.expires_at = now + timedelta(days=settings.free_recording_days)
+        basic = await teacher_plan(rec.teacher_id) == BASIC
+        rec.expires_at = now + timedelta(days=settings.basic_recording_days if basic else settings.free_recording_days)
         await outbox.event(session, "video.recording.ready", {
             "recording_id": str(rec.id), "lesson_id": str(rec.lesson_id), "teacher_id": str(rec.teacher_id),
             "viewer_ids": [str(v) for v in rec.viewer_ids], "title": rec.title, "duration_s": rec.duration_s,
@@ -125,6 +132,8 @@ async def expire(session: AsyncSession, rec: Recording) -> None:
 
 async def apply_retention(session: AsyncSession, teacher_id: UUID) -> None:
     """Бесплатный тариф: не больше 3 записей у педагога — новая вытесняет самую старую (решение №4)."""
+    if await teacher_plan(teacher_id) == BASIC:
+        return
     ready = (await session.execute(
         select(Recording).where(Recording.teacher_id == teacher_id, Recording.status == READY)
         .order_by(Recording.started_at.desc()).with_for_update()
@@ -141,7 +150,12 @@ async def enforce_limits() -> None:
             select(Room).where(Room.ended_at.is_(None), Room.started_at.is_not(None), Room.time_limit_min.is_not(None))
             .with_for_update(skip_locked=True)
         )).scalars().all()
+        # Педагог мог подключить «Базовый» уже во время занятия — тогда лимит (и таймер в комнате) снимается.
+        paid_up = await plans.many({r.teacher_id for r in rooms}, fallback=FREE) if rooms else {}
         for room in rooms:
+            if paid_up.get(room.teacher_id) == BASIC:
+                room.time_limit_min = None
+                continue
             ends = limit_ends_at(room)
             if ends and now >= ends:
                 log.info("room time limit reached", extra={"lesson_id": str(room.lesson_id)})

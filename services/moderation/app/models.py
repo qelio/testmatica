@@ -39,6 +39,15 @@ class Person(Base):
     full_name: Mapped[str] = mapped_column(String(200))
 
 
+class Subscriber(Base):
+    """Педагоги на тарифе «Базовый» (реплика billing): их заявки проверяются в первую очередь (ТЗ, раздел 12)."""
+
+    __tablename__ = "subscribers"
+
+    user_id: Mapped[UUID] = mapped_column(primary_key=True)
+    until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class QueueItem(Base):
     """Заявка на проверку. Очередь — FIFO (ТЗ): сначала приоритет (подписка), затем время поступления."""
 

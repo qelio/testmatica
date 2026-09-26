@@ -114,3 +114,16 @@ async def test_reviews_replies_and_disputes(client):
     assert [i["kind"] for i in (await client.get("/queue", headers=bearer(moderator))).json()] == ["review"]
     await apply(handlers.on_marketplace_event, "marketplace.review.withdrawn", review_id=review, tutor_id=tutor)
     assert (await client.get("/queue", headers=bearer(moderator))).json() == []
+
+
+async def test_subscribers_first(client):
+    free_author, premium_author, moderator = uuid4(), uuid4(), uuid4()
+    await submit(uuid4(), free_author, "Раньше, но бесплатный тариф")
+    await submit(uuid4(), premium_author, "Позже, но «Базовый»")
+    await apply(handlers.on_billing_event, "billing.subscription.changed", user_id=premium_author, plan="basic",
+                period_end="2099-01-01T00:00:00+00:00", reason="purchased", auto_renew=True)
+    queue = (await client.get("/queue", headers=bearer(moderator))).json()
+    assert [(i["title"], i["priority"]) for i in queue] == [("Позже, но «Базовый»", True), ("Раньше, но бесплатный тариф", False)]
+    await apply(handlers.on_billing_event, "billing.subscription.changed", user_id=premium_author, plan="free",
+                period_end="2026-01-01T00:00:00+00:00", reason="expired", auto_renew=False)
+    assert (await client.get("/queue", headers=bearer(moderator))).json()[0]["title"] == "Раньше, но бесплатный тариф"

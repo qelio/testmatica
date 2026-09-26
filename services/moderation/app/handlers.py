@@ -1,13 +1,14 @@
 """Заявки появляются из событий других сервисов."""
 
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import text, update
+from sqlalchemy import delete, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
 
-from .models import PENDING, WITHDRAWN, Person, QueueItem
+from .models import PENDING, WITHDRAWN, Person, QueueItem, Subscriber
 
 
 async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
@@ -140,3 +141,18 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
             .where(QueueItem.kind == "task", QueueItem.ref_id == UUID(d["task_id"]), QueueItem.status == PENDING)
             .values(status=WITHDRAWN)
         )
+
+
+async def on_billing_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Подписка изменилась: «Базовый» — приоритет в очереди до конца периода."""
+    d = envelope.data
+    if envelope.type != "billing.subscription.changed":
+        return
+    user_id = UUID(d["user_id"])
+    if d["plan"] == "basic":
+        until = datetime.fromisoformat(d["period_end"])
+        await session.execute(
+            insert(Subscriber).values(user_id=user_id, until=until).on_conflict_do_update(index_elements=["user_id"], set_={"until": until})
+        )
+    else:
+        await session.execute(delete(Subscriber).where(Subscriber.user_id == user_id))

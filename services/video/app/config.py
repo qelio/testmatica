@@ -22,6 +22,7 @@ class Settings(CommonSettings):
     url_ttl_seconds: int = 3600
 
     # Когда можно войти в комнату: педагог — за 30 минут, ученик — за 15; все — до 30 минут после конца.
+    billing_url: str = "http://billing:8000"
     teacher_join_before_min: int = 30
     student_join_before_min: int = 15
     join_after_end_min: int = 30
@@ -30,6 +31,8 @@ class Settings(CommonSettings):
     free_time_limit_min: int = 40
     free_recordings_keep: int = 3
     free_recording_days: int = 14
+    # Тариф «Базовый»: без лимита времени и количества записей, хранение 30 дней.
+    basic_recording_days: int = 30
     # Ёмкость комнат (ТЗ, раздел 7).
     individual_capacity: int = 2
     group_capacity: int = 16

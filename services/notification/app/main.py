@@ -38,6 +38,15 @@ runtime.consumer(
     handlers.on_marketplace_event,
 )
 runtime.consumer(
+    "notification.billing",
+    [
+        (EVENTS_EXCHANGE, "billing.subscription.changed"),
+        (EVENTS_EXCHANGE, "billing.subscription.expiring"),
+        (EVENTS_EXCHANGE, "billing.payment.failed"),
+    ],
+    handlers.on_billing_event,
+)
+runtime.consumer(
     "notification.academic",
     [(EVENTS_EXCHANGE, "academic.grade.*"), (EVENTS_EXCHANGE, "academic.plan_template.*")],
     handlers.on_academic_event,

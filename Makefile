@@ -1,6 +1,6 @@
 # Короткие команды для локальной разработки. Список: make help
 
-SERVICES := identity notification audit classroom schedule academic chat media content moderation assessment video marketplace
+SERVICES := identity notification audit classroom schedule academic chat media content moderation assessment video marketplace billing
 DC := docker compose
 # Адрес компьютера в локальной сети: по нему к LiveKit подключаются и браузер, и контейнер записи.
 export LIVEKIT_NODE_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || hostname -I 2>/dev/null | cut -d' ' -f1 || echo 127.0.0.1)

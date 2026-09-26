@@ -4,13 +4,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, Principal
 from testmatica_common.errors import ApiError
 
 from .deps import auth, db, outbox
-from .models import APPROVED, KIND_LABELS, PENDING, REJECTED, Person, QueueItem
+from .models import APPROVED, KIND_LABELS, PENDING, REJECTED, Person, QueueItem, Subscriber
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 moderator = auth.require(ROLE_MODERATOR)
@@ -25,6 +25,7 @@ class ItemOut(BaseModel):
     author_id: UUID
     author_name: str
     details: dict[str, Any]
+    priority: bool = False  # автор на тарифе «Базовый» — проверяется в первую очередь
     status: str
     comment: str | None
     decided_at: datetime | None
@@ -43,13 +44,21 @@ class Decision(BaseModel):
         return self
 
 
+def _subscribed():
+    return exists().where(Subscriber.user_id == QueueItem.author_id, Subscriber.until > func.now())
+
+
 async def _out(session: AsyncSession, items: list[QueueItem]) -> list[ItemOut]:
     ids = {i.author_id for i in items}
     names = dict((await session.execute(select(Person.user_id, Person.full_name).where(Person.user_id.in_(ids)))).all()) if ids else {}
+    premium = set((await session.execute(
+        select(Subscriber.user_id).where(Subscriber.user_id.in_(ids), Subscriber.until > func.now())
+    )).scalars()) if ids else set()
     return [
         ItemOut(
             id=i.id, kind=i.kind, kind_label=KIND_LABELS.get(i.kind, i.kind), ref_id=i.ref_id, title=i.title,
-            author_id=i.author_id, author_name=names.get(i.author_id, "Автор"), details=i.details, status=i.status,
+            author_id=i.author_id, author_name=names.get(i.author_id, "Автор"), details=i.details,
+            priority=i.author_id in premium, status=i.status,
             comment=i.comment, decided_at=i.decided_at, created_at=i.created_at,
         )
         for i in items
@@ -68,7 +77,8 @@ async def queue(
     if kind:
         query = query.where(QueueItem.kind == kind)
     if status == PENDING:
-        query = query.order_by(QueueItem.priority.desc(), QueueItem.created_at)  # FIFO
+        # FIFO, но заявки подписчиков — первыми (ТЗ: приоритетная модерация на тарифе «Базовый»).
+        query = query.order_by(_subscribed().desc(), QueueItem.priority.desc(), QueueItem.created_at)
     else:
         query = query.order_by(QueueItem.decided_at.desc().nulls_last())
     return await _out(session, list((await session.execute(query.limit(limit))).scalars()))
