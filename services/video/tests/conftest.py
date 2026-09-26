@@ -70,11 +70,12 @@ class FakeSchedule:
     def __init__(self) -> None:
         self.lessons: dict[str, dict] = {}
 
-    def lesson(self, teacher: UUID, students: list[UUID], minutes_from_now: int = 0, kind="group", status="scheduled") -> UUID:
+    def lesson(self, teacher: UUID, students: list[UUID], minutes_from_now: int = 0, kind="group", status="scheduled",
+               paid: bool = False) -> UUID:
         lid = uuid4()
         start = datetime.now(UTC) + timedelta(minutes=minutes_from_now)
         self.lessons[str(lid)] = {
-            "id": str(lid), "teacher_id": str(teacher), "kind": kind, "mode": "tutor",
+            "id": str(lid), "teacher_id": str(teacher), "kind": kind, "paid": paid,
             "group_id": str(uuid4()) if kind == "group" else None, "student_id": str(students[0]) if kind == "individual" else None,
             "subject": "Математика", "topic": None, "starts_at": start.isoformat(),
             "ends_at": (start + timedelta(minutes=60)).isoformat(), "status": status,

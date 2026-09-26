@@ -120,10 +120,10 @@ export default function SchedulePage() {
       {isTeacher && (
         <div className="flex gap-4 text-xs text-fg-soft">
           <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-sm bg-school/60" /> школа
+            <span className="h-3 w-3 rounded-sm bg-school/60" /> бесплатные
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-sm bg-tutor/60" /> репетитор
+            <span className="h-3 w-3 rounded-sm bg-tutor/60" /> платные
           </span>
         </div>
       )}

@@ -60,7 +60,7 @@ async def create_lessons(
         group = await classroom.get(f"/internal/groups/{body.group_id}", params={"teacher_id": str(principal.user_id)})
         if group["archived"]:
             raise ApiError(409, "group_archived", "Группа в архиве")
-        mode, group_title, student_ids = group["mode"], group["title"], [UUID(s) for s in group["member_ids"]]
+        paid, group_title, student_ids = group["paid"], group["title"], [UUID(s) for s in group["member_ids"]]
         subject = subject or group["subject"]
     else:
         link = await classroom.get(
@@ -68,7 +68,9 @@ async def create_lessons(
         )
         if not link["active"]:
             raise ApiError(404, "student_not_found", "Ученик не привязан к вам")
-        mode, student_ids = principal.teacher_mode or "school", [body.student_id]
+        paid, student_ids = link.get("paid", False), [body.student_id]
+    if body.paid is not None:
+        paid = body.paid  # педагог поменял для этих занятий (например, пробное — бесплатно)
 
     zone(body.timezone)
     duration = timedelta(minutes=body.duration_min)
@@ -97,7 +99,7 @@ async def create_lessons(
         Lesson(
             series_id=series.id if series else None,
             teacher_id=principal.user_id,
-            mode=mode,
+            paid=paid,
             kind=body.kind,
             group_id=body.group_id if body.kind == KIND_GROUP else None,
             group_title=group_title,
@@ -176,6 +178,8 @@ async def update_lesson(
         await logic.flush_or_conflict(session)
         logic.plan_reminders(session, targets)
 
+    if data.get("paid") is None:
+        data.pop("paid", None)
     if "exam_item_ids" in data:
         data["exam_item_ids"] = list(dict.fromkeys(data["exam_item_ids"] or []))
     for t in targets:

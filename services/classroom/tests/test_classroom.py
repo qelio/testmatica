@@ -9,8 +9,8 @@ from app.models import Person
 from .conftest import bearer, outbox, student_bearer
 
 
-async def create_group(client, teacher, title="7А", kind="class", mode="school"):
-    resp = await client.post("/groups", json={"title": title, "kind": kind}, headers=bearer(teacher, mode=mode))
+async def create_group(client, teacher, title="7А", kind="class", paid=False):
+    resp = await client.post("/groups", json={"title": title, "kind": kind, "paid": paid}, headers=bearer(teacher))
     assert resp.status_code == 201, resp.text
     return resp.json()
 
@@ -18,14 +18,15 @@ async def create_group(client, teacher, title="7А", kind="class", mode="school"
 async def test_groups_crud_and_isolation(client, teacher):
     group = await create_group(client, teacher, title="  7А  ")
     assert group["title"] == "7А"
-    assert group["mode"] == "school"
+    assert group["paid"] is False
 
-    # Группы разделены по режимам педагога.
-    await create_group(client, teacher, title="ЕГЭ", kind="group", mode="tutor")
-    school = (await client.get("/groups", headers=bearer(teacher))).json()
-    assert [g["title"] for g in school] == ["7А"]
-    tutor = (await client.get("/groups", headers=bearer(teacher, mode="tutor"))).json()
-    assert [g["title"] for g in tutor] == ["ЕГЭ"]
+    # Режимов нет: школьный класс и платная группа — в одном списке, отличаются признаком «платно».
+    ege = await create_group(client, teacher, title="ЕГЭ", kind="group", paid=True)
+    listed = (await client.get("/groups", headers=bearer(teacher))).json()
+    assert [(g["title"], g["paid"]) for g in listed] == [("7А", False), ("ЕГЭ", True)]
+    free = await client.patch(f"/groups/{ege['id']}", json={"paid": False}, headers=bearer(teacher))
+    assert free.json()["paid"] is False
+    await client.post(f"/groups/{ege['id']}/archive", headers=bearer(teacher))
 
     upd = await client.patch(f"/groups/{group['id']}", json={"subject": "Алгебра"}, headers=bearer(teacher))
     assert upd.json()["subject"] == "Алгебра" and upd.json()["title"] == "7А"
@@ -37,7 +38,7 @@ async def test_groups_crud_and_isolation(client, teacher):
     arch = await client.post(f"/groups/{group['id']}/archive", headers=bearer(teacher))
     assert arch.json()["archived"] is True
     assert (await client.get("/groups", headers=bearer(teacher))).json() == []
-    assert len((await client.get("/groups?archived=true", headers=bearer(teacher))).json()) == 1
+    assert len((await client.get("/groups?archived=true", headers=bearer(teacher))).json()) == 2
 
 
 async def test_students_cannot_use_teacher_endpoints(client):
@@ -221,11 +222,18 @@ async def test_internal_group_and_link_info(client, teacher, fake_identity):
 
     assert (await client.get(f"/internal/groups/{group['id']}", params={"teacher_id": str(teacher)})).status_code == 403
     info = await client.get(f"/internal/groups/{group['id']}", params={"teacher_id": str(teacher)}, headers=h)
-    assert info.json()["member_ids"] == [sid] and info.json()["mode"] == "school"
+    assert info.json()["member_ids"] == [sid] and info.json()["paid"] is False
     other = await client.get(f"/internal/groups/{group['id']}", params={"teacher_id": str(uuid4())}, headers=h)
     assert other.status_code == 404
 
     link = await client.get("/internal/links", params={"teacher_id": str(teacher), "student_id": sid}, headers=h)
-    assert link.json()["active"] is True
+    assert link.json()["active"] is True and link.json()["paid"] is False
+    # Индивидуальные занятия с учеником школьного класса — платные, отдельно от класса.
+    billed = await client.put(f"/students/{sid}/billing", json={"paid": True}, headers=bearer(teacher))
+    assert billed.json()["paid"] is True
+    link = await client.get("/internal/links", params={"teacher_id": str(teacher), "student_id": sid}, headers=h)
+    assert link.json()["paid"] is True
+    assert (await outbox("classroom.link.billing_changed"))[0]["data"]["paid"] is True
+    assert (await client.put(f"/students/{uuid4()}/billing", json={"paid": True}, headers=bearer(teacher))).status_code == 404
     missing = await client.get("/internal/links", params={"teacher_id": str(teacher), "student_id": str(uuid4())}, headers=h)
     assert missing.status_code == 404

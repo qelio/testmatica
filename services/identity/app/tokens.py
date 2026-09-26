@@ -60,6 +60,5 @@ class TokenIssuer:
             "jti": uuid7().hex,
             "typ": "access",
             "roles": user.role_names,
-            "teacher_mode": user.teacher_mode,
         }
         return jwt.encode(claims, self.key.private_key, algorithm="RS256", headers={"kid": self.key.kid})

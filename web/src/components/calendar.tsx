@@ -11,7 +11,8 @@ const HOUR_PX = 56;
 
 function lessonColors(lesson: Lesson): string {
   if (lesson.status === "cancelled") return "border-line bg-muted text-fg-soft line-through";
-  return lesson.mode === "tutor"
+  // Платные занятия — оранжевые, бесплатные — синие.
+  return lesson.paid
     ? "border-tutor/60 bg-tutor/15 text-fg hover:bg-tutor/25"
     : "border-school/60 bg-school/15 text-fg hover:bg-school/25";
 }

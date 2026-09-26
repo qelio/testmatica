@@ -129,14 +129,14 @@ async def test_database_blocks_overlap_even_without_precheck(client, teacher, fa
         async with db.sessionmaker() as s, s.begin():
             s.add(
                 Lesson(
-                    teacher_id=teacher, mode="school", kind="individual", student_id=uuid4(),
+                    teacher_id=teacher, kind="individual", student_id=uuid4(),
                     starts_at=at(4, 12, 30), ends_at=at(4, 13, 30),
                 )
             )
     # Отменённое занятие время не занимает.
     await client.post(f"/lessons/{lesson['id']}/cancel", json={}, headers=bearer(teacher))
     async with db.sessionmaker() as s, s.begin():
-        s.add(Lesson(teacher_id=teacher, mode="school", kind="individual", student_id=uuid4(),
+        s.add(Lesson(teacher_id=teacher, kind="individual", student_id=uuid4(),
                      starts_at=at(4, 12, 30), ends_at=at(4, 13, 30)))
 
 
@@ -334,3 +334,25 @@ async def test_lesson_exam_items(client, teacher, fake_classroom):
     assert upd.status_code == 200, upd.text
     theirs = (await client.get(f"/lessons/{lesson['id']}", headers=student_bearer(student))).json()
     assert theirs["exam_item_ids"] == [item2] and theirs["topic"] == "Логика"
+
+
+
+async def test_paid_from_group_or_student_and_override(client, teacher, fake_classroom):
+    """Режимов нет: платность берётся от группы или ученика, у отдельного занятия её можно поменять."""
+    pupil = uuid4()
+    paid_group = fake_classroom.group(teacher, [pupil], title="ЕГЭ", paid=True)
+    free_group = fake_classroom.group(teacher, [pupil], title="7А")
+    g1 = (await create(client, teacher, kind="group", group_id=str(paid_group), starts_at=iso(at(2, 10)), duration_min=45)).json()
+    g2 = (await create(client, teacher, kind="group", group_id=str(free_group), starts_at=iso(at(2, 12)), duration_min=45)).json()
+    assert g1["lessons"][0]["paid"] is True and g2["lessons"][0]["paid"] is False
+
+    # Тот же ученик школьного класса — индивидуально и платно.
+    fake_classroom.link(teacher, pupil, paid=True)
+    ind = (await create(client, teacher, kind="individual", student_id=str(pupil), starts_at=iso(at(3, 10)), duration_min=60)).json()
+    assert ind["lessons"][0]["paid"] is True
+    trial = (await create(client, teacher, kind="individual", student_id=str(pupil), starts_at=iso(at(4, 10)), duration_min=60,
+                          paid=False)).json()
+    assert trial["lessons"][0]["paid"] is False  # пробное — бесплатно
+    upd = await client.patch(f"/lessons/{ind['lessons'][0]['id']}", json={"paid": False}, headers=bearer(teacher))
+    assert upd.json()["paid"] is False
+    assert (await outbox("schedule.lesson.created"))[0]["data"]["paid"] is True

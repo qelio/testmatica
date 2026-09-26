@@ -75,7 +75,7 @@ async def school():
     maria = await person("Мария Ивановна", ("teacher",))
     anya, petya, olya, vasya = [await person(n) for n in ("Аня", "Петя", "Оля", "Вася")]
     gid = uuid4()
-    await event("classroom.group.created", group_id=gid, teacher_id=maria, title="7А", mode="school")
+    await event("classroom.group.created", group_id=gid, teacher_id=maria, title="7А", paid=False)
     for sid in (anya, petya, olya):
         await event("classroom.link.created", link_id=uuid4(), teacher_id=maria, student_id=sid, source="manual", student_name="")
     for sid in (anya, petya):

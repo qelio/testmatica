@@ -7,7 +7,6 @@ export type UserInfo = {
   login: string | null;
   full_name: string;
   roles: string[];
-  teacher_mode: "school" | "tutor" | null;
   two_factor_method: string | null;
   timezone: string;
 };
@@ -170,8 +169,6 @@ export const identity = {
       body: { challenge_id, code, new_password },
       auth: false,
     }),
-  switchTeacherMode: (mode: "school" | "tutor") =>
-    api<Authenticated>(`${ID}/me/teacher-mode`, { method: "PUT", body: { mode } }),
 };
 
 // ---- notification ----
@@ -198,7 +195,7 @@ export const notifications = {
 export type Group = {
   id: string;
   kind: "class" | "group";
-  mode: "school" | "tutor";
+  paid: boolean;
   title: string;
   subject: string | null;
   description: string;
@@ -219,6 +216,7 @@ export type Student = {
   source: "invite" | "manual" | "request" | "marketplace";
   managed: boolean;
   group_ids: string[];
+  paid: boolean; // индивидуальные занятия платные
 };
 
 export type StudentCredentials = { student: Student; login: string | null; password: string | null };
@@ -252,12 +250,11 @@ export type MyGroup = {
 const CR = "/api/classroom";
 
 export const classroom = {
-  groups: (archived = false, mode?: "school" | "tutor") =>
-    api<Group[]>(`${CR}/groups?archived=${archived}${mode ? `&mode=${mode}` : ""}`),
+  groups: (archived = false) => api<Group[]>(`${CR}/groups?archived=${archived}`),
   group: (id: string) => api<GroupDetail>(`${CR}/groups/${id}`),
-  createGroup: (data: { title: string; kind: "class" | "group"; subject?: string | null }) =>
+  createGroup: (data: { title: string; kind: "class" | "group"; paid: boolean; subject?: string | null }) =>
     api<Group>(`${CR}/groups`, { method: "POST", body: data }),
-  updateGroup: (id: string, data: { title?: string; subject?: string | null; description?: string }) =>
+  updateGroup: (id: string, data: { title?: string; subject?: string | null; description?: string; paid?: boolean }) =>
     api<Group>(`${CR}/groups/${id}`, { method: "PATCH", body: data }),
   archiveGroup: (id: string) => api<Group>(`${CR}/groups/${id}/archive`, { method: "POST" }),
   restoreGroup: (id: string) => api<Group>(`${CR}/groups/${id}/restore`, { method: "POST" }),
@@ -274,6 +271,7 @@ export const classroom = {
   renameStudent: (id: string, full_name: string) =>
     api<Student>(`${CR}/students/${id}`, { method: "PATCH", body: { full_name } }),
   resetPassword: (id: string) => api<StudentCredentials>(`${CR}/students/${id}/reset-password`, { method: "POST" }),
+  setStudentBilling: (id: string, paid: boolean) => api<Student>(`${CR}/students/${id}/billing`, { method: "PUT", body: { paid } }),
   unlinkStudent: (id: string) => api<void>(`${CR}/students/${id}`, { method: "DELETE" }),
 
   invitations: () => api<Invitation[]>(`${CR}/invitations`),
@@ -309,7 +307,7 @@ export type Lesson = {
   id: string;
   series_id: string | null;
   teacher: PersonRef;
-  mode: "school" | "tutor";
+  paid: boolean;
   kind: "individual" | "group";
   group_id: string | null;
   title: string;
@@ -337,6 +335,7 @@ export type LessonCreate = {
   subject?: string | null;
   topic?: string | null;
   exam_item_ids?: string[];
+  paid?: boolean | null;
   video_url?: string | null;
   repeat?: Repeat | null;
   timezone: string;
@@ -353,7 +352,7 @@ export const schedule = {
   create: (data: LessonCreate) => api<{ count: number; lessons: Lesson[] }>(`${SC}/lessons`, { method: "POST", body: data }),
   update: (
     id: string,
-    data: { scope: Scope; starts_at?: string; duration_min?: number; subject?: string | null; topic?: string | null; exam_item_ids?: string[]; video_url?: string | null },
+    data: { scope: Scope; starts_at?: string; duration_min?: number; subject?: string | null; topic?: string | null; exam_item_ids?: string[]; paid?: boolean; video_url?: string | null },
   ) => api<Lesson>(`${SC}/lessons/${id}`, { method: "PATCH", body: data }),
   cancel: (id: string, scope: Scope, reason?: string | null) =>
     api<Lesson>(`${SC}/lessons/${id}/cancel`, { method: "POST", body: { scope, reason } }),

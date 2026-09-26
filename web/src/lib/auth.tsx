@@ -19,7 +19,6 @@ type AuthState =
 type AuthContextValue = AuthState & {
   signIn: (session: Authenticated) => void;
   signOut: () => Promise<void>;
-  switchTeacherMode: (mode: "school" | "tutor") => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -41,13 +40,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const switchTeacherMode = useCallback(
-    async (mode: "school" | "tutor") => {
-      signIn(await identity.switchTeacherMode(mode));
-    },
-    [signIn],
-  );
-
   useEffect(() => {
     setSessionLostHandler(() => setState({ status: "anonymous", user: null }));
     // При загрузке страницы восстанавливаем сессию по refresh-cookie.
@@ -58,8 +50,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [signIn]);
 
   const value = useMemo(
-    () => ({ ...state, signIn, signOut, switchTeacherMode }),
-    [state, signIn, signOut, switchTeacherMode],
+    () => ({ ...state, signIn, signOut }),
+    [state, signIn, signOut],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

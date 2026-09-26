@@ -27,17 +27,19 @@ class FakeClassroom:
     def __init__(self) -> None:
         self.groups: dict[str, dict] = {}
         self.links: set[tuple[str, str]] = set()
+        self.paid: dict[tuple[str, str], bool] = {}
 
-    def group(self, teacher: UUID, members: list[UUID], title="7А", mode="school", archived=False) -> UUID:
+    def group(self, teacher: UUID, members: list[UUID], title="7А", paid=False, archived=False) -> UUID:
         gid = uuid4()
         self.groups[str(gid)] = {
-            "id": str(gid), "teacher_id": str(teacher), "title": title, "subject": "Алгебра", "mode": mode,
+            "id": str(gid), "teacher_id": str(teacher), "title": title, "subject": "Алгебра", "paid": paid,
             "kind": "class", "archived": archived, "member_ids": [str(m) for m in members],
         }
         return gid
 
-    def link(self, teacher: UUID, student: UUID) -> None:
+    def link(self, teacher: UUID, student: UUID, paid: bool = False) -> None:
         self.links.add((str(teacher), str(student)))
+        self.paid[(str(teacher), str(student))] = paid
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         path, params = request.url.path, request.url.params
@@ -50,7 +52,8 @@ class FakeClassroom:
             key = (params["teacher_id"], params["student_id"])
             if key not in self.links:
                 return httpx.Response(404, json={"error": {"code": "student_not_found", "message": "Не привязан"}})
-            return httpx.Response(200, json={"teacher_id": key[0], "student_id": key[1], "active": True})
+            return httpx.Response(200, json={"teacher_id": key[0], "student_id": key[1], "active": True,
+                                             "paid": self.paid.get(key, False)})
         return httpx.Response(500)
 
 
@@ -61,13 +64,13 @@ def fake_classroom() -> FakeClassroom:
     return fake
 
 
-def bearer(user_id: UUID, roles=("teacher",), mode: str | None = "school") -> dict:
-    token = tokens.issue(user_id, list(roles), settings.jwt_issuer, settings.jwt_audience, teacher_mode=mode)
+def bearer(user_id: UUID, roles=("teacher",)) -> dict:
+    token = tokens.issue(user_id, list(roles), settings.jwt_issuer, settings.jwt_audience)
     return {"Authorization": f"Bearer {token}"}
 
 
 def student_bearer(user_id: UUID) -> dict:
-    return bearer(user_id, ("student",), None)
+    return bearer(user_id, ("student",))
 
 
 @pytest.fixture(scope="session", autouse=True)

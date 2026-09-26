@@ -42,7 +42,7 @@ async def test_access_token_is_verifiable_by_other_services(client):
     verifier = TokenVerifier(settings.jwt_issuer, settings.jwt_audience, static_jwks=jwks)
     claims = await verifier.verify(session["access_token"])
     assert claims["roles"] == ["teacher"]
-    assert claims["teacher_mode"] == "school"
+    assert "teacher_mode" not in claims  # режимов «учитель/репетитор» больше нет
     assert claims["typ"] == "access"
 
 
@@ -177,22 +177,6 @@ async def test_forgot_password_for_unknown_email_looks_the_same(client):
     resp = await client.post("/auth/password/forgot", json={"email": "ghost@example.com"})
     assert resp.status_code == 202
     assert "challenge_id" in resp.json()
-
-
-async def test_teacher_mode_switch(client):
-    await register(client, "teacher@example.com", role="teacher")
-    token = (await login(client, "teacher@example.com"))["access_token"]
-    resp = await client.put("/me/teacher-mode", json={"mode": "tutor"}, headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 200
-    assert resp.json()["user"]["teacher_mode"] == "tutor"
-    assert len(await events("identity.user.teacher_mode_changed")) == 1
-
-    await register(client, "student@example.com")
-    student = (await login(client, "student@example.com"))["access_token"]
-    forbidden = await client.put(
-        "/me/teacher-mode", json={"mode": "tutor"}, headers={"Authorization": f"Bearer {student}"}
-    )
-    assert forbidden.status_code == 403
 
 
 async def test_me_requires_valid_token(client):

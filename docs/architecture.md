@@ -29,7 +29,7 @@ flowchart LR
 4. **Transactional outbox.** Событие сначала пишется в таблицу `outbox` в той же транзакции, что и изменение данных, затем отдельный процесс публикует его в брокер. Так событие не потеряется, если брокер недоступен.
 5. **Идемпотентные обработчики.** Каждое событие имеет `event_id`; получатель хранит обработанные id в `inbox` и не выполняет одно событие дважды.
 6. **Таймеры в БД, а не в брокере.** Критичные отложенные действия (автоотмена занятия, выплата через час, напоминания) хранятся в таблице `scheduled_jobs` с полем `run_at`; воркер забирает созревшие задачи. Это переживает любые перезапуски.
-7. **Аутентификация.** identity выдаёт JWT (access 15 мин + refresh). Gateway пропускает запросы, каждый сервис сам проверяет подпись по публичному ключу (JWKS). В токене: `user_id`, `roles`, `teacher_modes`.
+7. **Аутентификация.** identity выдаёт JWT (access 15 мин + refresh). Gateway пропускает запросы, каждый сервис сам проверяет подпись по публичному ключу (JWKS). В токене: `user_id`, `roles`.
 8. **Время** — только UTC (`timestamptz`), конвертация на клиенте.
 9. **Идентификаторы** — UUID v7 (сортируются по времени).
 
@@ -111,7 +111,7 @@ flowchart LR
 Во всех БД есть служебные `outbox`, `inbox`, при необходимости `scheduled_jobs`. Поля `created_at` / `updated_at` подразумеваются.
 
 ### identity
-- `users` — id, email (nullable, unique), login (unique), phone, password_hash, full_name, status (pending_verification / active / banned / deleted), two_factor_method (email / phone / null — только для аккаунтов без контактов), teacher_mode (school / tutor), managed_by_teacher_id, last_seen_at, timezone
+- `users` — id, email (nullable, unique), login (unique), phone, password_hash, full_name, status (pending_verification / active / banned / deleted), two_factor_method (email / phone / null — только для аккаунтов без контактов), managed_by_teacher_id, last_seen_at, timezone
 - `user_roles` — user_id, role (student / teacher / moderator / admin)
 - `otp_challenges` — одноразовые коды (подтверждение email, вход, сброс пароля): хэш кода, срок, попытки
 - `refresh_tokens` — хэш токена, family_id (цепочка ротаций), revoked_at, revoke_reason
@@ -120,16 +120,16 @@ flowchart LR
 
 ### classroom
 - `people` — реплика имён пользователей из identity (события `identity.user.registered|updated|snapshot`)
-- `groups` — id, teacher_id, kind (class / group), mode (school / tutor), title, subject, description, archived_at
+- `groups` — id, teacher_id, kind (class / group), paid (платные занятия или бесплатные), title, subject, description, archived_at
 - `group_members` — group_id, student_id, joined_at, left_at (история сохраняется)
-- `teacher_student_links` — teacher_id, student_id, status (pending / active / declined / ended), source (invite / manual / request / marketplace), pending_group_id
+- `teacher_student_links` — teacher_id, student_id, status (pending / active / declined / ended), source (invite / manual / request / marketplace), paid (индивидуальные занятия платные — независимо от групп ученика), pending_group_id
 - `invitations` — email, teacher_id, group_id, token, expires_at, accepted_at, revoked_at
 - Создание аккаунта ученика и поиск по логину — синхронный вызов `identity /internal/...`
 
 ### schedule
 - `people` — реплика имён из identity
 - `lesson_series` — правило повторения (дни недели, раз в N недель, до даты / N занятий) и часовой пояс педагога
-- `lessons` — id, series_id, teacher_id, mode (school / tutor), kind (individual / group), group_id, group_title, student_id, subject, topic, starts_at, ends_at, status (scheduled / cancelled), video_url, отмена (кто, когда, причина)
+- `lessons` — id, series_id, teacher_id, paid (берётся от группы или ученика при создании, у занятия можно поменять), kind (individual / group), group_id, group_title, student_id, subject, topic, starts_at, ends_at, status (scheduled / cancelled), video_url, отмена (кто, когда, причина)
   - пересечения запрещены ограничением `EXCLUDE USING gist (teacher_id =, tstzrange(starts_at, ends_at) &&) WHERE status = 'scheduled'`
 - `lesson_participants` — lesson_id, student_id; будущие групповые занятия следуют за составом группы (события `classroom.member.*`, `classroom.link.ended`)
 - `reschedule_requests` — перенос индивидуального занятия, ждущий подтверждения второй стороны

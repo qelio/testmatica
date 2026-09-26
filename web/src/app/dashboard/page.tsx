@@ -8,11 +8,6 @@ import { ApiError, type NotificationItem, notifications } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 
-const MODE_TEXT = {
-  school: "Вы в режиме «Школьный учитель»: классы, журнал и КТП.",
-  tutor: "Вы в режиме «Репетитор»: ученики, заявки и оплата через платформу.",
-};
-
 export default function DashboardPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<NotificationItem[] | null>(null);
@@ -42,7 +37,6 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Здравствуйте, {firstName}!</h1>
-        {user.teacher_mode && <p className="mt-2 text-fg-soft">{MODE_TEXT[user.teacher_mode]}</p>}
       </div>
 
       <section className="rounded-2xl border border-line bg-surface">

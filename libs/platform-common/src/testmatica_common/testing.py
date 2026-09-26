@@ -34,7 +34,6 @@ class TestTokens:
         roles: list[str],
         issuer: str,
         audience: str,
-        teacher_mode: str | None = None,
     ) -> str:
         now = int(time.time())
         claims = {
@@ -45,7 +44,6 @@ class TestTokens:
             "exp": now + 300,
             "typ": "access",
             "roles": roles,
-            "teacher_mode": teacher_mode,
         }
         return jwt.encode(claims, self.key, algorithm="RS256", headers={"kid": "test"})
 

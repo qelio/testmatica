@@ -42,7 +42,6 @@ async def create_user(
         password_hash=password_hash,
         full_name=full_name,
         status=status,
-        teacher_mode="school" if "teacher" in roles else None,
         roles=[UserRole(role=r) for r in roles],
         **fields,
     )

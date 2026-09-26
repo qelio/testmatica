@@ -162,7 +162,7 @@ async def publish(
             "student_ids": student_ids,
             "title": await lesson_title(session, first),
             "subject": first.subject,
-            "mode": first.mode,
+            "paid": first.paid,
             "kind": first.kind,
             "starts_at": first.starts_at.isoformat(),
             "ends_at": first.ends_at.isoformat(),
@@ -247,7 +247,7 @@ async def serialize(session: AsyncSession, lessons: Sequence[Lesson], principal:
                 id=lesson.id,
                 series_id=lesson.series_id,
                 teacher=Person(id=lesson.teacher_id, full_name=name(lesson.teacher_id)),
-                mode=lesson.mode,
+                paid=lesson.paid,
                 kind=lesson.kind,
                 group_id=lesson.group_id,
                 # Педагогу индивидуальное занятие подписано именем ученика, ученику — именем педагога.

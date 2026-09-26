@@ -353,7 +353,7 @@ export function CourseDetailsModal({
 }
 
 function ProgressModal({ courseId, onClose }: { courseId: string; onClose: () => void }) {
-  const groups = useLoad(async () => [...(await classroom.groups(false, "school")), ...(await classroom.groups(false, "tutor"))], []);
+  const groups = useLoad(() => classroom.groups(), []);
   const [groupId, setGroupId] = useState("");
   const report = useLoad(() => (groupId ? content.progress(courseId, { group_id: groupId }) : Promise.resolve(null)), [groupId]);
   return (

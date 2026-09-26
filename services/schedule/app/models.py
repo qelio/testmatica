@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Computed, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, func, text
+from sqlalchemy import Boolean, CheckConstraint, Computed, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, false, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSTZRANGE, ExcludeConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
@@ -56,7 +56,6 @@ class Lesson(Base):
     __tablename__ = "lessons"
     __table_args__ = (
         CheckConstraint("kind IN ('individual', 'group')", name="kind_valid"),
-        CheckConstraint("mode IN ('school', 'tutor')", name="mode_valid"),
         CheckConstraint("status IN ('scheduled', 'cancelled')", name="status_valid"),
         CheckConstraint("ends_at > starts_at", name="ends_after_start"),
         CheckConstraint(
@@ -80,7 +79,9 @@ class Lesson(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     series_id: Mapped[UUID | None] = mapped_column(ForeignKey("lesson_series.id", ondelete="SET NULL"))
     teacher_id: Mapped[UUID]
-    mode: Mapped[str] = mapped_column(String(10))
+    # Платное занятие (оплата — этап 4) или бесплатное. Берётся от группы или ученика при создании,
+    # у отдельного занятия можно поменять (например, пробное — бесплатно).
+    paid: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     kind: Mapped[str] = mapped_column(String(12))
     group_id: Mapped[UUID | None]
     group_title: Mapped[str | None] = mapped_column(String(120))

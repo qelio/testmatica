@@ -10,9 +10,9 @@ from testmatica_common.auth import ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import logic, people
-from ..deps import auth, db, identity
+from ..deps import auth, db, identity, outbox
 from ..models import LINK_ACTIVE, LINK_PENDING, SOURCE_MANUAL, Group, GroupMember, TeacherStudentLink
-from ..schemas import LinkRequestCreate, ManualStudentCreate, StudentCredentials, StudentOut, StudentUpdate
+from ..schemas import LinkRequestCreate, ManualStudentCreate, StudentBilling, StudentCredentials, StudentOut, StudentUpdate
 
 router = APIRouter(prefix="/students", tags=["students"])
 teacher = auth.require(ROLE_TEACHER)
@@ -47,6 +47,7 @@ async def _students(session: AsyncSession, teacher_id: UUID, student_id: UUID | 
             source=link.source,
             managed=link.source == SOURCE_MANUAL,
             group_ids=memberships[link.student_id],
+            paid=link.paid,
         )
         for link in links
     ]
@@ -131,6 +132,27 @@ async def update_student(
         json={"teacher_id": str(principal.user_id), "full_name": body.full_name},
     )
     await people.upsert_from_identity(session, updated["user"])
+    await session.commit()
+    return await _one(session, principal.user_id, student_id)
+
+
+@router.put("/{student_id}/billing", response_model=StudentOut)
+async def set_billing(
+    student_id: UUID,
+    body: StudentBilling,
+    principal: Principal = Depends(teacher),
+    session: AsyncSession = Depends(db.session),
+) -> StudentOut:
+    """Индивидуальные занятия с учеником — платные или бесплатные. Действует на новые занятия."""
+    link = await logic.get_link(session, principal.user_id, student_id)
+    if link is None or link.status not in (LINK_ACTIVE, LINK_PENDING):
+        raise ApiError(404, "student_not_found", "Ученик не найден")
+    if link.paid != body.paid:
+        link.paid = body.paid
+        await outbox.event(
+            session, "classroom.link.billing_changed",
+            {"teacher_id": str(principal.user_id), "student_id": str(student_id), "paid": body.paid}, actor_id=principal.user_id,
+        )
     await session.commit()
     return await _one(session, principal.user_id, student_id)
 
