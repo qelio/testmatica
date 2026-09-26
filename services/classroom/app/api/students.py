@@ -3,16 +3,28 @@
 from collections import defaultdict
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
-from .. import logic, people
+from .. import cards, logic, people
+from ..config import settings
 from ..deps import auth, db, identity, outbox
 from ..models import LINK_ACTIVE, LINK_PENDING, SOURCE_MANUAL, Group, GroupMember, TeacherStudentLink
-from ..schemas import LinkRequestCreate, ManualStudentCreate, StudentBilling, StudentCredentials, StudentOut, StudentUpdate
+from ..schemas import (
+    BulkError,
+    BulkStudentsCreate,
+    BulkStudentsOut,
+    CardsIn,
+    LinkRequestCreate,
+    ManualStudentCreate,
+    StudentBilling,
+    StudentCredentials,
+    StudentOut,
+    StudentUpdate,
+)
 
 router = APIRouter(prefix="/students", tags=["students"])
 teacher = auth.require(ROLE_TEACHER)
@@ -68,32 +80,61 @@ async def list_students(principal: Principal = Depends(teacher), session: AsyncS
     return await _students(session, principal.user_id)
 
 
+async def _create_managed(
+    session: AsyncSession, teacher_id: UUID, full_name: str, group: Group | None, login: str | None = None, password: str | None = None
+) -> StudentCredentials:
+    created = await identity.post(
+        "/internal/managed-students",
+        json={"teacher_id": str(teacher_id), "full_name": full_name, "login": login, "password": password},
+    )
+    student_id = UUID(created["user"]["id"])
+    await people.upsert_from_identity(session, created["user"])
+    await logic.activate_link(session, teacher_id, student_id, SOURCE_MANUAL, teacher_id)
+    if group:
+        await logic.add_member(session, group, student_id, teacher_id)
+    await session.commit()
+    return StudentCredentials(student=await _one(session, teacher_id, student_id), login=created["login"], password=created["password"])
+
+
 @router.post("/manual", response_model=StudentCredentials, status_code=201)
 async def create_manual(
     body: ManualStudentCreate, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> StudentCredentials:
     """Педагог создаёт аккаунт ученика сам. Пароль показывается один раз — его надо передать ученику."""
     group = await logic.owned_group(session, body.group_id, principal.user_id) if body.group_id else None
-    created = await identity.post(
-        "/internal/managed-students",
-        json={
-            "teacher_id": str(principal.user_id),
-            "full_name": body.full_name,
-            "login": body.login,
-            "password": body.password,
-        },
+    return await _create_managed(session, principal.user_id, body.full_name, group, body.login, body.password)
+
+
+@router.post("/manual/bulk", response_model=BulkStudentsOut, status_code=201)
+async def create_manual_bulk(
+    body: BulkStudentsCreate, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> BulkStudentsOut:
+    """Сразу несколько учеников (класс по списку): логины и пароли — автоматически. Каждый создаётся отдельно:
+    если с одним не вышло, остальные всё равно создаются, ошибки — в ответе."""
+    teacher_id = principal.user_id
+    created, errors = [], []
+    for name in body.full_names:
+        # Группу читаем заново для каждого: после отката неудачного ученика прежний объект недействителен.
+        group = await logic.owned_group(session, body.group_id, teacher_id) if body.group_id else None
+        try:
+            created.append(await _create_managed(session, teacher_id, name, group))
+        except ApiError as e:
+            await session.rollback()
+            errors.append(BulkError(full_name=name, message=e.message))
+    return BulkStudentsOut(created=created, errors=errors)
+
+
+@router.post("/cards.pdf", response_class=Response)
+async def credential_cards(body: CardsIn, principal: Principal = Depends(teacher)) -> Response:
+    """PDF с карточками входа для вырезания: логин, пароль и QR-код на страницу входа.
+    Пароли в системе не хранятся в открытом виде — карточки печатаются сразу после создания учеников."""
+    pdf = cards.render(
+        [cards.Card(full_name=s.full_name, login=s.login, password=s.password) for s in body.students],
+        login_url=f"{settings.web_base_url}/login",
+        title=body.title or "Тестматика — логины и пароли учеников",
     )
-    student_id = UUID(created["user"]["id"])
-    await people.upsert_from_identity(session, created["user"])
-    await logic.activate_link(session, principal.user_id, student_id, SOURCE_MANUAL, principal.user_id)
-    if group:
-        await logic.add_member(session, group, student_id, principal.user_id)
-    await session.commit()
-    return StudentCredentials(
-        student=await _one(session, principal.user_id, student_id),
-        login=created["login"],
-        password=created["password"],
-    )
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename*=UTF-8''%D0%9A%D0%B0%D1%80%D1%82%D0%BE%D1%87%D0%BA%D0%B8.pdf"})
 
 
 @router.post("/requests", response_model=StudentOut, status_code=201)

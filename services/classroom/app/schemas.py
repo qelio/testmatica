@@ -80,6 +80,43 @@ class StudentCredentials(BaseModel):
     password: str | None
 
 
+class BulkStudentsCreate(BaseModel):
+    full_names: list[str] = Field(min_length=1, max_length=40, description="По одному ученику; логин и пароль — автоматически")
+    group_id: UUID | None = None
+
+    @field_validator("full_names")
+    @classmethod
+    def _names(cls, v: list[str]) -> list[str]:
+        names = [" ".join(n.split()) for n in v]
+        names = [n for n in names if n]
+        if not names:
+            raise ValueError("Укажите хотя бы одного ученика")
+        if any(len(n) > 200 for n in names):
+            raise ValueError("Слишком длинное имя")
+        return names
+
+
+class BulkError(BaseModel):
+    full_name: str
+    message: str
+
+
+class BulkStudentsOut(BaseModel):
+    created: list[StudentCredentials]
+    errors: list[BulkError]
+
+
+class CardIn(BaseModel):
+    full_name: str = Field(min_length=1, max_length=200)
+    login: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class CardsIn(BaseModel):
+    students: list[CardIn] = Field(min_length=1, max_length=60)
+    title: str | None = Field(None, max_length=120, description="Подпись на листе: например, класс")
+
+
 class StudentUpdate(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
 

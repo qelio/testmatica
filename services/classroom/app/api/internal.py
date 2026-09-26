@@ -12,7 +12,7 @@ from testmatica_common.internal import internal_guard
 from .. import logic
 from ..config import settings
 from ..deps import db
-from ..models import LINK_ACTIVE, GroupMember
+from ..models import LINK_ACTIVE, Group, GroupMember
 from .groups import check_group_limit
 
 router = APIRouter(prefix="/internal", tags=["internal"], dependencies=[Depends(internal_guard(settings.internal_token))])
@@ -55,6 +55,30 @@ async def group_info(
         archived=group.archived_at is not None,
         member_ids=list(members.scalars()),
     )
+
+
+@router.get("/teachers/{teacher_id}/groups", response_model=list[GroupInfo])
+async def teacher_groups(
+    teacher_id: UUID, archived: bool = Query(False), session: AsyncSession = Depends(db.session)
+) -> list[GroupInfo]:
+    """Группы педагога с составом — для сводной ведомости в academic."""
+    query = select(Group).where(Group.teacher_id == teacher_id)
+    if not archived:
+        query = query.where(Group.archived_at.is_(None))
+    groups = (await session.execute(query.order_by(Group.title))).scalars().all()
+    members: dict[UUID, list[UUID]] = {g.id: [] for g in groups}
+    if groups:
+        rows = await session.execute(
+            select(GroupMember.group_id, GroupMember.student_id)
+            .where(GroupMember.group_id.in_(list(members)), GroupMember.left_at.is_(None))
+        )
+        for gid, sid in rows:
+            members[gid].append(sid)
+    return [
+        GroupInfo(id=g.id, teacher_id=g.teacher_id, title=g.title, subject=g.subject, paid=g.paid, kind=g.kind,
+                  archived=g.archived_at is not None, member_ids=members[g.id])
+        for g in groups
+    ]
 
 
 @router.get("/links", response_model=LinkInfo)

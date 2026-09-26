@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 import { Alert, Button, CodeStep, Field } from "@/components/ui";
 import { ApiError, identity, type TwoFactorRequired } from "@/lib/api";
@@ -15,10 +15,20 @@ type Step =
   | { kind: "verify-email"; challengeId: string; destination: string };
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+/** ?login= — логин подставляется (QR-код с карточки ученика). */
+function LoginForm() {
   const router = useRouter();
+  const params = useSearchParams();
   const { status, signIn } = useAuth();
   const [step, setStep] = useState<Step>({ kind: "credentials" });
-  const [identifier, setIdentifier] = useState("");
+  const [identifier, setIdentifier] = useState(() => params.get("login") ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
