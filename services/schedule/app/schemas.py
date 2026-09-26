@@ -51,6 +51,7 @@ class LessonCreate(BaseModel):
     topic: str | None = Field(None, max_length=300)
     exam_item_ids: list[UUID] | None = Field(None, max_length=10, description="Задания ЕГЭ/ОГЭ на занятии")
     paid: bool | None = Field(None, description="Платное ли занятие; по умолчанию — как у группы или ученика")
+    trial: bool = Field(False, description="Пробное занятие — после него ученику придёт опрос: отзыв и продолжать ли")
     video_url: str | None = Field(None, max_length=500)
     repeat: Repeat | None = None
     timezone: str = Field("Europe/Moscow", max_length=64)
@@ -82,6 +83,7 @@ class LessonUpdate(BaseModel):
     topic: str | None = Field(None, max_length=300)
     exam_item_ids: list[UUID] | None = Field(None, max_length=10, description="Задания ЕГЭ/ОГЭ на занятии")
     paid: bool | None = None
+    trial: bool | None = None
     video_url: str | None = Field(None, max_length=500)
 
     _subject = field_validator("subject", "topic")(_clean)
@@ -120,6 +122,7 @@ class LessonOut(BaseModel):
     series_id: UUID | None
     teacher: Person
     paid: bool
+    trial: bool
     kind: str
     group_id: UUID | None
     title: str = Field(description="Название группы или имя ученика")

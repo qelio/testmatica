@@ -33,6 +33,7 @@ class Fakes:
         self.files: dict[str, dict] = {}
         self.seen: dict[str, str] = {}
         self.links: set[tuple[str, str]] = set()  # (педагог, ученик)
+        self.group_limited: set[str] = set()  # педагоги, упёршиеся в лимит групп
 
     def link(self, teacher: UUID, student: UUID) -> None:
         self.links.add((str(teacher), str(student)))
@@ -49,6 +50,9 @@ class Fakes:
         path = request.url.path
         if path == "/subjects":
             return httpx.Response(200, json=[{"id": MATH, "name": "Математика"}, {"id": PHYSICS, "name": "Физика"}])
+        if path == "/internal/group-limit":
+            allowed = request.url.params["teacher_id"] not in self.group_limited
+            return httpx.Response(200, json={"allowed": allowed, "message": None if allowed else "На бесплатном тарифе — до 3 активных групп"})
         if path == "/internal/links":
             key = (request.url.params["teacher_id"], request.url.params["student_id"])
             if key not in self.links:

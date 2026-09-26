@@ -326,6 +326,9 @@ async def on_marketplace_event(envelope: Envelope, session: AsyncSession) -> Non
     if t.startswith("marketplace.review."):
         _review_notification(session, t, d)
         return
+    if t.startswith(("marketplace.group_offer.", "marketplace.trial.")):
+        _offer_notification(session, t, d)
+        return
     if t == "marketplace.education.approved":
         session.add(Notification(user_id=UUID(d["user_id"]), kind="education_approved",
                                  title=f"Документ «{d['title']}» подтверждён",
@@ -402,3 +405,51 @@ async def on_billing_event(envelope: Envelope, session: AsyncSession) -> None:
         session.add(Notification(user_id=user, kind="subscription_renew_failed", title="Не удалось продлить подписку",
                                  body=f"{d.get('error') or 'Оплата не прошла'}. Попробуем ещё раз; можно оплатить вручную.",
                                  payload=link))
+
+
+def _offer_notification(session: AsyncSession, t: str, d: dict) -> None:
+    """Наборы в группы и пробные занятия."""
+    add = session.add
+    if t.startswith("marketplace.trial."):
+        if t == "marketplace.trial.followup_created":
+            add(Notification(user_id=UUID(d["student_id"]), kind="trial_followup", title="Как прошло пробное занятие?",
+                             body=f"Оставьте отзыв и напишите, будете ли заниматься с педагогом {d.get('tutor_name') or ''} дальше."
+                             if d.get("tutor_name") else "Оставьте отзыв и напишите, будете ли заниматься с педагогом дальше.",
+                             payload={"href": "/dashboard"}))
+        elif t == "marketplace.trial.answered":
+            yes = d["decision"] == "continue"
+            add(Notification(user_id=UUID(d["tutor_id"]), kind="trial_answered",
+                             title=f"{d['student_name']} {'хочет продолжить занятия' if yes else 'не будет продолжать'} после пробного",
+                             body=d.get("comment") or "", payload={"href": "/dashboard/students"}))
+        return
+    tutor = UUID(d["tutor_id"])
+    offer = {"offer_id": d["offer_id"], "href": f"/groups/{d['offer_id']}"}
+    manage = {"offer_id": d["offer_id"], "href": "/dashboard/offers"}
+    students = [UUID(s) for s in d.get("student_ids", [])]
+    title = f"«{d['title']}»"
+    if t == "marketplace.group_offer.joined":
+        text = "В группе появился новый ученик" if d.get("started") else f"Записались {d['count']} из {d['max_students']} (минимум {d['min_students']})"
+        add(Notification(user_id=tutor, kind="offer_joined", title=f"{d['student_name']} записывается в группу {title}", body=text,
+                         payload=manage))
+    elif t == "marketplace.group_offer.min_reached":
+        add(Notification(user_id=tutor, kind="offer_min_reached", title=f"Набор в группу {title}: минимум набран",
+                         body="Можно запускать группу — ученики привяжутся к вам, занятия поставите в расписание.", payload=manage))
+    elif t == "marketplace.group_offer.started":
+        for sid in students:
+            add(Notification(user_id=sid, kind="offer_started", title=f"Группа {title} стартует",
+                             body="Педагог запустил группу — занятия появятся в расписании.", payload={"href": "/dashboard/schedule"}))
+    elif t == "marketplace.group_offer.underfilled":
+        add(Notification(user_id=tutor, kind="offer_underfilled", title=f"Недобор в группу {title}",
+                         body=f"Срок набора прошёл: записались {d['count']} при минимуме {d['min_students']}. Продлите набор или отмените его.",
+                         payload=manage))
+        for sid in students:
+            add(Notification(user_id=sid, kind="offer_underfilled", title=f"Группа {title} пока не набралась",
+                             body="Педагог решит — продлить набор или отменить. Мы сообщим.", payload=offer))
+    elif t == "marketplace.group_offer.extended":
+        for sid in students:
+            add(Notification(user_id=sid, kind="offer_extended", title=f"Набор в группу {title} продлён",
+                             body="Ваше место сохранено.", payload=offer))
+    elif t == "marketplace.group_offer.cancelled":
+        for sid in students:
+            add(Notification(user_id=sid, kind="offer_cancelled", title=f"Набор в группу {title} отменён",
+                             body="Педагог отменил набор. Посмотрите другие группы.", payload={"href": "/groups"}))

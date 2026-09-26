@@ -332,3 +332,22 @@ async def test_subscription_notifications(client):
     assert [(i["title"], i["body"]) for i in items] == [
         ("Тариф «Базовый» подключён", "Действует до 26 октября. Все ограничения бесплатного тарифа сняты.")]
     assert items[0]["payload"]["href"] == "/dashboard/subscription"
+
+
+async def test_offer_and_trial_notifications(client):
+    tutor, a, b = uuid4(), uuid4(), uuid4()
+    c = consumer("notification.marketplace", handlers.on_marketplace_event)
+    base = {"offer_id": str(uuid4()), "tutor_id": str(tutor), "title": "ОГЭ, 9 класс", "subject": "Математика"}
+    await c.process(make_envelope("marketplace.group_offer.joined", base | {
+        "student_id": str(a), "student_name": "Аня", "count": 1, "min_students": 2, "max_students": 5, "started": False}))
+    await c.process(make_envelope("marketplace.group_offer.underfilled", base | {"count": 1, "min_students": 2, "student_ids": [str(a)]}))
+    titles = [i["title"] for i in (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"]]
+    assert titles == ["Недобор в группу «ОГЭ, 9 класс»", "Аня записывается в группу «ОГЭ, 9 класс»"]
+    mine = (await client.get("/notifications", headers=bearer(a))).json()["items"][0]
+    assert mine["title"] == "Группа «ОГЭ, 9 класс» пока не набралась" and mine["payload"]["href"] == f"/groups/{base['offer_id']}"
+
+    await c.process(make_envelope("marketplace.trial.answered", {
+        "lesson_id": str(uuid4()), "student_id": str(b), "student_name": "Борис", "tutor_id": str(tutor),
+        "decision": "continue", "comment": "Всё понравилось", "title": "Борис"}))
+    top = (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"][0]
+    assert (top["title"], top["body"]) == ("Борис хочет продолжить занятия после пробного", "Всё понравилось")

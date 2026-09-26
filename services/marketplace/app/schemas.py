@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Level = Literal["1-4", "5-9", "10-11", "student", "adult"]
 Format = Literal["individual", "group"]
@@ -269,3 +269,105 @@ class ReviewsPage(BaseModel):
     distribution: dict[int, int] = Field(description="Сколько отзывов с каждой оценкой 1–10")
     can_review: bool = Field(description="Текущий пользователь — ученик этого педагога и может оставить отзыв")
     mine: MyReview | None
+
+
+# ---------- наборы в группы ----------
+
+
+class OfferSchedule(BaseModel):
+    weekdays: list[int] = Field(min_length=1, max_length=7, description="0 — понедельник")
+    time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    duration_min: Literal[30, 45, 60, 90, 120]
+    start_date: date
+    lessons_count: int | None = Field(None, ge=1, le=200, description="Сколько занятий в курсе; пусто — без окончания")
+    timezone: str = Field("Europe/Moscow", max_length=64)
+
+    @field_validator("weekdays")
+    @classmethod
+    def _days(cls, v: list[int]) -> list[int]:
+        if any(d < 0 or d > 6 for d in v):
+            raise ValueError("Дни недели — от 0 (пн) до 6 (вс)")
+        return sorted(set(v))
+
+
+class OfferIn(BaseModel):
+    title: str = Field(min_length=3, max_length=120)
+    subject_id: UUID
+    levels: list[Level] = Field(default_factory=list)
+    description: str = Field("", max_length=5000)
+    program: list[str] = Field(default_factory=list, max_length=200, description="Темы по порядку")
+    schedule: OfferSchedule
+    price: int = Field(ge=0, le=100_000, description="За занятие с ученика; 0 — бесплатно")
+    min_students: int = Field(ge=1, le=15)
+    max_students: int = Field(ge=1, le=15)
+    enroll_until: date
+    private: bool = Field(False, description="Закрытый набор — только по ссылке")
+
+    _title = field_validator("title")(_clean)
+
+    @field_validator("program")
+    @classmethod
+    def _program(cls, v: list[str]) -> list[str]:
+        items = [_clean(t)[:300] for t in v]
+        return [t for t in items if t]
+
+    @model_validator(mode="after")
+    def _sizes(self) -> "OfferIn":
+        if self.max_students < self.min_students:
+            raise ValueError("Максимум учеников не может быть меньше минимума")
+        if self.enroll_until > self.schedule.start_date:
+            raise ValueError("Набор должен закончиться не позже первого занятия")
+        return self
+
+
+class ExtendIn(BaseModel):
+    enroll_until: date
+    start_date: date | None = Field(None, description="Новая дата первого занятия, если набор продлевается дальше старой")
+
+
+class OfferStudent(BaseModel):
+    id: UUID
+    full_name: str
+    enrolled_at: datetime
+
+
+class OfferOut(BaseModel):
+    id: UUID
+    tutor: PersonBrief
+    title: str
+    subject: SubjectRef
+    levels: list[str]
+    description: str
+    program: list[str]
+    schedule: OfferSchedule
+    price: int
+    min_students: int
+    max_students: int
+    enroll_until: date
+    private: bool
+    status: str
+    enrolled_count: int
+    seats_left: int
+    joinable: bool = Field(description="Можно записаться прямо сейчас")
+    enrolled: bool = Field(description="Текущий пользователь записан")
+    is_owner: bool
+    share_url: str
+    students: list[OfferStudent] | None = Field(None, description="Только владельцу")
+    started_at: datetime | None
+    created_at: datetime
+
+
+class TrialOut(BaseModel):
+    lesson_id: UUID
+    tutor: PersonBrief
+    title: str
+    lesson_starts_at: datetime
+    status: str
+    comment: str
+    answered_at: datetime | None
+    reviewed: bool = Field(description="Ученик уже оставил отзыв этому педагогу")
+
+
+class TrialAnswerIn(BaseModel):
+    decision: Literal["continue", "stop"]
+    comment: str = Field("", max_length=1000)

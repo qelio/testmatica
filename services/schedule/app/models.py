@@ -82,6 +82,8 @@ class Lesson(Base):
     # Платное занятие (оплата — этап 4) или бесплатное. Берётся от группы или ученика при создании,
     # у отдельного занятия можно поменять (например, пробное — бесплатно).
     paid: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Пробное занятие: после него ученику предлагается оставить отзыв и подтвердить продолжение (ТЗ, раздел 4).
+    trial: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     kind: Mapped[str] = mapped_column(String(12))
     group_id: Mapped[UUID | None]
     group_title: Mapped[str | None] = mapped_column(String(120))

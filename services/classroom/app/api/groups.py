@@ -57,7 +57,7 @@ async def list_groups(
     return [_out(g, n) for g, n in (await session.execute(query)).all()]
 
 
-async def _check_group_limit(session: AsyncSession, teacher_id: UUID) -> None:
+async def check_group_limit(session: AsyncSession, teacher_id: UUID) -> None:
     """Бесплатный тариф — до 3 активных классов и групп; архивные не считаются. На «Базовом» — без ограничений."""
     active = await session.scalar(
         select(func.count()).select_from(Group).where(Group.teacher_id == teacher_id, Group.archived_at.is_(None))
@@ -75,7 +75,7 @@ async def create_group(
     body: GroupCreate, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> GroupOut:
     await subjects.check(body.subject)  # предмет — из справочника модераторов
-    await _check_group_limit(session, principal.user_id)
+    await check_group_limit(session, principal.user_id)
     group = Group(
         teacher_id=principal.user_id,
         paid=body.paid,
@@ -175,7 +175,7 @@ async def restore_group(
 ) -> GroupOut:
     group = await logic.owned_group(session, group_id, principal.user_id)
     if group.archived_at is not None:
-        await _check_group_limit(session, principal.user_id)
+        await check_group_limit(session, principal.user_id)
         group.archived_at = None
         await outbox.event(
             session,

@@ -87,7 +87,8 @@ flowchart LR
 | `classroom.member.added` / `removed` | classroom | chat, schedule |
 | `schedule.lesson.created` / `updated` / `cancelled` | schedule | notification, billing, video, academic |
 | `schedule.lesson.reschedule_requested` / `confirmed` | schedule | notification, billing |
-| `schedule.lesson.started` / `finished` | schedule | billing (escrow), marketplace (предложить отзыв) |
+| `schedule.lesson.trial_finished` (через 5 минут после конца пробного) | schedule | marketplace (опрос ученика) |
+| `schedule.lesson.started` / `finished` | schedule | billing (escrow) — с оплатой занятий |
 | `schedule.lesson.unpaid_warning` | schedule | notification |
 | `content.item.submitted` | content | moderation |
 | `assessment.task.submitted` | assessment | moderation |
@@ -211,12 +212,14 @@ flowchart LR
 - Оставить отзыв может ученик, привязанный к педагогу (в том числе бывший) — проверка через `classroom /internal/links`. Правка отзыва отправляет его на повторную проверку и снимает прежние ответ и спор
 - Отзыв, ответ и спор проверяются в moderation (kind = review / review_reply / review_dispute); решение приходит в `moderation.decision.made`. Спор «одобрен» — отзыв снимается (removed); модератор может снять отзыв и напрямую (`DELETE /moderation/reviews/{id}`)
 - Рейтинг профиля (`rating`, `reviews_count`) пересчитывается по опубликованным отзывам — средняя оценка с одним знаком; фильтр «минимальный рейтинг» и сортировка поиска — по нему
-Дальше (4.4–4.5):
-- `competencies` — id, subject_id, name (справочник модератора)
-- `requests` — id, student_id, tutor_id (null = открытая), subject_id, goal, current_competencies, desired_competencies, schedule_pref (JSON), price, duration_min, comment, status (open / agreed / closed / expired), expires_at
-- `request_responses` — request_id, tutor_id, chat_id, status
-- `group_offers` — id, tutor_id, subject_id, program_template_id, schedule, price_per_student, min_students, max_students, enroll_until, status
-- `group_enrollments` — offer_id, student_id, status, unpaid_streak
+Этап 4.5 (сделано, кроме оплаты):
+- `group_offers` — набор в группу: tutor_id, title, subject, levels, description, program (темы по порядку, можно взять из своего шаблона КТП), schedule (дни, время, длительность, первое занятие, число занятий, часовой пояс), price (за занятие с ученика; 0 — бесплатно), min_students / max_students (до 15), enroll_until, private (закрытая — только по ссылке), status (recruiting / underfilled / started / closed / cancelled)
+- `group_enrollments` — запись ученика = зарезервированное место; отменить можно до запуска
+- Набрался минимум → уведомление педагогу; педагог запускает группу (`marketplace.group_offer.started`; перед этим — лимит групп тарифа через `classroom /internal/group-limit`). classroom создаёт группу **с id набора**, привязывает учеников (source = marketplace) и добавляет в группу; дальше всё как у обычной группы (чат, расписание). Форма расписания открывается с серией занятий из карточки. В идущую группу можно войти, пока есть места и набор не закрыт (`marketplace.group_offer.joined` → classroom добавляет ученика)
+- Срок набора прошёл без минимума → underfilled (фоновая задача), педагог продлевает (`/extend`, при необходимости сдвигая первое занятие) или отменяет
+- `trial_followups` — после пробного занятия (`schedule.lesson.trial_finished`) ученику: оставить отзыв и ответить «продолжу / не буду»; ответ — педагогу уведомлением
+Дальше (с оплатой занятий):
+- «3 неоплаченных занятия подряд» в группе, оплата перед каждым занятием, платные пробные через escrow, споры по занятиям
 
 ### billing
 Сделано (подписка педагога, провайдер пока поддельный):

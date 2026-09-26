@@ -13,6 +13,7 @@ from .. import logic
 from ..config import settings
 from ..deps import db
 from ..models import LINK_ACTIVE, GroupMember
+from .groups import check_group_limit
 
 router = APIRouter(prefix="/internal", tags=["internal"], dependencies=[Depends(internal_guard(settings.internal_token))])
 
@@ -64,3 +65,20 @@ async def link_info(
     if link is None:
         raise ApiError(404, "student_not_found", "Ученик не привязан к педагогу")
     return LinkInfo(teacher_id=teacher_id, student_id=student_id, active=link.status == LINK_ACTIVE, paid=link.paid)
+
+
+class GroupLimit(BaseModel):
+    allowed: bool
+    message: str | None = None
+
+
+@router.get("/group-limit", response_model=GroupLimit)
+async def group_limit(teacher_id: UUID = Query(), session: AsyncSession = Depends(db.session)) -> GroupLimit:
+    """Можно ли педагогу завести ещё одну активную группу (лимит бесплатного тарифа) — для запуска набора в marketplace."""
+    try:
+        await check_group_limit(session, teacher_id)
+    except ApiError as e:
+        if e.code != "plan_limit":
+            raise
+        return GroupLimit(allowed=False, message=e.message)
+    return GroupLimit(allowed=True)

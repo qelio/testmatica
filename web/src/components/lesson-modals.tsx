@@ -25,7 +25,7 @@ import {
 } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 
-const DURATIONS = [30, 45, 60, 90];
+const DURATIONS = [30, 45, 60, 90, 120];
 
 function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string }) {
   const { label, ...rest } = props;
@@ -59,20 +59,25 @@ function ScopeChoice({ value, onChange }: { value: Scope; onChange: (s: Scope) =
 
 // ---------- создание ----------
 
+/** Предзаполнение формы — например, серия занятий запущенной группы из набора. */
+export type LessonPreset = { groupId?: string; weekdays?: number[]; duration?: number; count?: number };
+
 export function CreateLessonModal({
   open,
   initial,
+  preset,
   onClose,
   onCreated,
 }: {
   open: boolean;
   initial: Date | null;
+  preset?: LessonPreset;
   onClose: () => void;
   onCreated: (message: string) => void;
 }) {
   return (
     <Modal open={open} onClose={onClose} title="Новое занятие">
-      {open && <CreateLessonForm key={initial?.toISOString()} initial={initial ?? nextHour()} onCreated={onCreated} />}
+      {open && <CreateLessonForm key={initial?.toISOString()} initial={initial ?? nextHour()} preset={preset} onCreated={onCreated} />}
     </Modal>
   );
 }
@@ -83,27 +88,28 @@ function nextHour(): Date {
   return d;
 }
 
-function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (message: string) => void }) {
+function CreateLessonForm({ initial, preset, onCreated }: { initial: Date; preset?: LessonPreset; onCreated: (message: string) => void }) {
   const groups = useLoad(() => classroom.groups(), []);
   const students = useLoad(() => classroom.students(), []);
   const [kind, setKind] = useState<"group" | "individual">("group");
-  const [target, setTarget] = useState("");
+  const [target, setTarget] = useState(preset?.groupId ?? "");
   const [date, setDate] = useState(toDateInput(initial));
   const [time, setTime] = useState(toTimeInput(initial));
-  const [duration, setDuration] = useState(45);
+  const [duration, setDuration] = useState(preset?.duration ?? 45);
+  const [trial, setTrial] = useState(false);
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [examItems, setExamItems] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState("");
   // null — как у группы или ученика; можно поменять для этих занятий (например, пробное — бесплатно).
   const [paidOverride, setPaidOverride] = useState<boolean | null>(null);
-  const [repeat, setRepeat] = useState(false);
+  const [repeat, setRepeat] = useState(!!preset?.weekdays?.length);
   // null — пользователь дни не выбирал: повторяем в день недели выбранной даты.
-  const [pickedWeekdays, setWeekdays] = useState<number[] | null>(null);
+  const [pickedWeekdays, setWeekdays] = useState<number[] | null>(preset?.weekdays?.length ? preset.weekdays : null);
   const weekdays = pickedWeekdays ?? (date ? [weekdayIndex(fromInputs(date, "00:00"))] : []);
   const [intervalWeeks, setIntervalWeeks] = useState(1);
   const [endMode, setEndMode] = useState<"count" | "until">("count");
-  const [count, setCount] = useState(10);
+  const [count, setCount] = useState(preset?.count ?? 10);
   const [until, setUntil] = useState("");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
@@ -130,6 +136,7 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
         : null;
       const res = await schedule.create({
         kind,
+        trial,
         group_id: kind === "group" ? target : null,
         student_id: kind === "individual" ? target : null,
         starts_at: fromInputs(date, time).toISOString(),
@@ -206,6 +213,13 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
           </p>
         </div>
       )}
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" checked={trial} onChange={(e) => setTrial(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
+        <span>
+          <span className="font-medium">Пробное занятие</span>
+          <span className="block text-fg-soft">После него ученику предложим оставить отзыв и ответить, будет ли он заниматься дальше.</span>
+        </span>
+      </label>
       <SubjectSelect value={subject} onChange={setSubject} empty={kind === "group" ? "Как у группы" : "Не указан"} />
       <Field label="Тема урока" value={topic} maxLength={300} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
@@ -333,6 +347,7 @@ function LessonDetails({
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={lesson.paid ? "warn" : "ok"}>{lesson.paid ? "платное" : "бесплатное"}</Badge>
+        {lesson.trial && <Badge tone="brand">пробное</Badge>}
         <Badge>{lesson.kind === "group" ? "группа" : "индивидуальное"}</Badge>
         {lesson.series_id && <Badge>серия</Badge>}
         {cancelled && <Badge tone="warn">отменено</Badge>}
@@ -527,6 +542,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
   const [topic, setTopic] = useState(lesson.topic ?? "");
   const [examItems, setExamItems] = useState(lesson.exam_item_ids);
   const [paid, setPaid] = useState(lesson.paid);
+  const [trial, setTrial] = useState(lesson.trial);
   const [videoUrl, setVideoUrl] = useState(lesson.video_url ?? "");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
@@ -547,6 +563,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
             topic: topic || null,
             exam_item_ids: examItems,
             paid,
+            ...(trial !== lesson.trial ? { trial } : {}),
             video_url: videoUrl || null,
           });
           onDone();
@@ -570,6 +587,10 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
       <Field label="Тема урока" value={topic} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
       <BillingSelect label="Оплата" value={paid} free="Бесплатное занятие" paid="Платное занятие" onChange={setPaid} />
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={trial} onChange={(e) => setTrial(e.target.checked)} className="h-4 w-4 accent-brand" />
+        Пробное занятие — после него ученику придёт опрос
+      </label>
       <Field
         label="Внешняя ссылка на звонок (необязательно)"
         placeholder="https://… (Zoom, Meet и т. д.)"

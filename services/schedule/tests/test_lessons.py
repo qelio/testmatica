@@ -368,3 +368,26 @@ async def test_lesson_subject_from_directory(client, teacher, fake_classroom):
     _, lesson = await individual(client, teacher, fake_classroom, student=student, start=at(6, 12), subject="Физика")
     upd = await client.patch(f"/lessons/{lesson['id']}", json={"subject": "Хиромантия"}, headers=bearer(teacher))
     assert upd.json()["error"]["code"] == "unknown_subject"
+
+
+async def test_trial_lesson_followup(client, teacher, fake_classroom):
+    student, lesson = await individual(client, teacher, fake_classroom, start=datetime.now(UTC) + timedelta(hours=30),
+                                       trial=True, paid=False)
+    assert lesson["trial"] is True and lesson["paid"] is False
+    assert (await outbox("schedule.lesson.created"))[0]["data"]["trial"] is True
+    # Пробное закончилось — событие для опроса ученика; напоминания в этот момент не шлём.
+    async with db.sessionmaker() as s, s.begin():
+        await s.execute(update(ScheduledJob).where(ScheduledJob.kind == "trial_finished").values(run_at=datetime.now(UTC)))
+    assert await handlers.run_due_jobs() == 1
+    [done] = await outbox("schedule.lesson.trial_finished")
+    assert done["data"]["lesson_ids"] == [lesson["id"]] and done["data"]["student_ids"] == [str(student)]
+    assert await outbox("schedule.lesson.reminder") == []
+
+    # Пометку «пробное» сняли — опроса не будет.
+    _, other = await individual(client, teacher, fake_classroom, start=datetime.now(UTC) + timedelta(hours=50), trial=True)
+    await client.patch(f"/lessons/{other['id']}", json={"trial": False, "scope": "this"}, headers=bearer(teacher))
+    async with db.sessionmaker() as s, s.begin():
+        await s.execute(update(ScheduledJob).where(ScheduledJob.kind == "trial_finished", ScheduledJob.done_at.is_(None))
+                        .values(run_at=datetime.now(UTC)))
+    await handlers.run_due_jobs()
+    assert len(await outbox("schedule.lesson.trial_finished")) == 1

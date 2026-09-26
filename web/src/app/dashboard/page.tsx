@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import { TrialFollowups } from "@/components/trial-followups";
 import { Alert } from "@/components/ui";
 import { ApiError, type NotificationItem, notifications } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -38,6 +39,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Здравствуйте, {firstName}!</h1>
       </div>
+      {user.roles.includes("student") && <TrialFollowups />}
 
       <section className="rounded-2xl border border-line bg-surface">
         <div className="flex items-center justify-between border-b border-line px-5 py-4">

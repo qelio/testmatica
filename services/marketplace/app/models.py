@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -213,3 +213,83 @@ class Review(Base):
     dispute_comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------- наборы в группы и пробные занятия (шаг 4.5) ----------
+
+OFFER_RECRUITING, OFFER_UNDERFILLED, OFFER_STARTED, OFFER_CLOSED, OFFER_CANCELLED = (
+    "recruiting", "underfilled", "started", "closed", "cancelled")
+
+
+class GroupOffer(Base):
+    """Карточка набора в группу (ТЗ, раздел 4): программа, расписание, цена на ученика, минимум и максимум.
+
+    Группа стартует, только когда набрался минимум: педагог запускает её — classroom создаёт группу с тем же id.
+    Закрытый набор (private) — не в каталоге, доступен только по ссылке.
+    """
+
+    __tablename__ = "group_offers"
+    __table_args__ = (
+        CheckConstraint("status IN ('recruiting', 'underfilled', 'started', 'closed', 'cancelled')", name="status_valid"),
+        CheckConstraint("min_students >= 1 AND max_students >= min_students AND max_students <= 15", name="size_valid"),
+        CheckConstraint("price >= 0", name="price_valid"),
+        Index("ix_offers_catalog", "status", "private", "subject_id", "created_at"),
+        Index("ix_offers_tutor", "tutor_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    tutor_id: Mapped[UUID]
+    title: Mapped[str] = mapped_column(String(120))
+    subject_id: Mapped[UUID]
+    subject_name: Mapped[str] = mapped_column(String(80))
+    levels: Mapped[list[str]] = mapped_column(ARRAY(String(10)), default=list, server_default="{}")
+    description: Mapped[str] = mapped_column(Text, default="")
+    program: Mapped[list[str]] = mapped_column(JSONB, default=list)  # темы по порядку — как в КТП
+    # {"weekdays": [0, 2], "time": "18:00", "duration_min": 60, "start_date": "2026-10-05", "lessons_count": 16, "timezone": "Europe/Moscow"}
+    schedule: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    price: Mapped[int] = mapped_column(Integer)  # за занятие с ученика; 0 — бесплатно
+    min_students: Mapped[int] = mapped_column(SmallInteger)
+    max_students: Mapped[int] = mapped_column(SmallInteger)
+    enroll_until: Mapped[date]
+    private: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    status: Mapped[str] = mapped_column(String(12), default=OFFER_RECRUITING)
+    min_reached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class GroupEnrollment(Base):
+    """Запись ученика в набор — резервирует место. Оплата — перед каждым занятием отдельно (этап оплаты)."""
+
+    __tablename__ = "group_enrollments"
+    __table_args__ = (Index("ix_enrollments_student", "student_id"),)
+
+    offer_id: Mapped[UUID] = mapped_column(ForeignKey("group_offers.id", ondelete="CASCADE"), primary_key=True)
+    student_id: Mapped[UUID] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+TRIAL_PENDING, TRIAL_CONTINUE, TRIAL_STOP = "pending", "continue", "stop"
+
+
+class TrialFollowup(Base):
+    """После пробного занятия ученику предлагается оставить отзыв и подтвердить продолжение (ТЗ, раздел 4)."""
+
+    __tablename__ = "trial_followups"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'continue', 'stop')", name="status_valid"),
+        Index("ix_trials_student", "student_id", "status"),
+        Index("ix_trials_tutor", "tutor_id", "created_at"),
+    )
+
+    lesson_id: Mapped[UUID] = mapped_column(primary_key=True)
+    student_id: Mapped[UUID] = mapped_column(primary_key=True)
+    tutor_id: Mapped[UUID]
+    title: Mapped[str] = mapped_column(String(200))  # «Индивидуальное занятие · Математика»
+    lesson_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(10), default=TRIAL_PENDING)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
