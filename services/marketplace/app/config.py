@@ -7,6 +7,7 @@ class Settings(CommonSettings):
     identity_url: str = "http://identity:8000"
     media_url: str = "http://media:8000"
     content_url: str = "http://content:8000"
+    classroom_url: str = "http://classroom:8000"
     web_base_url: str = "http://localhost:8080"
 
     # Онлайн-статус: сессия продлевается примерно раз в 15 минут, пока человек на сайте.

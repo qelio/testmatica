@@ -7,7 +7,7 @@ from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import handlers, subjects_sync
-from .api import competencies, requests, tutors
+from .api import competencies, requests, reviews, tutors
 from .config import settings
 from .deps import db
 
@@ -34,3 +34,4 @@ app.include_router(health_router(db))
 app.include_router(tutors.router)
 app.include_router(requests.router)
 app.include_router(competencies.router)
+app.include_router(reviews.router)

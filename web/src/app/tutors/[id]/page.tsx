@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { RequestForm } from "@/components/request-form";
+import { TutorReviewsSection } from "@/components/reviews";
 import { Avatar, PresenceDot, Rating } from "@/components/tutor-card";
 import { Alert, Badge, Button, Modal, Spinner } from "@/components/ui";
 import { marketplace } from "@/lib/api";
@@ -44,7 +45,9 @@ export default function TutorPage() {
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t.full_name}</h1>
           <p>{t.headline}</p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <Rating rating={t.rating} count={t.reviews_count} />
+            <a href="#reviews" className="hover:underline">
+              <Rating rating={t.rating} count={t.reviews_count} />
+            </a>
             {t.education_verified && <Badge tone="ok">образование подтверждено</Badge>}
             <PresenceDot presence={t.presence} />
           </div>
@@ -140,10 +143,11 @@ export default function TutorPage() {
         )}
       </Modal>
 
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Отзывы</h2>
-        <p className="text-sm text-fg-soft">Отзывов пока нет.</p>
-      </section>
+      <TutorReviewsSection
+        tutorId={t.user_id}
+        authed={authed}
+        moderator={!!user?.roles.some((r) => r === "moderator" || r === "admin")}
+      />
     </div>
   );
 }

@@ -42,6 +42,7 @@ export const NAV = {
   ],
   staff: [
     DASHBOARD,
+    CHATS, // споры по отзывам — чаты поддержки
     { title: "Очередь модерации", href: "/dashboard/moderation", ready: true },
     { title: "Банк задач", href: "/dashboard/tasks", ready: true },
     { title: "Библиотека", href: "/dashboard/library", ready: true },

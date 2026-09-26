@@ -555,7 +555,7 @@ export type ChatMessage = {
 
 export type Conversation = {
   id: string;
-  kind: "direct" | "group" | "deal";
+  kind: "direct" | "group" | "deal" | "support";
   title: string;
   group_id: string | null;
   other_user_id: string | null;
@@ -1237,6 +1237,50 @@ export const marketplace = {
   proposePrice: (id: string, price: number) => api<Negotiation>(`${MK}/responses/${id}/price`, { method: "POST", body: { price } }),
   agree: (id: string) => api<Negotiation>(`${MK}/responses/${id}/agree`, { method: "POST" }),
   decline: (id: string) => api<Negotiation>(`${MK}/responses/${id}/decline`, { method: "POST" }),
+
+  reviews: (tutorId: string, authed: boolean, offset = 0) =>
+    api<ReviewsPage>(`${MK}/tutors/${tutorId}/reviews?offset=${offset}`, readOpts(authed)),
+  saveReview: (tutorId: string, data: { rating: number; text: string }) =>
+    api<MyReview>(`${MK}/tutors/${tutorId}/review`, { method: "PUT", body: data }),
+  myReviews: () => api<MyReview[]>(`${MK}/reviews/mine`),
+  deleteReview: (id: string) => api<void>(`${MK}/reviews/${id}`, { method: "DELETE" }),
+  reviewsAboutMe: () => api<TutorReview[]>(`${MK}/me/reviews`),
+  replyReview: (id: string, text: string) => api<TutorReview>(`${MK}/reviews/${id}/reply`, { method: "PUT", body: { text } }),
+  disputeReview: (id: string, reason: string) =>
+    api<TutorReview>(`${MK}/reviews/${id}/dispute`, { method: "POST", body: { reason } }),
+  removeReview: (id: string, reason: string) =>
+    api<void>(`${MK}/moderation/reviews/${id}`, { method: "DELETE", body: { reason } }),
+};
+
+export type ReviewStatus = "pending" | "approved" | "rejected" | "removed";
+export type ReviewPublic = { id: string; student_name: string; rating: number; text: string; published_at: string; reply: string | null };
+export type MyReview = {
+  id: string;
+  tutor_id: string;
+  tutor_name: string;
+  rating: number;
+  text: string;
+  status: ReviewStatus;
+  comment: string | null;
+  reply: string | null;
+  updated_at: string;
+};
+export type TutorReview = ReviewPublic & {
+  reply_text: string | null;
+  reply_status: "pending" | "approved" | "rejected" | null;
+  reply_comment: string | null;
+  dispute_id: string | null;
+  dispute_status: "open" | "upheld" | "dismissed" | null;
+  dispute_comment: string | null;
+};
+export type ReviewsPage = {
+  items: ReviewPublic[];
+  total: number;
+  rating: number | null;
+  reviews_count: number;
+  distribution: Record<string, number>;
+  can_review: boolean;
+  mine: MyReview | null;
 };
 
 export type Competency = { id: string; subject_id: string; title: string; position: number };

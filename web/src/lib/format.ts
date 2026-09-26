@@ -20,6 +20,19 @@ export function pluralStudents(n: number): string {
   return `${n} ${word}`;
 }
 
+/** 1 отзыв, 2 отзыва, 5 отзывов. */
+export function pluralReviews(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  const word = mod10 === 1 && mod100 !== 11 ? "отзыв" : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? "отзыва" : "отзывов";
+  return `${n} ${word}`;
+}
+
+/** Рейтинг 1–10 с одним знаком: «9,2». */
+export function fmtRating(n: number): string {
+  return n.toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 export const ATTENDANCE_LABELS = {
   present: { short: "✓", full: "Присутствовал" },
   late: { short: "О", full: "Опоздал" },

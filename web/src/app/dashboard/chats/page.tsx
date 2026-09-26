@@ -271,7 +271,14 @@ function Thread({
         <div className="min-w-0">
           <p className="truncate font-semibold">{conversation.title}</p>
           <p className="text-xs text-fg-soft">
-            {conversation.kind === "group" ? "групповой чат" : conversation.kind === "deal" ? "переговоры по заявке" : "личный диалог"}
+            {
+              {
+                group: "групповой чат",
+                deal: "переговоры по заявке",
+                support: "поддержка: педагог и модераторы",
+                direct: "личный диалог",
+              }[conversation.kind]
+            }
           </p>
         </div>
       </header>

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui";
 import type { TutorCard } from "@/lib/api";
-import { FORMAT_LABELS, fmtRub, LEVEL_LABELS, presenceText } from "@/lib/format";
+import { FORMAT_LABELS, fmtRating, fmtRub, LEVEL_LABELS, pluralReviews, presenceText } from "@/lib/format";
 
 export function Avatar({ url, name, size = 64 }: { url: string | null; name: string; size?: number }) {
   const initials = name
@@ -28,8 +28,8 @@ export function Rating({ rating, count }: { rating: number | null; count: number
   if (rating === null || count === 0) return <span className="text-sm text-fg-soft">нет отзывов</span>;
   return (
     <span className="text-sm">
-      <b>★ {rating.toFixed(1)}</b>
-      <span className="text-fg-soft"> / 10 · {count} отз.</span>
+      <b>★ {fmtRating(rating)}</b>
+      <span className="text-fg-soft"> из 10 · {pluralReviews(count)}</span>
     </span>
   );
 }

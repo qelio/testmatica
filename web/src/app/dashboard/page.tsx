@@ -90,13 +90,18 @@ export default function DashboardPage() {
                 )}
                 {n.body && <p className="mt-1 text-sm text-fg-soft">{n.body}</p>}
                 {typeof n.payload.conversation_id === "string" && (
-                  <Link href={`/dashboard/chats?c=${n.payload.conversation_id}`} className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
+                  <Link href={`/dashboard/chats?c=${n.payload.conversation_id}`} className="mt-1 mr-3 inline-block text-sm font-medium text-brand hover:underline">
                     Открыть чат
                   </Link>
                 )}
                 {typeof n.payload.request_id === "string" && typeof n.payload.conversation_id !== "string" && (
                   <Link href="/dashboard/requests" className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
                     К заявкам
+                  </Link>
+                )}
+                {typeof n.payload.href === "string" && n.payload.href.startsWith("/") && (
+                  <Link href={n.payload.href} className="mt-1 mr-3 inline-block text-sm font-medium text-brand hover:underline">
+                    Открыть
                   </Link>
                 )}
                 {typeof n.payload.assignment_id === "string" && (

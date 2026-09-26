@@ -28,6 +28,12 @@ runtime.consumer(
         (EVENTS_EXCHANGE, "marketplace.response.created"),
         (EVENTS_EXCHANGE, "marketplace.response.closed"),
         (EVENTS_EXCHANGE, "marketplace.deal.agreed"),
+        (EVENTS_EXCHANGE, "marketplace.review.approved"),
+        (EVENTS_EXCHANGE, "marketplace.review.rejected"),
+        (EVENTS_EXCHANGE, "marketplace.review.removed"),
+        (EVENTS_EXCHANGE, "marketplace.review.reply_approved"),
+        (EVENTS_EXCHANGE, "marketplace.review.reply_rejected"),
+        (EVENTS_EXCHANGE, "marketplace.review.dispute_resolved"),
     ],
     handlers.on_marketplace_event,
 )

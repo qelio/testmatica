@@ -197,3 +197,75 @@ class PriceIn(BaseModel):
 class RespondIn(BaseModel):
     price: int | None = Field(None, ge=100, le=100_000, description="Своя цена; по умолчанию — цена ученика")
     message: str = Field("", max_length=2000)
+
+
+# ---------- отзывы ----------
+
+
+class ReviewIn(BaseModel):
+    rating: int = Field(ge=1, le=10)
+    text: str = Field(min_length=10, max_length=3000)
+
+    @field_validator("text")
+    @classmethod
+    def _strip(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 10:
+            raise ValueError("Напишите хотя бы пару предложений")
+        return v
+
+
+class ReplyIn(BaseModel):
+    text: str = Field("", max_length=2000, description="Пустой текст — убрать ответ")
+
+
+class DisputeIn(BaseModel):
+    reason: str = Field(min_length=10, max_length=2000)
+
+
+class RemoveIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class ReviewPublic(BaseModel):
+    id: UUID
+    student_name: str
+    rating: int
+    text: str
+    published_at: datetime
+    reply: str | None = Field(None, description="Ответ педагога — после одобрения модератором")
+
+
+class MyReview(BaseModel):
+    """Отзыв глазами автора-ученика."""
+
+    id: UUID
+    tutor_id: UUID
+    tutor_name: str
+    rating: int
+    text: str
+    status: str
+    comment: str | None
+    reply: str | None
+    updated_at: datetime
+
+
+class TutorReview(ReviewPublic):
+    """Отзыв о себе глазами педагога: состояние ответа и спора."""
+
+    reply_text: str | None
+    reply_status: str | None
+    reply_comment: str | None
+    dispute_id: UUID | None
+    dispute_status: str | None
+    dispute_comment: str | None
+
+
+class ReviewsPage(BaseModel):
+    items: list[ReviewPublic]
+    total: int
+    rating: float | None
+    reviews_count: int
+    distribution: dict[int, int] = Field(description="Сколько отзывов с каждой оценкой 1–10")
+    can_review: bool = Field(description="Текущий пользователь — ученик этого педагога и может оставить отзыв")
+    mine: MyReview | None

@@ -12,6 +12,7 @@ from .. import realtime, relations
 from ..deps import auth, db, media, outbox
 from ..models import (
     KIND_DEAL,
+    KIND_SUPPORT,
     KIND_DIRECT,
     KIND_GROUP,
     Conversation,
@@ -86,8 +87,8 @@ async def _membership(session: AsyncSession, conversation_id: UUID, user_id: UUI
 
 
 async def _can_write(session: AsyncSession, conv: Conversation, user_id: UUID, other: UUID | None) -> bool:
-    if conv.kind == KIND_DEAL:
-        return True  # переговоры по заявке — без привязки (решение №12)
+    if conv.kind in (KIND_DEAL, KIND_SUPPORT):
+        return True  # переговоры по заявке и поддержка — без привязки (решение №12)
     if conv.kind == KIND_DIRECT:
         # Переписка остаётся, но писать можно, только пока есть связь.
         return other is not None and await relations.can_message(session, user_id, other)
@@ -162,6 +163,8 @@ async def _serialize(session: AsyncSession, rows: list[tuple[Conversation, Conve
             title = groups[conv.group_id].title
         elif conv.kind == KIND_DEAL:
             title = f"{names.get(other, 'Пользователь')} · {conv.title}"
+        elif conv.kind == KIND_SUPPORT:
+            title = conv.title or "Поддержка"
         else:
             title = names.get(other, "Пользователь")
         pin = pinned.get(conv.pinned_message_id) if conv.pinned_message_id else None

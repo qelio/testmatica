@@ -14,7 +14,7 @@ from testmatica_common.testing import TestTokens, make_envelope  # noqa: E402
 
 from app import handlers, profiles  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.deps import auth, content, db, identity, media  # noqa: E402
+from app.deps import auth, classroom, content, db, identity, media  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 
@@ -32,6 +32,10 @@ class Fakes:
     def __init__(self) -> None:
         self.files: dict[str, dict] = {}
         self.seen: dict[str, str] = {}
+        self.links: set[tuple[str, str]] = set()  # (педагог, ученик)
+
+    def link(self, teacher: UUID, student: UUID) -> None:
+        self.links.add((str(teacher), str(student)))
 
     def file(self, owner: UUID, name="photo.jpg") -> str:
         fid = str(uuid4())
@@ -45,6 +49,11 @@ class Fakes:
         path = request.url.path
         if path == "/subjects":
             return httpx.Response(200, json=[{"id": MATH, "name": "Математика"}, {"id": PHYSICS, "name": "Физика"}])
+        if path == "/internal/links":
+            key = (request.url.params["teacher_id"], request.url.params["student_id"])
+            if key not in self.links:
+                return httpx.Response(404, json={"error": {"code": "student_not_found", "message": "Не привязан"}})
+            return httpx.Response(200, json={"teacher_id": key[0], "student_id": key[1], "active": True, "paid": False})
         body = json.loads(request.content) if request.content else {}
         if path == "/internal/users/presence":
             return httpx.Response(200, json={u: self.seen.get(u) for u in body["user_ids"]})
@@ -65,7 +74,7 @@ class Fakes:
 @pytest.fixture(autouse=True)
 def fakes() -> Fakes:
     f = Fakes()
-    for client in (content, identity, media):
+    for client in (content, identity, media, classroom):
         client.transport = httpx.MockTransport(f.handle)
     profiles._subjects_cache = (0.0, {})
     return f

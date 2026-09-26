@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { AttachButton, UploadChips, useUploads } from "@/components/files";
+import { ReviewsAboutMe } from "@/components/reviews";
 import { Avatar } from "@/components/tutor-card";
 import { Alert, Badge, Button, Field, Spinner } from "@/components/ui";
 import { content, marketplace, type MyTutorProfile, type TutorFormat, type TutorLevel, type TutorProfileInput } from "@/lib/api";
@@ -214,6 +215,7 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
       </form>
 
       <Education profile={saved} onChanged={setSaved} />
+      <ReviewsAboutMe />
     </div>
   );
 }
