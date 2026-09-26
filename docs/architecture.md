@@ -126,6 +126,8 @@ flowchart LR
 - `group_members` — group_id, student_id, joined_at, left_at (история сохраняется)
 - `teacher_student_links` — teacher_id, student_id, status (pending / active / declined / ended), source (invite / manual / request / marketplace), paid (индивидуальные занятия платные — независимо от групп ученика), pending_group_id
 - `invitations` — email, teacher_id, group_id, token, expires_at, accepted_at, revoked_at
+- Ученики списком: `POST /students/manual/bulk` (до 40 имён; каждый создаётся отдельно через identity, ошибки — в ответе) и `POST /students/cards.pdf` — лист A4 с карточками для вырезания (логин, пароль, QR-код на вход с подставленным логином). Пароли не хранятся в открытом виде, поэтому карточки печатаются только сразу после создания
+- `GET /internal/teachers/{id}/groups` — группы педагога с составом (для сводной ведомости в academic)
 - Создание аккаунта ученика и поиск по логину — синхронный вызов `identity /internal/...`
 
 ### schedule
@@ -142,6 +144,7 @@ flowchart LR
 - У занятия, кроме темы, — `exam_item_ids`: задания ЕГЭ/ОГЭ, которые на нём разбираются (каталог — в assessment, здесь только id)
 ### academic
 - `people` — реплика имён из identity
+- Аналитика (`/analytics/groups/{id}`, `/analytics/students/{id}`, `/analytics/summary`) — по своим таблицам `grades` и `attendance` за период в часовом поясе педагога. Всем — средний балл и посещаемость; на тарифе «Базовый» (`billing /internal/plans`) — динамика по неделям, отклонение ученика от среднего по классу, распределение оценок, тепловая карта пропусков по дням, сводная ведомость и выгрузка в Excel (openpyxl) и PDF (reportlab, шрифты DejaVu/Comfortaa из образа)
 - `grade_types` — справочник типов оценок (ведёт модератор, без весов; значения по умолчанию — в миграции)
 - `grades` — teacher_id, student_id, lesson_id, копия данных занятия (lesson_starts_at, group_id, subject), value 1–5, grade_type_id, comment (обязателен), source (manual / test)
 - `attendance` — (lesson_id, student_id), status (present / absent / late / sick), копия данных занятия

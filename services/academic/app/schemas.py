@@ -286,3 +286,81 @@ class LessonKtp(BaseModel):
     plan_id: UUID
     plan_title: str
     lesson: PlanLessonOut
+
+
+# ---------- расширенная аналитика ----------
+
+
+class TrendPoint(BaseModel):
+    week: date = Field(description="Понедельник недели")
+    average: float | None
+    attendance_rate: float | None = None
+
+
+class HeatDay(BaseModel):
+    day: date
+    marked: int = Field(description="Сколько отметок посещаемости")
+    missed: int = Field(description="Пропуски: отсутствовал или болел")
+    rate: float = Field(description="Доля пропусков")
+
+
+class StudentLine(BaseModel):
+    id: UUID
+    full_name: str
+    current: bool
+    stats: Stats
+    delta: float | None = Field(None, description="Средний балл минус средний по классу (расширенная)")
+    trend: list[TrendPoint] | None = None
+
+
+class GroupReport(BaseModel):
+    title: str
+    subject: str | None
+    period_from: date
+    period_to: date
+    extended: bool = Field(description="Тариф «Базовый»: динамика, сравнение, тепловая карта, выгрузка")
+    stats: Stats
+    students: list[StudentLine]
+    distribution: dict[int, int] | None = Field(None, description="Сколько оценок 1–5")
+    trend: list[TrendPoint] | None = None
+    heatmap: list[HeatDay] | None = None
+
+
+class SubjectLine(BaseModel):
+    subject: str
+    stats: Stats
+    class_average: float | None = Field(None, description="Средний по группам ученика по этому предмету")
+
+
+class GradePoint(BaseModel):
+    at: datetime
+    value: int
+    subject: str | None
+    grade_type: str
+    comment: str
+
+
+class StudentReport(BaseModel):
+    full_name: str
+    period_from: date
+    period_to: date
+    extended: bool
+    stats: Stats
+    subjects: list[SubjectLine]
+    grades: list[GradePoint] | None = None
+    trend: list[TrendPoint] | None = None
+
+
+class SummaryLine(BaseModel):
+    group_id: UUID | None = Field(description="None — индивидуальные занятия")
+    title: str
+    students: int
+    stats: Stats
+    below_three: int = Field(description="Учеников со средним ниже 3")
+
+
+class Summary(BaseModel):
+    period_from: date
+    period_to: date
+    rows: list[SummaryLine]
+    total: Stats

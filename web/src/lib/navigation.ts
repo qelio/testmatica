@@ -4,6 +4,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BookOpen,
+  ChartLine,
   Boxes,
   CalendarDays,
   ClipboardCheck,
@@ -47,6 +48,7 @@ export const NAV = {
     { title: "Расписание", href: "/dashboard/schedule", icon: CalendarDays, ready: true },
     { title: "Классы, группы, ученики", href: "/dashboard/groups", icon: Users, ready: true },
     { title: "Журнал", href: "/dashboard/journal", icon: NotebookPen, ready: true },
+    { title: "Аналитика", href: "/dashboard/analytics", icon: ChartLine, ready: true },
     { title: "Планирование (КТП)", href: "/dashboard/planning", icon: ClipboardList, ready: true },
     { title: "Тесты", href: "/dashboard/tests", icon: ListChecks, ready: true },
     { title: "Назначение тестов", href: "/dashboard/assignments", icon: ClipboardCheck, ready: true },
