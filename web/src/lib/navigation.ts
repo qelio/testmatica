@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BookOpen,
   ChartLine,
+  ChartNoAxesCombined,
   Boxes,
   CalendarDays,
   ClipboardCheck,
@@ -20,6 +21,7 @@ import {
   NotebookPen,
   ScrollText,
   Search,
+  Settings,
   Shapes,
   ShieldCheck,
   Sparkles,
@@ -85,13 +87,22 @@ export const NAV = {
     { title: "Типы оценок", href: "/dashboard/grade-types", icon: Tags, ready: true },
     { title: "Предметы", href: "/dashboard/subjects", icon: Shapes, ready: true },
     { title: "Компетенции", href: "/dashboard/competencies", icon: Lightbulb, ready: true },
-    soon("Пользователи", "/dashboard/users", UserCog),
-    soon("Журнал аудита", "/dashboard/audit", ScrollText),
   ],
+  // Администратор — всё, что у модератора, и управление платформой (ТЗ, раздел 2).
+  admin: [] as NavItem[],
 } satisfies Record<string, NavItem[]>;
 
+NAV.admin = [
+  ...NAV.staff,
+  { title: "Пользователи", href: "/dashboard/users", icon: UserCog, ready: true },
+  { title: "Статистика платформы", href: "/dashboard/platform-stats", icon: ChartNoAxesCombined, ready: true },
+  { title: "Журнал аудита", href: "/dashboard/audit", icon: ScrollText, ready: true },
+  { title: "Настройки платформы", href: "/dashboard/platform", icon: Settings, ready: true },
+];
+
 export function navFor(roles: string[]): NavItem[] {
-  if (roles.includes("admin") || roles.includes("moderator")) return NAV.staff;
+  if (roles.includes("admin")) return NAV.admin;
+  if (roles.includes("moderator")) return NAV.staff;
   if (roles.includes("teacher")) return NAV.teacher;
   return NAV.student;
 }

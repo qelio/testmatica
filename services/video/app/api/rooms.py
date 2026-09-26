@@ -43,7 +43,7 @@ async def _room_for(session: AsyncSession, lesson: dict, lock: bool = False) -> 
             title=f"{title}{' · ' + lesson['subject'] if lesson.get('subject') else ''}",
             # +1 место — для невидимого участника записи (egress).
             max_participants=(settings.group_capacity if group else settings.individual_capacity) + 1,
-            time_limit_min=rooms.time_limit_for(lesson, await rooms.teacher_plan(UUID(lesson["teacher_id"]))),
+            time_limit_min=await rooms.time_limit_for(lesson, await rooms.teacher_plan(UUID(lesson["teacher_id"]))),
         )
         session.add(room)
         await session.flush()

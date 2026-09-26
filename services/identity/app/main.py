@@ -5,13 +5,14 @@ from testmatica_common.errors import install_error_handlers
 from testmatica_common.logging import configure_logging
 from testmatica_common.service import ServiceRuntime, health_router
 
-from .api import auth, internal, me
+from .api import admin, auth, internal, me
 from .config import settings
 from .deps import db, redis, signing_key
 
 configure_logging(settings.service_name, settings.log_level)
 
 runtime = ServiceRuntime(settings, db)
+runtime.every("anonymize_deleted", 3600, admin.anonymize_deleted)
 
 
 @asynccontextmanager
@@ -30,6 +31,7 @@ app.include_router(health_router(db))
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(internal.router)
+app.include_router(admin.router)
 
 
 @app.get("/.well-known/jwks.json", tags=["auth"])

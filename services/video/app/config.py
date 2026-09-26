@@ -27,13 +27,8 @@ class Settings(CommonSettings):
     teacher_join_before_min: int = 30
     student_join_before_min: int = 15
     join_after_end_min: int = 30
-    # Бесплатный тариф (ТЗ, решения №4–5): занятие до 40 минут, предупреждение за 5;
-    # записи хранятся 14 дней, не больше 3 у педагога (четвёртая вытесняет самую старую).
-    free_time_limit_min: int = 40
-    free_recordings_keep: int = 3
-    free_recording_days: int = 14
-    # Тариф «Базовый»: без лимита времени и количества записей, хранение 30 дней.
-    basic_recording_days: int = 30
+    # Лимиты бесплатного тарифа (40 минут, 3 записи на 14 дней; «Базовый» — 30 дней) — в настройках платформы
+    # у billing (меняет администратор), см. testmatica_common.plans.PLATFORM_DEFAULTS.
     # Прокторинг: запись экрана хранится 2 недели (ТЗ, раздел 7).
     proctor_recording_days: int = 14
     # Ёмкость комнат (ТЗ, раздел 7).

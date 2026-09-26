@@ -5,8 +5,6 @@ class Settings(CommonSettings):
     service_name: str = "classroom"
     content_url: str = "http://content:8000"
     billing_url: str = "http://billing:8000"
-    # Бесплатный тариф: до 3 активных классов и групп (ТЗ, раздел 12).
-    free_max_active_groups: int = 3
 
     identity_url: str = "http://identity:8000"
     web_base_url: str = "http://localhost:8080"

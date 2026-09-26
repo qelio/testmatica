@@ -142,6 +142,8 @@ def fake_billing():
     from app.deps import billing, plans
 
     def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/internal/settings":
+            return httpx.Response(200, json={})  # настройки по умолчанию
         ids = json.loads(request.content)["user_ids"]
         return httpx.Response(200, json={u: "basic" if u in BASIC_TEACHERS else "free" for u in ids})
 

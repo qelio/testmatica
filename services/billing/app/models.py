@@ -68,3 +68,15 @@ class Payment(Base):
     error: Mapped[str | None] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlatformSetting(Base):
+    """Настройки платформы, которые меняет администратор (ТЗ: «тарифы, лимиты free-версии, параметры escrow»).
+    Нет строки — действует значение по умолчанию из testmatica_common.plans.PLATFORM_DEFAULTS."""
+
+    __tablename__ = "platform_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[int] = mapped_column(Integer)
+    updated_by: Mapped[UUID | None]
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -47,3 +47,26 @@ async def test_api_is_admin_only(client, audit_consumer):
     )
     assert admin.status_code == 200
     assert [r["type"] for r in admin.json()] == ["identity.user.password_reset"]
+
+
+async def test_user_history_and_stats(client, audit_consumer):
+    admin_h = bearer(uuid4(), ["admin"])
+    user, teacher = uuid4(), uuid4()
+    before = (await client.get("/audit/stats", params={"days": 1}, headers=admin_h)).json()
+    lessons_before = next(a["total"] for a in before["activity"] if a["type"] == "schedule.lesson.created")
+
+    # Журнал только дописывается, поэтому считаем разницу «до/после».
+    await audit_consumer.process(make_envelope("identity.user.banned", {"user_id": str(user)}, actor_id=uuid4()))
+    await audit_consumer.process(make_envelope("identity.user.logged_in", {"user_id": str(user)}, actor_id=user))
+    await audit_consumer.process(make_envelope("schedule.lesson.created", {"count": 10}, actor_id=teacher))
+    await audit_consumer.process(make_envelope("academic.grade.created", {}, actor_id=teacher))
+
+    history = (await client.get("/audit", params={"user_id": str(user)}, headers=admin_h)).json()
+    assert {r["type"] for r in history} == {"identity.user.banned", "identity.user.logged_in"}  # сам и о нём
+
+    after = (await client.get("/audit/stats", params={"days": 1}, headers=admin_h)).json()
+    lessons = next(a for a in after["activity"] if a["type"] == "schedule.lesson.created")
+    assert lessons["total"] - lessons_before == 10 and lessons["title"] == "Занятий запланировано"
+    actions = [t["actions"] for t in after["top_teachers"]]
+    assert actions == sorted(actions, reverse=True)
+    assert (await client.get("/audit/stats", headers=bearer(uuid4(), ["moderator"]))).status_code == 403

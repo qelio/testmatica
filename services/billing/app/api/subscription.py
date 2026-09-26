@@ -43,7 +43,8 @@ async def _state(session: AsyncSession, user_id: UUID) -> SubscriptionOut:
     pending = await _pending(session, user_id)
     return SubscriptionOut(
         plan=subscriptions.plan_of(sub), period_end=sub.period_end if sub else None, auto_renew=bool(sub and sub.auto_renew),
-        payment_method_title=sub.payment_method_title if sub else None, price_rub=settings.basic_price_rub,
+        payment_method_title=sub.payment_method_title if sub else None,
+        price_rub=(await subscriptions.platform_settings(session))["basic_price_rub"],
         pending_payment=payment_out(pending) if pending else None,
     )
 
@@ -61,7 +62,7 @@ async def checkout(body: CheckoutIn, principal: Principal = Depends(teacher), se
         return payment_out(pending)
     if pending is not None:  # передумали насчёт автопродления — старый платёж отменяем
         pending.status, pending.error = "canceled", "Заменён новым платежом"
-    payment = subscriptions.new_payment(principal.user_id, recurring=False, save_method=body.auto_renew)
+    payment = await subscriptions.new_payment(session, principal.user_id, recurring=False, save_method=body.auto_renew)
     session.add(payment)
     await session.flush()
     created = await get_provider().create(payment)
@@ -138,6 +139,12 @@ async def fake_result(
         await subscriptions.payment_succeeded(session, p, f"fake_card_{body.card_last4}", f"Карта •• {body.card_last4}")
     await session.commit()
     return payment_out(p)
+
+
+@internal.get("/settings", response_model=dict[str, int])
+async def platform_settings(session: AsyncSession = Depends(db.session)) -> dict[str, int]:
+    """Настройки платформы для сервисов с лимитами (кэшируются в testmatica_common.plans)."""
+    return await subscriptions.platform_settings(session)
 
 
 @internal.post("/plans", response_model=dict[str, str])

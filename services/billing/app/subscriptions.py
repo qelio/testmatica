@@ -7,10 +7,11 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from testmatica_common.plans import PLATFORM_DEFAULTS
 
 from .config import settings
 from .deps import db, outbox
-from .models import PAYMENT_CANCELED, PAYMENT_PENDING, PAYMENT_SUCCEEDED, Payment, Subscription
+from .models import PAYMENT_CANCELED, PAYMENT_PENDING, PAYMENT_SUCCEEDED, Payment, PlatformSetting, Subscription
 from .providers import get_provider
 
 log = logging.getLogger(__name__)
@@ -29,8 +30,13 @@ def plan_of(sub: Subscription | None, now: datetime | None = None) -> str:
     return BASIC if sub is not None and sub.period_end > now else FREE
 
 
-def price_kop() -> int:
-    return settings.basic_price_rub * 100
+async def platform_settings(session: AsyncSession) -> dict[str, int]:
+    rows = (await session.execute(select(PlatformSetting.key, PlatformSetting.value))).all()
+    return PLATFORM_DEFAULTS | dict(rows)
+
+
+async def price_kop(session: AsyncSession) -> int:
+    return (await platform_settings(session))["basic_price_rub"] * 100
 
 
 async def changed(session: AsyncSession, sub: Subscription, reason: str) -> None:
@@ -76,9 +82,9 @@ async def payment_failed(session: AsyncSession, payment: Payment, error: str | N
     }, actor_id=None if payment.recurring else payment.user_id)
 
 
-def new_payment(user_id: UUID, *, recurring: bool, save_method: bool) -> Payment:
+async def new_payment(session: AsyncSession, user_id: UUID, *, recurring: bool, save_method: bool) -> Payment:
     return Payment(
-        user_id=user_id, purpose="subscription", plan=BASIC, amount_kop=price_kop(), provider=get_provider().name,
+        user_id=user_id, purpose="subscription", plan=BASIC, amount_kop=await price_kop(session), provider=get_provider().name,
         description="Подписка «Базовый» на 1 месяц" + (" (автопродление)" if recurring else ""),
         recurring=recurring, save_method=save_method, status=PAYMENT_PENDING,
     )
@@ -86,7 +92,7 @@ def new_payment(user_id: UUID, *, recurring: bool, save_method: bool) -> Payment
 
 async def renew(session: AsyncSession, sub: Subscription) -> None:
     """Автопродление сохранённым способом. После трёх неудач подряд автопродление выключается."""
-    payment = new_payment(sub.user_id, recurring=True, save_method=False)
+    payment = await new_payment(session, sub.user_id, recurring=True, save_method=False)
     session.add(payment)
     await session.flush()
     result = await get_provider().charge(payment, sub.payment_method_id or "")
