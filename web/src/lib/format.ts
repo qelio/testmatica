@@ -55,3 +55,23 @@ export const FAILURE_LABELS = {
   time_limit: "превышено время",
   memory_limit: "превышена память",
 } as const;
+
+export const LEVEL_LABELS = { "1-4": "1–4 класс", "5-9": "5–9 класс", "10-11": "10–11 класс", student: "Студенты", adult: "Взрослые" } as const;
+export const FORMAT_LABELS = { individual: "Индивидуально", group: "В группе" } as const;
+
+/** Онлайн-статус: «онлайн», «в сети сегодня в 14:05», «в сети 12 сентября». */
+export function presenceText(p: { online: boolean; last_seen_at: string | null }): string {
+  if (p.online) return "онлайн";
+  if (!p.last_seen_at) return "давно не в сети";
+  const seen = new Date(p.last_seen_at);
+  const now = new Date();
+  if (seen.toDateString() === now.toDateString()) {
+    return `в сети сегодня в ${seen.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+  }
+  return `в сети ${seen.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}`;
+}
+
+export function fmtRub(n: number): string {
+  return `${n.toLocaleString("ru-RU")} ₽`;
+}
+

@@ -54,7 +54,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation assessment video
+      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation assessment video marketplace
     ports:
       - "5433:5432"
     volumes:
@@ -422,6 +422,34 @@ services:
       - traefik.http.routers.assessment.middlewares=assessment-strip,api-ratelimit@docker
       - traefik.http.middlewares.assessment-strip.stripprefix.prefixes=/api/assessment
       - traefik.http.services.assessment.loadbalancer.server.port=8000
+
+  marketplace:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: marketplace, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/marketplace
+      DATABASE_URL: postgresql+asyncpg://marketplace:marketplace_dev@postgres:5432/marketplace
+      TEST_DATABASE_URL: postgresql+asyncpg://marketplace:marketplace_dev@postgres:5432/marketplace_test
+      IDENTITY_URL: http://identity:8000
+      CONTENT_URL: http://content:8000
+    volumes:
+      - ./services/marketplace:/app
+      - *libs-volume
+    depends_on: *python-depends
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.marketplace.rule=PathPrefix(`/api/marketplace`) && !PathPrefix(`/api/marketplace/internal`)
+      - traefik.http.routers.marketplace.middlewares=marketplace-strip,api-ratelimit@docker
+      - traefik.http.middlewares.marketplace-strip.stripprefix.prefixes=/api/marketplace
+      - traefik.http.services.marketplace.loadbalancer.server.port=8000
 
   # Песочница для кода учеников: только внутренняя сеть без выхода наружу,
   # файловая система только для чтения, без привилегий, пользователь nobody.

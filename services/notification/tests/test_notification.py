@@ -271,3 +271,13 @@ async def test_recording_ready_notification(client):
     for user in (teacher, pupil):
         items = (await client.get("/notifications", headers=bearer(user))).json()["items"]
         assert items[0]["title"] == "Запись занятия готова: 7А · Алгебра · 25.09.2026"
+
+
+
+async def test_education_notifications(client):
+    tutor = uuid4()
+    c = consumer("notification.marketplace", handlers.on_marketplace_event)
+    await c.process(make_envelope("marketplace.education.rejected", {
+        "doc_id": str(uuid4()), "user_id": str(tutor), "title": "Диплом", "comment": "Не видно печати"}))
+    item = (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"][0]
+    assert (item["title"], item["body"]) == ("Документ «Диплом» не принят", "Не видно печати")

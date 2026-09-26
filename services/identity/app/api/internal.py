@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
@@ -151,3 +152,17 @@ async def update_managed_student(
     )
     await session.commit()
     return Credentials(user=PersonOut.of(user), login=user.login, password=password)
+
+
+class PresenceIn(BaseModel):
+    user_ids: list[UUID] = Field(max_length=200)
+
+
+@router.post("/users/presence", response_model=dict[str, str | None])
+async def presence(body: PresenceIn, session: AsyncSession = Depends(db.session)) -> dict[str, str | None]:
+    """Когда пользователь был в сети (вход или продление сессии — примерно раз в 15 минут, пока он активен).
+    Для онлайн-статуса в профиле репетитора."""
+    if not body.user_ids:
+        return {}
+    rows = await session.execute(select(User.id, User.last_seen_at).where(User.id.in_(body.user_ids)))
+    return {str(uid): seen.isoformat() if seen else None for uid, seen in rows}

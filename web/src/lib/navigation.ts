@@ -21,7 +21,7 @@ export const NAV = {
     { title: "Банк задач", href: "/dashboard/tasks", ready: true },
     { title: "Библиотека", href: "/dashboard/library", ready: true },
     soon("Финансы и баланс", "/dashboard/finance"),
-    soon("Профиль и поиск", "/dashboard/profile"),
+    { title: "Профиль репетитора", href: "/dashboard/profile", ready: true },
     soon("Поддержка", "/dashboard/support"),
   ],
   student: [
@@ -33,7 +33,7 @@ export const NAV = {
     { title: "Оценки", href: "/dashboard/grades", ready: true },
     { title: "ЕГЭ и ОГЭ", href: "/dashboard/exams", ready: true },
     { title: "Библиотека", href: "/dashboard/library", ready: true },
-    soon("Найти репетитора", "/dashboard/tutors"),
+    { title: "Найти репетитора", href: "/tutors", ready: true },
     soon("Баланс", "/dashboard/balance"),
     soon("Поддержка", "/dashboard/support"),
   ],

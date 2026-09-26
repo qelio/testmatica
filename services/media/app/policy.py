@@ -28,6 +28,8 @@ PURPOSES: dict[str, Purpose] = {
     "answer": Purpose(20 * MB, frozenset(IMAGES | DOCUMENTS | ARCHIVES | CODE), "файл с ответом"),
     "material": Purpose(500 * MB, frozenset(IMAGES | DOCUMENTS | VIDEO | AUDIO | ARCHIVES), "учебный материал"),
     "avatar": Purpose(5 * MB, frozenset(IMAGES), "фото профиля"),
+    # Дипломы, сертификаты, документы для верификации — только модератору и владельцу.
+    "document": Purpose(20 * MB, frozenset(IMAGES | {".pdf"}), "документ"),
 }
 
 
