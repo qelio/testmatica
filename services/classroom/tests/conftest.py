@@ -114,3 +114,18 @@ async def outbox(routing_key: str) -> list[dict]:
             text("SELECT payload FROM outbox WHERE routing_key = :k ORDER BY created_at"), {"k": routing_key}
         )
         return [r[0] for r in rows]
+
+
+SUBJECT_NAMES = ["Математика", "Алгебра", "Геометрия", "Физика", "Информатика"]
+
+
+@pytest.fixture(autouse=True)
+def fake_subjects():
+    """Справочник предметов content (ведут модераторы)."""
+    from app.deps import content, subjects
+
+    content.transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, json=[{"id": str(i), "name": n} for i, n in enumerate(SUBJECT_NAMES)])
+    )
+    subjects.reset()
+

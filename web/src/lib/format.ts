@@ -91,10 +91,9 @@ export const REQUEST_STATUS = {
   expired: { text: "истекла", tone: "neutral" },
 } as const;
 
-/** «пн, ср · 17:00–20:00» */
-export function fmtSchedule(s: { weekdays: number[]; time_from: string | null; time_to: string | null }): string {
+/** Удобные дни: «пн, ср» (время согласуют в чате). */
+export function fmtSchedule(s: { weekdays: number[] }): string {
   const days = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
-  const parts = [s.weekdays.map((d) => days[d]).join(", "), s.time_from && s.time_to ? `${s.time_from}–${s.time_to}` : s.time_from ? `с ${s.time_from}` : ""];
-  return parts.filter(Boolean).join(" · ") || "любое время";
+  return s.weekdays.length ? s.weekdays.map((d) => days[d]).join(", ") : "любые дни";
 }
 

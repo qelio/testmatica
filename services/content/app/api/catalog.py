@@ -10,16 +10,10 @@ from testmatica_common.errors import ApiError
 
 from .. import access, views
 from ..deps import auth, db
-from ..models import PENDING, PUBLISHED, Node, RelLink, Subject
-from ..schemas import CourseOut, CourseSummary, ModuleContent, SubjectOut
+from ..models import PENDING, PUBLISHED, Node, RelLink
+from ..schemas import CourseOut, CourseSummary, ModuleContent
 
 router = APIRouter(tags=["catalog"])
-
-
-@router.get("/subjects", response_model=list[SubjectOut])
-async def subjects(session: AsyncSession = Depends(db.session)) -> list[SubjectOut]:
-    rows = (await session.execute(select(Subject).order_by(Subject.position, Subject.name))).scalars()
-    return [SubjectOut(id=s.id, name=s.name) for s in rows]
 
 
 @router.get("/catalog", response_model=list[CourseSummary])

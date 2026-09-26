@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, false, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
 from testmatica_common.messaging import messaging_tables
@@ -38,6 +38,8 @@ class Subject(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     name: Mapped[str] = mapped_column(String(80), unique=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # Справочник ведут модераторы. Удалять нельзя (на предмет ссылаются курсы, задачи, профили) — только скрыть из выбора.
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
 
 class Person(Base):

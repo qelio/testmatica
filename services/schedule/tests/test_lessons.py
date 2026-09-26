@@ -356,3 +356,15 @@ async def test_paid_from_group_or_student_and_override(client, teacher, fake_cla
     upd = await client.patch(f"/lessons/{ind['lessons'][0]['id']}", json={"paid": False}, headers=bearer(teacher))
     assert upd.json()["paid"] is False
     assert (await outbox("schedule.lesson.created"))[0]["data"]["paid"] is True
+
+
+
+async def test_lesson_subject_from_directory(client, teacher, fake_classroom):
+    student = uuid4()
+    fake_classroom.link(teacher, student)
+    bad = await create(client, teacher, kind="individual", student_id=str(student), starts_at=iso(at(6, 10)), duration_min=60,
+                       subject="Астрология")
+    assert bad.json()["error"]["code"] == "unknown_subject"
+    _, lesson = await individual(client, teacher, fake_classroom, student=student, start=at(6, 12), subject="Физика")
+    upd = await client.patch(f"/lessons/{lesson['id']}", json={"subject": "Хиромантия"}, headers=bearer(teacher))
+    assert upd.json()["error"]["code"] == "unknown_subject"

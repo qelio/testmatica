@@ -15,6 +15,17 @@ def _clean(value: str | None) -> str | None:
 class SubjectOut(BaseModel):
     id: UUID
     name: str
+    hidden: bool = False
+
+
+class SubjectIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class SubjectUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=80)
+    hidden: bool | None = None
+    position: int | None = Field(None, ge=0)
 
 
 class CourseSummary(BaseModel):

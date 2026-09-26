@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_TEACHER, Principal
 
 from .. import logic, people
-from ..deps import auth, db, outbox
+from ..deps import auth, db, outbox, subjects
 from ..models import Group, GroupMember
 from ..schemas import AddMember, GroupCreate, GroupDetail, GroupOut, GroupUpdate, MemberOut
 
@@ -58,6 +58,7 @@ async def list_groups(
 async def create_group(
     body: GroupCreate, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> GroupOut:
+    await subjects.check(body.subject)  # предмет — из справочника модераторов
     group = Group(
         teacher_id=principal.user_id,
         paid=body.paid,
@@ -116,6 +117,8 @@ async def update_group(
     if data.get("title"):
         group.title = data["title"]
     if "subject" in data:
+        if data["subject"] != group.subject:
+            await subjects.check(data["subject"])
         group.subject = data["subject"]
     if "description" in data:
         group.description = data["description"] or ""

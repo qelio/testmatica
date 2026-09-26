@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { AddStudentModal, CredentialsView } from "@/components/add-student";
 import { BillingSelect, PaidBadge } from "@/components/billing";
+import { SubjectSelect } from "@/components/subject-select";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
 import { classroom, type Group, type Invitation, type Student, type StudentCredentials } from "@/lib/api";
 import { pluralStudents, SOURCE_LABELS } from "@/lib/format";
@@ -451,12 +452,7 @@ function CreateGroupModal({
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
         />
-        <Field
-          label="Предмет"
-          placeholder="Математика"
-          value={form.subject}
-          onChange={(e) => setForm({ ...form, subject: e.target.value })}
-        />
+        <SubjectSelect value={form.subject} onChange={(subject) => setForm({ ...form, subject })} />
         <Button type="submit" loading={loading} className="w-full">
           Создать
         </Button>

@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { AddStudentModal } from "@/components/add-student";
 import { BillingSelect, PaidBadge } from "@/components/billing";
+import { SubjectSelect } from "@/components/subject-select";
 import { ExamBoardView } from "@/components/exams";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Spinner } from "@/components/ui";
 import { classroom, type GroupDetail } from "@/lib/api";
@@ -191,7 +192,7 @@ function EditGroupModal({
       >
         {error && <Alert>{error}</Alert>}
         <Field label="Название" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-        <Field label="Предмет" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
+        <SubjectSelect value={form.subject} onChange={(subject) => setForm({ ...form, subject })} />
         <div>
           <BillingSelect label="Занятия" value={form.paid} free="Бесплатные" paid="Платные" onChange={(paid) => setForm({ ...form, paid })} />
           <p className="mt-1.5 text-xs text-fg-soft">Действует на новые занятия; уже созданные не меняются.</p>
