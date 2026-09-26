@@ -18,7 +18,7 @@ const FEATURES: { title: string; free: string; basic: string; soon?: boolean }[]
   { title: "Публичный профиль и заявки учеников", free: "✓", basic: "✓" },
   { title: "Модерация ваших материалов", free: "в общей очереди", basic: "в первую очередь" },
   { title: "Прокторинг тестов", free: "—", basic: "✓" },
-  { title: "Расширенная аналитика и экспорт", free: "базовая", basic: "динамика, сравнение, PDF/Excel", soon: true },
+  { title: "Аналитика", free: "средний балл, посещаемость", basic: "+ динамика, сравнение, тепловая карта, ведомость, PDF/Excel" },
   { title: "Поддержка", free: "обычная", basic: "приоритетная", soon: true },
 ];
 

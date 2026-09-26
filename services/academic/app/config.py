@@ -6,6 +6,7 @@ class Settings(CommonSettings):
 
     schedule_url: str = "http://schedule:8000"
     classroom_url: str = "http://classroom:8000"
+    billing_url: str = "http://billing:8000"
 
 
 settings = Settings()

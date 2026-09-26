@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 
@@ -14,7 +15,7 @@ from testmatica_common.testing import TestTokens  # noqa: E402
 
 from app import people  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.deps import auth, classroom, db, schedule  # noqa: E402
+from app.deps import auth, billing, classroom, db, plans, schedule  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 
@@ -33,6 +34,7 @@ class World:
         self.groups: dict[str, dict] = {}
         self.links: set[tuple[str, str]] = set()
         self.lessons: dict[str, dict] = {}
+        self.basic: set[str] = set()  # педагоги на тарифе «Базовый»
 
     def group(self, teacher: UUID, members: list[UUID], title="7А") -> UUID:
         gid = uuid4()
@@ -75,6 +77,9 @@ class World:
 
     def classroom_handler(self, request: httpx.Request) -> httpx.Response:
         path, params = request.url.path, request.url.params
+        if path.startswith("/internal/teachers/"):
+            teacher = path.split("/")[3]
+            return httpx.Response(200, json=[g for g in self.groups.values() if g["teacher_id"] == teacher])
         if path.startswith("/internal/groups/"):
             group = self.groups.get(path.rsplit("/", 1)[1])
             if group is None or group["teacher_id"] != params["teacher_id"]:
@@ -91,6 +96,10 @@ def world() -> World:
     w = World()
     schedule.transport = httpx.MockTransport(w.schedule_handler)
     classroom.transport = httpx.MockTransport(w.classroom_handler)
+    billing.transport = httpx.MockTransport(
+        lambda r: httpx.Response(200, json={u: "basic" if u in w.basic else "free" for u in json.loads(r.content)["user_ids"]})
+    )
+    plans.reset()
     return w
 
 

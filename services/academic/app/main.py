@@ -7,7 +7,7 @@ from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import moderation, people, subjects_sync, test_grades
-from .api import grade_types, journal, me, planning
+from .api import analytics, grade_types, journal, me, planning
 from .config import settings
 from .deps import db
 
@@ -36,3 +36,4 @@ app.include_router(grade_types.router)
 app.include_router(journal.router)
 app.include_router(me.router)
 app.include_router(planning.router)
+app.include_router(analytics.router)
