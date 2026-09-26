@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { RequestForm } from "@/components/request-form";
 import { Avatar, PresenceDot, Rating } from "@/components/tutor-card";
-import { Alert, Badge, Button, Spinner } from "@/components/ui";
+import { Alert, Badge, Button, Modal, Spinner } from "@/components/ui";
 import { marketplace } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { FORMAT_LABELS, fmtRub, LEVEL_LABELS } from "@/lib/format";
@@ -18,6 +19,8 @@ export default function TutorPage() {
   const authed = status === "authenticated";
   const tutor = useLoad(() => marketplace.tutor(id, authed), [id, authed]);
   const [copied, setCopied] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const router = useRouter();
 
   if (tutor.error) return <Alert>{tutor.error}</Alert>;
   if (!tutor.data) return <Spinner />;
@@ -49,11 +52,14 @@ export default function TutorPage() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {!own && (
-          <Button disabled title="Заявки репетиторам — следующий шаг разработки">
-            Хочу с вами заниматься
-          </Button>
-        )}
+        {!own &&
+          (authed ? (
+            <Button onClick={() => setRequesting(true)}>Хочу с вами заниматься</Button>
+          ) : (
+            <Link href="/login" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-strong">
+              Хочу с вами заниматься
+            </Link>
+          ))}
         <Button
           variant="secondary"
           onClick={async () => {
@@ -122,6 +128,17 @@ export default function TutorPage() {
           )}
         </section>
       )}
+
+      <Modal open={requesting} onClose={() => setRequesting(false)} title={`Заявка: ${t.full_name}`}>
+        {requesting && (
+          <RequestForm
+            tutorId={t.user_id}
+            subjects={t.subjects}
+            defaultPrice={t.price}
+            onCreated={(r) => router.push(r.responses[0] ? `/dashboard/chats?c=${r.responses[0].id}` : "/dashboard/requests")}
+          />
+        )}
+      </Modal>
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Отзывы</h2>

@@ -86,6 +86,16 @@ export default function DashboardPage() {
                   <p className="mt-1 text-sm">Сдать до {fmtDateTime(n.payload.deadline)}</p>
                 )}
                 {n.body && <p className="mt-1 text-sm text-fg-soft">{n.body}</p>}
+                {typeof n.payload.conversation_id === "string" && (
+                  <Link href={`/dashboard/chats?c=${n.payload.conversation_id}`} className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
+                    Открыть чат
+                  </Link>
+                )}
+                {typeof n.payload.request_id === "string" && typeof n.payload.conversation_id !== "string" && (
+                  <Link href="/dashboard/requests" className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
+                    К заявкам
+                  </Link>
+                )}
                 {typeof n.payload.assignment_id === "string" && (
                   <Link href={`/dashboard/assignments/${n.payload.assignment_id}`} className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
                     Открыть работу

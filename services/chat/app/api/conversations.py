@@ -11,6 +11,7 @@ from testmatica_common.errors import ApiError
 from .. import realtime, relations
 from ..deps import auth, db, media, outbox
 from ..models import (
+    KIND_DEAL,
     KIND_DIRECT,
     KIND_GROUP,
     Conversation,
@@ -49,6 +50,7 @@ def _message_out(m: Message, names: dict[UUID, str], urls: dict[str, str] | None
         text=DELETED_TEXT if deleted else m.text,
         attachments=[] if deleted else [Attachment(**a, url=urls.get(a["id"])) for a in m.attachments],
         is_announcement=m.is_announcement,
+        is_system=m.is_system,
         deleted=deleted,
         created_at=m.created_at,
     )
@@ -84,6 +86,8 @@ async def _membership(session: AsyncSession, conversation_id: UUID, user_id: UUI
 
 
 async def _can_write(session: AsyncSession, conv: Conversation, user_id: UUID, other: UUID | None) -> bool:
+    if conv.kind == KIND_DEAL:
+        return True  # переговоры по заявке — без привязки (решение №12)
     if conv.kind == KIND_DIRECT:
         # Переписка остаётся, но писать можно, только пока есть связь.
         return other is not None and await relations.can_message(session, user_id, other)
@@ -105,7 +109,7 @@ async def _other_members(session: AsyncSession, conversation_ids: list[UUID], us
 
 async def _serialize(session: AsyncSession, rows: list[tuple[Conversation, ConversationMember]], user_id: UUID) -> list[ConversationOut]:
     ids = [c.id for c, _ in rows]
-    direct_ids = [c.id for c, _ in rows if c.kind == KIND_DIRECT]
+    direct_ids = [c.id for c, _ in rows if c.kind in (KIND_DIRECT, KIND_DEAL)]
     others = await _other_members(session, direct_ids, user_id)
     groups = {
         g.id: g
@@ -154,7 +158,12 @@ async def _serialize(session: AsyncSession, rows: list[tuple[Conversation, Conve
     result = []
     for conv, member in rows:
         other = others.get(conv.id)
-        title = groups[conv.group_id].title if conv.kind == KIND_GROUP and conv.group_id in groups else names.get(other, "Пользователь")
+        if conv.kind == KIND_GROUP and conv.group_id in groups:
+            title = groups[conv.group_id].title
+        elif conv.kind == KIND_DEAL:
+            title = f"{names.get(other, 'Пользователь')} · {conv.title}"
+        else:
+            title = names.get(other, "Пользователь")
         pin = pinned.get(conv.pinned_message_id) if conv.pinned_message_id else None
         result.append(
             ConversationOut(
@@ -257,7 +266,7 @@ async def send_message(
     session: AsyncSession = Depends(db.session),
 ) -> MessageOut:
     conv, member = await _membership(session, conversation_id, principal.user_id)
-    others = await _other_members(session, [conv.id], principal.user_id) if conv.kind == KIND_DIRECT else {}
+    others = await _other_members(session, [conv.id], principal.user_id) if conv.kind in (KIND_DIRECT, KIND_DEAL) else {}
     if not await _can_write(session, conv, principal.user_id, others.get(conv.id)):
         raise ApiError(403, "read_only", "В этот чат больше нельзя писать")
     if body.announcement and (conv.kind != KIND_GROUP or member.role != "teacher"):
@@ -324,7 +333,7 @@ async def send_message(
                 "user_ids": [str(u) for u in recipients],
                 "kind": "announcement" if body.announcement else "message",
                 "title": f"Объявление: {title}" if body.announcement else f"Новое сообщение: {title}",
-                "body": preview if conv.kind == KIND_DIRECT or body.announcement else f"{out.author_name}: {preview}",
+                "body": preview if conv.kind in (KIND_DIRECT, KIND_DEAL) or body.announcement else f"{out.author_name}: {preview}",
                 "payload": {"conversation_id": str(conv.id)},
                 # Одно непрочитанное уведомление на чат, а не на каждое сообщение.
                 "coalesce_key": None if body.announcement else f"chat:{conv.id}",

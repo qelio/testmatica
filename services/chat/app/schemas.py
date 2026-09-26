@@ -39,6 +39,7 @@ class MessageOut(BaseModel):
     text: str
     attachments: list[Attachment]
     is_announcement: bool
+    is_system: bool = False
     deleted: bool
     created_at: datetime
 

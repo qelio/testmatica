@@ -63,6 +63,8 @@ class StudentOut(BaseModel):
     managed: bool = Field(description="Аккаунт создан педагогом — можно менять имя и пароль")
     group_ids: list[UUID]
     paid: bool = Field(description="Индивидуальные занятия платные")
+    price: int | None = Field(None, description="Цена занятия по договорённости в маркетплейсе, ₽")
+    lesson_minutes: int | None = None
 
 
 class ManualStudentCreate(BaseModel):

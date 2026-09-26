@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text, false, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
@@ -9,6 +9,7 @@ from testmatica_common.messaging import messaging_tables
 
 KIND_DIRECT = "direct"
 KIND_GROUP = "group"
+KIND_DEAL = "deal"  # чат переговоров по заявке (id = id отклика в marketplace)
 
 
 class Base(DeclarativeBase):
@@ -64,9 +65,10 @@ class RelGroupMember(Base):
 class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (
-        CheckConstraint("kind IN ('direct', 'group')", name="kind_valid"),
+        CheckConstraint("kind IN ('direct', 'group', 'deal')", name="kind_valid"),
         CheckConstraint(
-            "(kind = 'group' AND group_id IS NOT NULL) OR (kind = 'direct' AND pair_key IS NOT NULL)", name="ref_valid"
+            "(kind = 'group' AND group_id IS NOT NULL) OR (kind = 'direct' AND pair_key IS NOT NULL) OR kind = 'deal'",
+            name="ref_valid",
         ),
     )
 
@@ -75,6 +77,7 @@ class Conversation(Base):
     # Групповой чат — один на группу; личный — один на пару пользователей ("меньший_id:больший_id").
     group_id: Mapped[UUID | None] = mapped_column(unique=True)
     pair_key: Mapped[str | None] = mapped_column(String(80), unique=True)
+    title: Mapped[str | None] = mapped_column(String(200))  # для чатов переговоров: «Заявка: Математика»
     pinned_message_id: Mapped[UUID | None]
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -106,5 +109,7 @@ class Message(Base):
     # [{"id", "filename", "mime", "size"}] — сами файлы в сервисе media.
     attachments: Mapped[list[dict]] = mapped_column(JSONB, default=list, server_default="[]")
     is_announcement: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Служебное сообщение переговоров: предложена цена, «Договорились», заявка закрыта.
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

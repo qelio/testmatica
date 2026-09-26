@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     SmallInteger,
@@ -93,3 +94,76 @@ class EducationDoc(Base):
     comment: Mapped[str | None] = mapped_column(Text)  # чего не хватает — при отклонении
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- заявки (шаг 4.2) ----------
+
+GOALS = ("ege", "oge", "school", "gaps", "olympiad", "other")
+REQUEST_OPEN, REQUEST_AGREED, REQUEST_CLOSED, REQUEST_EXPIRED = "open", "agreed", "closed", "expired"
+RESPONSE_ACTIVE, RESPONSE_AGREED, RESPONSE_CLOSED = "active", "agreed", "closed"
+
+
+class Competency(Base):
+    """Справочник компетенций по предмету («Дроби», «Производная») — ведут модераторы (ТЗ, раздел 4)."""
+
+    __tablename__ = "competencies"
+    __table_args__ = (Index("ix_competencies_subject", "subject_id", "position"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    subject_id: Mapped[UUID]
+    title: Mapped[str] = mapped_column(String(120))
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class LessonRequest(Base):
+    """Заявка ученика: адресная («Хочу с вами заниматься») или открытая — её видят репетиторы по предмету."""
+
+    __tablename__ = "requests"
+    __table_args__ = (
+        CheckConstraint("status IN ('open', 'agreed', 'closed', 'expired')", name="status_valid"),
+        CheckConstraint("duration_min IN (30, 45, 60, 90)", name="duration_valid"),
+        Index("ix_requests_open", "status", "subject_id", "created_at"),
+        Index("ix_requests_student", "student_id", "created_at"),
+        Index("ix_requests_tutor", "tutor_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    student_id: Mapped[UUID]
+    tutor_id: Mapped[UUID | None]  # None — открытая заявка
+    subject_id: Mapped[UUID]
+    subject_name: Mapped[str] = mapped_column(String(80))
+    goal: Mapped[str] = mapped_column(String(10))
+    current_ids: Mapped[list[UUID]] = mapped_column(ARRAY(Uuid), default=list, server_default="{}")  # что уже знаю
+    desired_ids: Mapped[list[UUID]] = mapped_column(ARRAY(Uuid), default=list, server_default="{}")  # что хочу получить
+    # {"weekdays": [0..6], "time_from": "16:00", "time_to": "20:00"}
+    schedule: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    price: Mapped[int] = mapped_column(Integer)  # предлагает ученик (ТЗ: репетитор цену заранее не устанавливает)
+    duration_min: Mapped[int] = mapped_column(SmallInteger)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(10), default=REQUEST_OPEN)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Response(Base):
+    """Переговоры репетитора и ученика по заявке. Id отклика — это и id чата переговоров в сервисе chat."""
+
+    __tablename__ = "responses"
+    __table_args__ = (
+        CheckConstraint("status IN ('active', 'agreed', 'closed')", name="status_valid"),
+        CheckConstraint("proposed_by IN ('student', 'tutor')", name="proposed_by_valid"),
+        Index("uq_responses_request_tutor", "request_id", "tutor_id", unique=True),
+        Index("ix_responses_tutor", "tutor_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    request_id: Mapped[UUID] = mapped_column(ForeignKey("requests.id", ondelete="CASCADE"))
+    tutor_id: Mapped[UUID]
+    status: Mapped[str] = mapped_column(String(10), default=RESPONSE_ACTIVE)
+    # Текущее предложение цены и чьё оно: «Договорились» принимает предложение другой стороны.
+    price: Mapped[int] = mapped_column(Integer)
+    proposed_by: Mapped[str] = mapped_column(String(8))
+    message: Mapped[str] = mapped_column(Text, default="")
+    agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

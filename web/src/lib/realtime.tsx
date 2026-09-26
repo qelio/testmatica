@@ -9,6 +9,7 @@ export type RealtimeEvent =
   | { type: "message"; conversation_id: string; message: import("./api").ChatMessage }
   | { type: "deleted"; conversation_id: string; message_id: string }
   | { type: "pinned"; conversation_id: string; message: null }
+  | { type: "refresh"; conversation_id: string }
   | { type: "reconnected" };
 
 type Listener = (e: RealtimeEvent) => void;

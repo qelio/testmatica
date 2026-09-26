@@ -15,6 +15,7 @@ LINK_ENDED = "ended"
 SOURCE_INVITE = "invite"
 SOURCE_MANUAL = "manual"
 SOURCE_REQUEST = "request"
+SOURCE_MARKETPLACE = "marketplace"
 
 
 class Base(DeclarativeBase):
@@ -89,6 +90,9 @@ class TeacherStudentLink(Base):
     # Индивидуальные занятия с этим учеником платные или бесплатные. Не зависит от групп:
     # ученик школьного класса может отдельно заниматься с тем же учителем платно.
     paid: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Цена занятия и его длительность, о которых договорились в маркетплейсе («Договорились») — для оплаты (этап 4.4).
+    price: Mapped[int | None]
+    lesson_minutes: Mapped[int | None]
     # Группа, в которую ученик попадёт после подтверждения запроса.
     pending_group_id: Mapped[UUID | None] = mapped_column(ForeignKey("groups.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

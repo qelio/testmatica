@@ -548,13 +548,14 @@ export type ChatMessage = {
   text: string;
   attachments: Attachment[];
   is_announcement: boolean;
+  is_system: boolean; // служебное сообщение переговоров
   deleted: boolean;
   created_at: string;
 };
 
 export type Conversation = {
   id: string;
-  kind: "direct" | "group";
+  kind: "direct" | "group" | "deal";
   title: string;
   group_id: string | null;
   other_user_id: string | null;
@@ -1199,5 +1200,74 @@ export const marketplace = {
   },
   tutor: (id: string, authed: boolean) => api<TutorPublic>(`${MK}/tutors/${id}`, readOpts(authed)),
   educationForModerator: (id: string) => api<EducationDoc>(`${MK}/moderation/education/${id}`),
+
+  competencies: (subjectId: string) => api<Competency[]>(`${MK}/competencies?subject_id=${subjectId}`, { auth: false }),
+  createCompetency: (subjectId: string, title: string) =>
+    api<Competency>(`${MK}/competencies`, { method: "POST", body: { subject_id: subjectId, title } }),
+  updateCompetency: (id: string, data: { title?: string; position?: number }) =>
+    api<Competency>(`${MK}/competencies/${id}`, { method: "PATCH", body: data }),
+  deleteCompetency: (id: string) => api<void>(`${MK}/competencies/${id}`, { method: "DELETE" }),
+
+  createRequest: (data: RequestInput) => api<LessonRequest>(`${MK}/requests`, { method: "POST", body: data }),
+  myRequests: () => api<LessonRequest[]>(`${MK}/requests/mine`),
+  closeRequest: (id: string) => api<LessonRequest>(`${MK}/requests/${id}/close`, { method: "POST" }),
+  openRequests: (params: { subject_id?: string; all_subjects?: boolean } = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v).map(([k, v]) => [k, String(v)]));
+    return api<LessonRequest[]>(`${MK}/requests/open?${qs}`);
+  },
+  respond: (requestId: string, data: { price?: number | null; message: string }) =>
+    api<Negotiation>(`${MK}/requests/${requestId}/respond`, { method: "POST", body: data }),
+  myResponses: () => api<LessonRequest[]>(`${MK}/responses/mine`),
+  negotiation: (id: string) => api<Negotiation>(`${MK}/responses/${id}`),
+  proposePrice: (id: string, price: number) => api<Negotiation>(`${MK}/responses/${id}/price`, { method: "POST", body: { price } }),
+  agree: (id: string) => api<Negotiation>(`${MK}/responses/${id}/agree`, { method: "POST" }),
+  decline: (id: string) => api<Negotiation>(`${MK}/responses/${id}/decline`, { method: "POST" }),
 };
 
+export type Competency = { id: string; subject_id: string; title: string; position: number };
+export type RequestGoal = "ege" | "oge" | "school" | "gaps" | "olympiad" | "other";
+export type RequestSchedule = { weekdays: number[]; time_from: string | null; time_to: string | null };
+export type RequestInput = {
+  tutor_id?: string | null;
+  subject_id: string;
+  goal: RequestGoal;
+  current_ids: string[];
+  desired_ids: string[];
+  schedule: RequestSchedule;
+  price: number;
+  duration_min: 30 | 45 | 60 | 90;
+  comment: string;
+};
+export type PersonBrief = { id: string; full_name: string; photo_url: string | null; rating: number | null; reviews_count: number };
+export type DealResponse = {
+  id: string; // он же id чата переговоров
+  request_id: string;
+  tutor: PersonBrief;
+  status: "active" | "agreed" | "closed";
+  price: number;
+  proposed_by: "student" | "tutor";
+  message: string;
+  agreed_at: string | null;
+  created_at: string;
+};
+export type LessonRequest = {
+  id: string;
+  student: PersonBrief;
+  tutor_id: string | null;
+  direct: boolean;
+  subject_id: string;
+  subject_name: string;
+  goal: RequestGoal;
+  current: string[];
+  desired: string[];
+  schedule: RequestSchedule;
+  price: number;
+  duration_min: number;
+  comment: string;
+  status: "open" | "agreed" | "closed" | "expired";
+  expires_at: string;
+  closed_at: string | null;
+  created_at: string;
+  responses: DealResponse[];
+};
+export type Negotiation = { response: DealResponse; request: LessonRequest; role: "student" | "tutor"; can_agree: boolean };

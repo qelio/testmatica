@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { DealBar } from "@/components/deal-bar";
 import { AttachButton, AttachmentView, UploadChips, useUploads } from "@/components/files";
 import { Alert, Badge, Button, EmptyState, Modal, Spinner } from "@/components/ui";
 import { chat, type ChatMessage, type Conversation } from "@/lib/api";
@@ -30,7 +31,7 @@ function Chats() {
 
   // Новое сообщение в любом чате — обновить список (порядок, превью, счётчики).
   useRealtime((e) => {
-    if (e.type === "message" || e.type === "deleted" || e.type === "reconnected") list.reload();
+    if (e.type === "message" || e.type === "deleted" || e.type === "reconnected" || e.type === "refresh") list.reload();
   });
 
   // Новый личный диалог без сообщений в общий список не попадает — загружаем его отдельно.
@@ -40,6 +41,13 @@ function Chats() {
     [openId, !!list.data, !!inList],
   );
   const current = inList ?? single.data;
+  // Чат переговоров создаётся по событию через секунду-две после заявки — если его ещё нет, пробуем снова.
+  const retry = list.reload;
+  useEffect(() => {
+    if (!openId || !single.error) return;
+    const t = setTimeout(retry, 1500);
+    return () => clearTimeout(t);
+  }, [openId, single.error, retry]);
 
   return (
     <div className="-m-4 flex h-[calc(100dvh-4rem)] sm:-m-6 lg:-m-8">
@@ -207,7 +215,7 @@ function Thread({
   }, [messages]);
 
   useRealtime((e) => {
-    if (e.type === "reconnected") load();
+    if (e.type === "reconnected" || (e.type === "refresh" && e.conversation_id === conversation.id)) load();
     if (e.type === "message" && e.conversation_id === conversation.id) {
       setMessages((prev) => (prev && !prev.some((m) => m.id === e.message.id) ? [...prev, e.message] : prev));
       const el = scroller.current;
@@ -262,9 +270,12 @@ function Thread({
         <Avatar name={conversation.title} group={conversation.kind === "group"} />
         <div className="min-w-0">
           <p className="truncate font-semibold">{conversation.title}</p>
-          <p className="text-xs text-fg-soft">{conversation.kind === "group" ? "групповой чат" : "личный диалог"}</p>
+          <p className="text-xs text-fg-soft">
+            {conversation.kind === "group" ? "групповой чат" : conversation.kind === "deal" ? "переговоры по заявке" : "личный диалог"}
+          </p>
         </div>
       </header>
+      {conversation.kind === "deal" && <DealBar responseId={conversation.id} />}
 
       {conversation.pinned && (
         <div className="flex items-start gap-3 border-b border-line bg-brand/5 px-4 py-2.5 text-sm">
@@ -307,6 +318,11 @@ function Thread({
                 {newDay && (
                   <p className="py-2 text-center text-xs text-fg-soft">{fmtDate(m.created_at, { day: "numeric", month: "long" })}</p>
                 )}
+                {m.is_system ? (
+                  <p className="mx-auto max-w-[90%] rounded-xl bg-muted px-3 py-1.5 text-center text-sm text-fg-soft">
+                    {m.text} <span className="text-[11px]">{fmtTime(m.created_at)}</span>
+                  </p>
+                ) : (
                 <div className={`group flex ${mine ? "justify-end" : "justify-start"}`}>
                   <div
                     className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-[15px] ${
@@ -351,6 +367,7 @@ function Thread({
                     </p>
                   </div>
                 </div>
+                )}
               </Fragment>
             );
           })}

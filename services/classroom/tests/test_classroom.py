@@ -237,3 +237,18 @@ async def test_internal_group_and_link_info(client, teacher, fake_identity):
     assert (await client.put(f"/students/{uuid4()}/billing", json={"paid": True}, headers=bearer(teacher))).status_code == 404
     missing = await client.get("/internal/links", params={"teacher_id": str(teacher), "student_id": str(uuid4())}, headers=h)
     assert missing.status_code == 404
+
+
+async def test_marketplace_deal_links_student_as_paid(client, teacher):
+    from app import deals
+
+    pupil = uuid4()
+    async with db.sessionmaker() as s, s.begin():
+        await people.upsert(s, pupil, "Оля Смирнова", None, ["student"])
+        await deals.on_marketplace_event(make_envelope("marketplace.deal.agreed", {
+            "tutor_id": str(teacher), "student_id": str(pupil), "price": 1500, "duration_min": 60, "subject": "Математика"},
+            actor_id=pupil), s)
+    [s] = (await client.get("/students", headers=bearer(teacher))).json()
+    assert (s["full_name"], s["status"], s["source"], s["paid"], s["price"], s["lesson_minutes"]) == (
+        "Оля Смирнова", "active", "marketplace", True, 1500, 60)
+    assert (await outbox("classroom.link.created"))[0]["data"]["source"] == "marketplace"
