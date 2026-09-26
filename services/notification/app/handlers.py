@@ -256,12 +256,12 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
                                  title=f"Педагог проверил решение: «{d['task_title']}» — {percent}%", body=d.get("comment") or "",
                                  payload={"submission_id": d["submission_id"], "task_id": d["task_id"]}))
     elif t == "assessment.assignment.created":
-        live = d["kind"] == "live"
-        title = f"Тест на уроке: «{d['title']}»" if live else f"Новое ДЗ: «{d['title']}»"
-        # Дедлайн — в payload: интерфейс покажет его в часовом поясе ученика.
+        title = {"live": "Тест на уроке", "homework": "Новое ДЗ", "test": "Новый тест"}.get(d["kind"], "Новый тест")
+        # Время открытия и дедлайн — в payload: интерфейс покажет их в часовом поясе ученика.
         for sid in d["student_ids"]:
-            session.add(Notification(user_id=UUID(sid), kind="assignment_created", title=title,
-                                     payload={"assignment_id": d["assignment_id"], "deadline": d.get("deadline")}))
+            session.add(Notification(user_id=UUID(sid), kind="assignment_created", title=f"{title}: «{d['title']}»",
+                                     payload={"assignment_id": d["assignment_id"], "deadline": d.get("deadline"),
+                                              "opens_at": d.get("opens_at")}))
     elif t == "assessment.assignment.reassigned":
         session.add(Notification(user_id=UUID(d["student_id"]), kind="assignment_reassigned",
                                  title=f"Педагог разрешил пройти ещё раз: «{d['title']}»",

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Markdown } from "@/components/markdown";
 import { Alert, Badge, Button, Field, Spinner } from "@/components/ui";
 import { type Assignment, assessment } from "@/lib/api";
-import { fmtLimit, KIND_LABELS, lastAttempt, studentStatus, summary } from "@/lib/assignments";
+import { attemptsText, bestAttempt, fmtLimit, KIND_LABELS, lastAttempt, studentStatus, summary } from "@/lib/assignments";
 import { fmtDateTime, fromInputs } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 import { useAuth } from "@/lib/auth";
@@ -31,29 +31,40 @@ export default function AssignmentPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <Link href="/dashboard/assignments" className="text-sm text-fg-soft hover:text-fg">
-        ← {isTeacher ? "Задания и тесты" : "Задания"}
+        ← {isTeacher ? "Назначение тестов" : "Назначенные тесты"}
       </Link>
-      <Header a={a.data} />
+      <Header a={a.data} isTeacher={isTeacher} />
       {isTeacher ? <TeacherPanel a={a.data} reload={a.reload} /> : <StudentPanel a={a.data} />}
     </div>
   );
 }
 
-function Header({ a }: { a: Assignment }) {
+function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={a.kind === "live" ? "brand" : "neutral"}>{KIND_LABELS[a.kind]}</Badge>
-        {a.kind === "live" && !a.closed && <Badge tone="brand">идёт сейчас</Badge>}
+        {a.not_open_yet && a.opens_at && <Badge>откроется {fmtDateTime(a.opens_at)}</Badge>}
+        {a.kind === "live" && !a.closed && !a.not_open_yet && <Badge tone="brand">идёт сейчас</Badge>}
         {a.closed && <Badge>завершён</Badge>}
         {a.overdue && !a.closed && <Badge tone="warn">срок прошёл</Badge>}
       </div>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight">{a.title}</h1>
+      {isTeacher && (
+        <p className="mt-1 text-sm">
+          Тест:{" "}
+          <Link href={`/dashboard/tests/${a.test_id}`} className="text-brand hover:underline">
+            {a.test_title}
+          </Link>
+        </p>
+      )}
       <p className="mt-1 text-sm text-fg-soft">
         {[
           a.target_title,
           a.teacher_name,
+          a.opens_at && !a.not_open_yet ? `открыт с ${fmtDateTime(a.opens_at)}` : null,
           a.deadline ? `сдать до ${fmtDateTime(a.deadline)}` : null,
+          attemptsText(a),
           `заданий: ${a.tasks_count}`,
           `баллов: ${a.max_score}`,
           fmtLimit(a.settings),
@@ -124,10 +135,13 @@ function StudentRow({
 }) {
   const st = studentStatus(a, row);
   const last = lastAttempt(row);
+  const best = bestAttempt(row);
   const [reassigning, setReassigning] = useState(false);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("20:00");
-  const canReassign = last?.status !== "in_progress" && (!!last || a.overdue || a.closed) && row.attempts.length >= row.allowed_attempts;
+  // Без лимита попыток переназначать нечего — разве что продлить срок.
+  const canReassign =
+    last?.status !== "in_progress" && (!!last || a.overdue || a.closed) && (a.max_attempts === null ? a.overdue || a.closed : row.attempts.length >= row.allowed_attempts);
 
   return (
     <li className="px-5 py-3">
@@ -140,9 +154,10 @@ function StudentRow({
             <span className="block h-full bg-brand" style={{ width: `${(last.answered / Math.max(1, last.total)) * 100}%` }} />
           </span>
         )}
-        {last?.status === "submitted" && last.score !== null && (
+        {best?.score != null && (
           <span className="text-sm text-fg-soft tabular-nums">
-            {last.score} из {last.max_score}
+            {best.score} из {best.max_score}
+            {row.attempts.length > 1 && " (лучшая)"}
           </span>
         )}
         <Badge tone={st.tone}>{st.text}</Badge>
@@ -172,7 +187,7 @@ function StudentRow({
           }}
         >
           <p className="w-full text-sm text-fg-soft">
-            Ученик сможет пройти ещё раз; прошлые попытки сохранятся.
+            {a.max_attempts === null ? "Ученик снова сможет проходить тест;" : "Ученик сможет пройти ещё раз;"} прошлые попытки сохранятся.
             {a.deadline && " Если общий срок прошёл — задайте новый."}
           </p>
           <Field label="Новый срок" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -230,7 +245,14 @@ function StudentPanel({ a }: { a: Assignment }) {
             </li>
           )}
           <li>Ответы сохраняются сами; проверка — после того как вы сдадите работу.</li>
-          <li>Сдать можно один раз.{a.deadline && " Когда срок выйдет, работа сдастся автоматически с тем, что вы успели ответить."}</li>
+          {a.not_open_yet && a.opens_at && <li>Тест откроется {fmtDateTime(a.opens_at)}.</li>}
+          <li>
+            {a.max_attempts === 1
+              ? "Сдать можно один раз."
+              : `${a.max_attempts === null ? "Проходить можно сколько угодно раз" : `Можно пройти до ${a.max_attempts} раз`} — засчитывается лучшая попытка.`}
+            {a.attempts_left !== null && a.max_attempts !== 1 && row?.attempts.length ? ` Осталось попыток: ${a.attempts_left}.` : ""}
+            {a.deadline && " Когда срок выйдет, незавершённая работа сдастся автоматически с тем, что вы успели ответить."}
+          </li>
         </ul>
         {last?.status === "in_progress" ? (
           <Button onClick={() => router.push(`/dashboard/attempts/${last.id}`)}>Продолжить</Button>

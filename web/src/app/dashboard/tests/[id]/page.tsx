@@ -13,8 +13,8 @@ export default function TestPage() {
   const test = useLoad(() => assessment.test(id), [id]);
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <Link href="/dashboard/assignments?tab=tests" className="text-sm text-fg-soft hover:text-fg">
-        ← Задания и тесты
+      <Link href="/dashboard/tests" className="text-sm text-fg-soft hover:text-fg">
+        ← Тесты
       </Link>
       {test.error && <Alert>{test.error}</Alert>}
       {!test.data ? (
@@ -24,7 +24,7 @@ export default function TestPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{test.data.title}</h1>
           {test.data.assignments_count > 0 && (
             <p className="text-sm text-fg-soft">
-              Тест уже выдавали ({test.data.assignments_count}). Изменения не затронут выданные работы — только новые.
+              Тест уже назначали ({test.data.assignments_count}). Изменения не затронут уже назначенные — только новые.
             </p>
           )}
           <TestEditor key={test.data.id} test={test.data} />

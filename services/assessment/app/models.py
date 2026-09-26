@@ -241,7 +241,8 @@ class Submission(Base):
 
 # ---------- тесты и ДЗ ----------
 
-HOMEWORK, LIVE = "homework", "live"  # домашнее задание / активный тест на уроке
+# Просто тест (без урока) / тест на дом (к уроку) / тест на уроке (к уроку, прогресс в реальном времени).
+PLAIN, HOMEWORK, LIVE = "test", "homework", "live"
 IN_PROGRESS, SUBMITTED = "in_progress", "submitted"
 
 
@@ -284,7 +285,7 @@ class Assignment(Base):
 
     __tablename__ = "assignments"
     __table_args__ = (
-        CheckConstraint("kind IN ('homework', 'live')", name="kind_valid"),
+        CheckConstraint("kind IN ('test', 'homework', 'live')", name="kind_valid"),
         CheckConstraint("target_type IN ('student', 'group')", name="target_type_valid"),
         Index("ix_assignments_teacher", "teacher_id", "created_at"),
         Index("ix_assignments_lesson", "lesson_id"),
@@ -293,14 +294,19 @@ class Assignment(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     test_id: Mapped[UUID] = mapped_column(ForeignKey("tests.id", ondelete="RESTRICT"))
     teacher_id: Mapped[UUID]
+    # Название назначения («ДЗ к уроку 12 марта») — его видят ученики; test_title — каким был тест при назначении.
     title: Mapped[str] = mapped_column(String(200))
+    test_title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     kind: Mapped[str] = mapped_column(String(8))
     target_type: Mapped[str] = mapped_column(String(10))
     target_id: Mapped[UUID]
     target_title: Mapped[str] = mapped_column(String(200))
     lesson_id: Mapped[UUID | None]  # урок в расписании: колонка журнала для автооценки
-    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # до этого времени начать нельзя
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # когда закроется
+    # Сколько попыток у ученика; None — без ограничений. Засчитывается лучшая (решение №15).
+    max_attempts: Mapped[int | None] = mapped_column(SmallInteger)
     # {order_mode, shuffle_options, time_mode, time_limit_s}
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB)
     # [{task_id, points}] — в порядке теста
@@ -314,7 +320,7 @@ class Assignment(Base):
 
 
 class AssignmentStudent(Base):
-    """Кому выдано. allowed_attempts растёт при переназначении — повторная сдача только так (ТЗ)."""
+    """Кому выдано. allowed_attempts — попытки сверх max_attempts работы (растут при переназначении)."""
 
     __tablename__ = "assignment_students"
     __table_args__ = (Index("ix_assignment_students_student", "student_id"),)

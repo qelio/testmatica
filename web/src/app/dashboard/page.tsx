@@ -82,6 +82,9 @@ export default function DashboardPage() {
                       : fmtDateTime(n.payload.starts_at as string)}
                   </p>
                 )}
+                {typeof n.payload.opens_at === "string" && new Date(n.payload.opens_at) > new Date() && (
+                  <p className="mt-1 text-sm">Откроется {fmtDateTime(n.payload.opens_at)}</p>
+                )}
                 {typeof n.payload.deadline === "string" && (
                   <p className="mt-1 text-sm">Сдать до {fmtDateTime(n.payload.deadline)}</p>
                 )}
@@ -98,7 +101,7 @@ export default function DashboardPage() {
                 )}
                 {typeof n.payload.assignment_id === "string" && (
                   <Link href={`/dashboard/assignments/${n.payload.assignment_id}`} className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
-                    Открыть работу
+                    Открыть тест
                   </Link>
                 )}
                 <p className="mt-1 text-xs text-fg-soft">{new Date(n.created_at).toLocaleString("ru-RU")}</p>
