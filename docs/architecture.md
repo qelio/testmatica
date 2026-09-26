@@ -200,7 +200,12 @@ flowchart LR
 - `tutor_profiles` — user_id, published («Показывать меня в поиске»; включается только у заполненного профиля), headline, about, photo_file_id (media, purpose avatar), subjects / subject_ids (справочник content), levels (1-4 / 5-9 / 10-11 / student / adult), formats (individual / group), price (ориентир за 60 минут), experience_years, rating, reviews_count, education_verified
 - `education_docs` — user_id, title, institution, year, file_id (media, purpose document), status (pending / approved / rejected), comment; проверка — очередь moderation (kind = education_doc), бейдж «Образование подтверждено» — при хотя бы одном одобренном документе. Гостю виден только бейдж, вошедшим — список документов без файлов, файл — только модератору
 - Поиск `GET /tutors` и профиль `GET /tutors/{id}` открыты без входа (ссылка «Поделиться»); онлайн-статус — из `identity /internal/users/presence` (last_seen_at обновляется при входе и продлении сессии)
-Дальше (4.2–4.5):
+Этап 4.2 (сделано):
+- `competencies` — справочник по предметам (ведут модераторы, базовый набор создаётся фоновой задачей)
+- `requests` — заявка ученика: адресная (tutor_id, «Хочу с вами заниматься») или открытая (видят репетиторы предмета с включённым профилем); цель, «что знаю» / «что хочу», удобное время, цена ученика, длительность 30/45/60/90, комментарий; open → agreed / closed / expired (14 дней)
+- `responses` — переговоры репетитора по заявке: текущая цена и чьё это предложение; «Договорились» — только принять цену другой стороны. Id отклика = id чата переговоров (chat, kind = deal; писать можно без привязки — решение №12; служебные сообщения о цене и итоге)
+- `marketplace.deal.agreed` → classroom: привязка ученика, индивидуальные занятия платные, цена и длительность (для оплаты на этапе 4.4); остальные отклики закрываются с уведомлением
+Дальше (4.3–4.5):
 - `competencies` — id, subject_id, name (справочник модератора)
 - `requests` — id, student_id, tutor_id (null = открытая), subject_id, goal, current_competencies, desired_competencies, schedule_pref (JSON), price, duration_min, comment, status (open / agreed / closed / expired), expires_at
 - `request_responses` — request_id, tutor_id, chat_id, status

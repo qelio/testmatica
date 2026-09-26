@@ -281,3 +281,24 @@ async def test_education_notifications(client):
         "doc_id": str(uuid4()), "user_id": str(tutor), "title": "Диплом", "comment": "Не видно печати"}))
     item = (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"][0]
     assert (item["title"], item["body"]) == ("Документ «Диплом» не принят", "Не видно печати")
+
+
+
+async def test_request_notifications(client):
+    a, b, pupil = uuid4(), uuid4(), uuid4()
+    c = consumer("notification.marketplace", handlers.on_marketplace_event)
+    await c.process(make_envelope("marketplace.request.created", {
+        "request_id": str(uuid4()), "student_id": str(pupil), "subject": "Математика", "direct": False,
+        "tutor_ids": [str(a), str(b)], "price": 1200, "duration_min": 60, "response_id": None}))
+    item = (await client.get("/notifications", headers=bearer(a, ["teacher"]))).json()["items"][0]
+    assert (item["title"], item["body"]) == ("Новая заявка: Математика", "Ученик предлагает 1 200 ₽ за 60 мин.")
+    rid = str(uuid4())
+    deal = {"response_id": rid, "request_id": str(uuid4()), "student_id": str(pupil), "tutor_id": str(b), "subject": "Математика",
+            "price": 1500, "duration_min": 60, "direct": False}
+    await c.process(make_envelope("marketplace.response.created", deal))
+    await c.process(make_envelope("marketplace.deal.agreed", deal))
+    await c.process(make_envelope("marketplace.response.closed", deal | {"tutor_id": str(a), "reason": "agreed_other"}))
+    titles = sorted(n["title"] for n in (await client.get("/notifications", headers=bearer(pupil))).json()["items"])
+    assert titles == ["Договорились: Математика", "Новый отклик на заявку: Математика"]
+    assert (await client.get("/notifications", headers=bearer(a, ["teacher"]))).json()["items"][0]["title"] == \
+        "Ученик выбрал другого репетитора: Математика"

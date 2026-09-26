@@ -284,15 +284,48 @@ async def on_video_event(envelope: Envelope, session: AsyncSession) -> None:
                                  payload={"recording_id": d["recording_id"], "lesson_id": d["lesson_id"]}))
 
 
+def _rub(n: int) -> str:
+    return f"{n:,}".replace(",", " ") + " ₽"
+
+
 async def on_marketplace_event(envelope: Envelope, session: AsyncSession) -> None:
-    """Проверка документов об образовании — репетитору."""
+    """Документы об образовании, заявки, отклики и «Договорились»."""
     d = envelope.data
-    if envelope.type == "marketplace.education.approved":
+    t = envelope.type
+    if t == "marketplace.request.created":
+        terms = f"{_rub(d['price'])} за {d['duration_min']} мин"
+        for tid in d["tutor_ids"]:
+            if d["direct"]:
+                session.add(Notification(user_id=UUID(tid), kind="request_direct", title=f"Ученик хочет заниматься с вами: {d['subject']}",
+                                         body=f"Предлагает {terms}. Ответьте в чате переговоров.",
+                                         payload={"conversation_id": d.get("response_id"), "request_id": d["request_id"]}))
+            else:
+                session.add(Notification(user_id=UUID(tid), kind="request_open", title=f"Новая заявка: {d['subject']}",
+                                         body=f"Ученик предлагает {terms}.", payload={"request_id": d["request_id"]}))
+        return
+    if t == "marketplace.response.created" and not d.get("direct"):
+        session.add(Notification(user_id=UUID(d["student_id"]), kind="response_new", title=f"Новый отклик на заявку: {d['subject']}",
+                                 body=f"Репетитор готов заниматься за {_rub(d['price'])}.", payload={"conversation_id": d["response_id"]}))
+        return
+    if t == "marketplace.deal.agreed":
+        for uid in (d["student_id"], d["tutor_id"]):
+            session.add(Notification(user_id=UUID(uid), kind="deal_agreed", title=f"Договорились: {d['subject']}",
+                                     body=f"{_rub(d['price'])} за {d['duration_min']} мин. Занятия можно ставить в расписание.",
+                                     payload={"conversation_id": d["response_id"]}))
+        return
+    if t == "marketplace.response.closed" and d.get("reason") == "agreed_other":
+        session.add(Notification(user_id=UUID(d["tutor_id"]), kind="deal_lost", title=f"Ученик выбрал другого репетитора: {d['subject']}",
+                                 payload={"conversation_id": d["response_id"]}))
+        return
+    if t == "marketplace.request.expired":
+        session.add(Notification(user_id=UUID(d["student_id"]), kind="request_expired", title=f"Заявка закрылась: {d['subject']}",
+                                 body="Прошло 14 дней. Можно создать новую.", payload={"request_id": d["request_id"]}))
+        return
+    if t == "marketplace.education.approved":
         session.add(Notification(user_id=UUID(d["user_id"]), kind="education_approved",
                                  title=f"Документ «{d['title']}» подтверждён",
                                  body="В профиле появился бейдж «Образование подтверждено».", payload={"doc_id": d["doc_id"]}))
-    elif envelope.type == "marketplace.education.rejected":
+    elif t == "marketplace.education.rejected":
         session.add(Notification(user_id=UUID(d["user_id"]), kind="education_rejected",
                                  title=f"Документ «{d['title']}» не принят", body=d.get("comment") or "",
                                  payload={"doc_id": d["doc_id"]}))
-

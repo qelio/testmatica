@@ -22,6 +22,7 @@ export const NAV = {
     { title: "Библиотека", href: "/dashboard/library", ready: true },
     soon("Финансы и баланс", "/dashboard/finance"),
     { title: "Профиль репетитора", href: "/dashboard/profile", ready: true },
+    { title: "Заявки учеников", href: "/dashboard/requests", ready: true },
     soon("Поддержка", "/dashboard/support"),
   ],
   student: [
@@ -34,6 +35,7 @@ export const NAV = {
     { title: "ЕГЭ и ОГЭ", href: "/dashboard/exams", ready: true },
     { title: "Библиотека", href: "/dashboard/library", ready: true },
     { title: "Найти репетитора", href: "/tutors", ready: true },
+    { title: "Мои заявки", href: "/dashboard/requests", ready: true },
     soon("Баланс", "/dashboard/balance"),
     soon("Поддержка", "/dashboard/support"),
   ],
@@ -43,6 +45,7 @@ export const NAV = {
     { title: "Банк задач", href: "/dashboard/tasks", ready: true },
     { title: "Библиотека", href: "/dashboard/library", ready: true },
     { title: "Типы оценок", href: "/dashboard/grade-types", ready: true },
+    { title: "Компетенции", href: "/dashboard/competencies", ready: true },
     soon("Пользователи", "/dashboard/users"),
     soon("Журнал аудита", "/dashboard/audit"),
   ],

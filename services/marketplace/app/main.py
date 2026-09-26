@@ -7,7 +7,7 @@ from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import handlers
-from .api import tutors
+from .api import competencies, requests, tutors
 from .config import settings
 from .deps import db
 
@@ -16,6 +16,8 @@ configure_logging(settings.service_name, settings.log_level)
 runtime = ServiceRuntime(settings, db)
 runtime.consumer("marketplace.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
 runtime.consumer("marketplace.moderation", [(EVENTS_EXCHANGE, "moderation.decision.made")], handlers.on_moderation_decision)
+runtime.every("expire_requests", 600, requests.expire_requests)
+runtime.every("default_competencies", 300, competencies.ensure_defaults)
 
 
 @asynccontextmanager
@@ -29,3 +31,5 @@ app = FastAPI(title="Тестматика · marketplace", version="0.1.0", life
 install_error_handlers(app)
 app.include_router(health_router(db))
 app.include_router(tutors.router)
+app.include_router(requests.router)
+app.include_router(competencies.router)

@@ -89,3 +89,111 @@ class EducationIn(BaseModel):
 class SearchPage(BaseModel):
     items: list[TutorCard]
     total: int
+
+
+# ---------- заявки ----------
+
+Goal = Literal["ege", "oge", "school", "gaps", "olympiad", "other"]
+
+
+class ScheduleIn(BaseModel):
+    weekdays: list[int] = Field(default_factory=list, max_length=7)
+    time_from: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
+    time_to: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
+
+    @field_validator("weekdays")
+    @classmethod
+    def _days(cls, value: list[int]) -> list[int]:
+        if any(d < 0 or d > 6 for d in value):
+            raise ValueError("День недели — от 0 (пн) до 6 (вс)")
+        return sorted(set(value))
+
+
+class RequestIn(BaseModel):
+    tutor_id: UUID | None = Field(None, description="Кому адресована; без него — открытая заявка")
+    subject_id: UUID
+    goal: Goal
+    current_ids: list[UUID] = Field(default_factory=list, max_length=30)
+    desired_ids: list[UUID] = Field(default_factory=list, max_length=30)
+    schedule: ScheduleIn = Field(default_factory=ScheduleIn)
+    price: int = Field(ge=100, le=100_000, description="Предлагаемая цена за занятие, ₽")
+    duration_min: Literal[30, 45, 60, 90] = 60
+    comment: str = Field("", max_length=2000)
+
+
+class CompetencyOut(BaseModel):
+    id: UUID
+    subject_id: UUID
+    title: str
+    position: int
+
+
+class CompetencyIn(BaseModel):
+    subject_id: UUID
+    title: str = Field(min_length=1, max_length=120)
+
+    _title = field_validator("title")(_clean)
+
+
+class CompetencyUpdate(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=120)
+    position: int | None = Field(None, ge=0)
+
+
+class PersonBrief(BaseModel):
+    id: UUID
+    full_name: str
+    photo_url: str | None = None
+    rating: float | None = None
+    reviews_count: int = 0
+
+
+class ResponseOut(BaseModel):
+    id: UUID = Field(description="Он же id чата переговоров")
+    request_id: UUID
+    tutor: PersonBrief
+    status: str
+    price: int
+    proposed_by: Literal["student", "tutor"]
+    message: str
+    agreed_at: datetime | None
+    created_at: datetime
+
+
+class RequestOut(BaseModel):
+    id: UUID
+    student: PersonBrief
+    tutor_id: UUID | None
+    direct: bool
+    subject_id: UUID
+    subject_name: str
+    goal: str
+    current: list[str]
+    desired: list[str]
+    schedule: dict
+    price: int
+    duration_min: int
+    comment: str
+    status: str
+    expires_at: datetime
+    closed_at: datetime | None
+    created_at: datetime
+    responses: list[ResponseOut] = Field(default_factory=list, description="Ученику — все отклики; репетитору — только свой")
+
+
+class Negotiation(BaseModel):
+    """Переговоры глазами участника — для панели «Договорились» в чате."""
+
+    response: ResponseOut
+    request: RequestOut
+    role: Literal["student", "tutor"]
+    can_agree: bool = Field(description="Можно принять цену: её предложила другая сторона")
+
+
+class PriceIn(BaseModel):
+    price: int = Field(ge=100, le=100_000)
+
+
+class RespondIn(BaseModel):
+    price: int | None = Field(None, ge=100, le=100_000, description="Своя цена; по умолчанию — цена ученика")
+    message: str = Field("", max_length=2000)

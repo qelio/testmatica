@@ -48,6 +48,8 @@ async def _students(session: AsyncSession, teacher_id: UUID, student_id: UUID | 
             managed=link.source == SOURCE_MANUAL,
             group_ids=memberships[link.student_id],
             paid=link.paid,
+            price=link.price,
+            lesson_minutes=link.lesson_minutes,
         )
         for link in links
     ]

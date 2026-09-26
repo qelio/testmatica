@@ -6,7 +6,7 @@ from testmatica_common.logging import configure_logging
 from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
-from . import realtime, relations
+from . import deals, realtime, relations
 from .api import conversations
 from .config import settings
 from .deps import db, redis
@@ -23,6 +23,11 @@ runtime.consumer(
         (EVENTS_EXCHANGE, "classroom.link.*"),
     ],
     relations.on_classroom_event,
+)
+runtime.consumer(
+    "chat.marketplace",
+    [(EVENTS_EXCHANGE, "marketplace.response.*"), (EVENTS_EXCHANGE, "marketplace.deal.agreed")],
+    deals.on_marketplace_event,
 )
 
 
