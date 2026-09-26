@@ -127,6 +127,27 @@ export async function api<T>(path: string, { method = "GET", body, auth = true }
   return parse<T>(resp);
 }
 
+/** Запрос, который возвращает файл (PDF, Excel): так же с токеном и повтором при 401. */
+export async function apiFile(path: string, { method = "POST", body }: Omit<Options, "auth"> = {}): Promise<Blob> {
+  const init: RequestInit = { method, body: body === undefined ? undefined : JSON.stringify(body) };
+  let resp = await send(path, init, true);
+  if (resp.status === 401 && (await refreshSession())) resp = await send(path, init, true);
+  if (!resp.ok) await parse(resp); // бросит ApiError с сообщением сервера
+  return resp.blob();
+}
+
+/** Сохранить файл из ответа API на компьютер. */
+export function saveFile(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 // ---- identity ----
 
 const ID = "/api/identity";
@@ -266,6 +287,14 @@ export const classroom = {
   students: () => api<Student[]>(`${CR}/students`),
   createManual: (data: { full_name: string; login?: string | null; password?: string | null; group_id?: string | null }) =>
     api<StudentCredentials>(`${CR}/students/manual`, { method: "POST", body: data }),
+  createManualBulk: (fullNames: string[], groupId?: string | null) =>
+    api<{ created: StudentCredentials[]; errors: { full_name: string; message: string }[] }>(`${CR}/students/manual/bulk`, {
+      method: "POST",
+      body: { full_names: fullNames, group_id: groupId ?? null },
+    }),
+  /** PDF с карточками входа — только для что созданных учеников (пароли больше нигде не показываются). */
+  credentialCards: (students: { full_name: string; login: string; password: string }[], title?: string) =>
+    apiFile(`${CR}/students/cards.pdf`, { body: { students, title: title ?? null } }),
   requestLink: (identifier: string, group_id?: string | null) =>
     api<Student>(`${CR}/students/requests`, { method: "POST", body: { identifier, group_id } }),
   renameStudent: (id: string, full_name: string) =>
@@ -1486,4 +1515,52 @@ export const billing = {
   /** Только для поддельного провайдера: тестовая страница оплаты сообщает результат. */
   fakeResult: (id: string, outcome: "success" | "cancel", cardLast4: string) =>
     api<BillingPayment>(`${BL}/fake-provider/payments/${id}`, { method: "POST", body: { outcome, card_last4: cardLast4 } }),
+};
+
+// ---- аналитика (academic) ----
+
+export type AnalyticsPeriod = { from: string; to: string; subject?: string };
+export type TrendPoint = { week: string; average: number | null; attendance_rate: number | null };
+export type HeatDay = { day: string; marked: number; missed: number; rate: number };
+export type GroupReport = {
+  title: string;
+  subject: string | null;
+  period_from: string;
+  period_to: string;
+  extended: boolean;
+  stats: Stats;
+  students: { id: string; full_name: string; current: boolean; stats: Stats; delta: number | null; trend: TrendPoint[] | null }[];
+  distribution: Record<string, number> | null;
+  trend: TrendPoint[] | null;
+  heatmap: HeatDay[] | null;
+};
+export type StudentReport = {
+  full_name: string;
+  period_from: string;
+  period_to: string;
+  extended: boolean;
+  stats: Stats;
+  subjects: { subject: string; stats: Stats; class_average: number | null }[];
+  grades: { at: string; value: number; subject: string | null; grade_type: string; comment: string }[] | null;
+  trend: TrendPoint[] | null;
+};
+export type Summary = {
+  period_from: string;
+  period_to: string;
+  rows: { group_id: string | null; title: string; students: number; stats: Stats; below_three: number }[];
+  total: Stats;
+};
+
+function periodQs(p: AnalyticsPeriod, extra: Record<string, string> = {}): string {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return new URLSearchParams({ from: p.from, to: p.to, tz, ...(p.subject ? { subject: p.subject } : {}), ...extra }).toString();
+}
+
+export const analytics = {
+  group: (groupId: string, p: AnalyticsPeriod) => api<GroupReport>(`${AC}/analytics/groups/${groupId}?${periodQs(p)}`),
+  student: (studentId: string, p: AnalyticsPeriod) => api<StudentReport>(`${AC}/analytics/students/${studentId}?${periodQs(p)}`),
+  summary: (p: AnalyticsPeriod) => api<Summary>(`${AC}/analytics/summary?${periodQs(p)}`),
+  /** Выгрузка: path — "groups/<id>", "students/<id>" или "summary". */
+  export: (path: string, p: AnalyticsPeriod, format: "pdf" | "xlsx") =>
+    apiFile(`${AC}/analytics/${path}/export?${periodQs(p, { format })}`, { method: "GET" }),
 };

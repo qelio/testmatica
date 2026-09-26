@@ -14,6 +14,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Шрифты с кириллицей для PDF (карточки учеников, выгрузки аналитики): DejaVu и округлый Comfortaa.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core fonts-comfortaa \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY libs/platform-common /libs/platform-common
 RUN pip install -e /libs/platform-common
 

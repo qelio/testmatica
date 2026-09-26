@@ -313,3 +313,41 @@ async def test_group_offer_started_creates_group(client):
     limit = (await client.get("/internal/group-limit", params={"teacher_id": str(teacher)},
                               headers={"X-Internal-Token": "dev-internal-token"})).json()
     assert limit["allowed"] is False and "3 активных" in limit["message"]
+
+
+async def test_bulk_students_and_cards_pdf(client, teacher, fake_identity):
+    group = await create_group(client, teacher, "3Б")
+    resp = await client.post("/students/manual/bulk", json={
+        "full_names": ["Аня Петрова", "  ", "Занятый Логин", "Борис  Сидоров"], "group_id": group["id"]}, headers=bearer(teacher))
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert [c["student"]["full_name"] for c in data["created"]] == ["Аня Петрова", "Борис Сидоров"]
+    assert all(c["login"] and c["password"] for c in data["created"])
+    assert data["errors"] == [{"full_name": "Занятый Логин", "message": "Такой логин уже занят"}]
+    detail = (await client.get(f"/groups/{group['id']}", headers=bearer(teacher))).json()
+    assert len(detail["members"]) == 2  # после ошибки со вторым остальные всё равно попали в группу
+
+    cards = [{"full_name": c["student"]["full_name"], "login": c["login"], "password": c["password"]} for c in data["created"]]
+    pdf = await client.post("/students/cards.pdf", json={"students": cards, "title": "3Б"}, headers=bearer(teacher))
+    assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf" and pdf.content.startswith(b"%PDF")
+
+    def pages(content: bytes) -> int:
+        import re
+
+        return len(re.findall(rb"/Type /Page[^s]", content))
+
+    many = [{"full_name": f"Ученик {n}", "login": f"login{n}", "password": "pass123"} for n in range(25)]
+    assert pages((await client.post("/students/cards.pdf", json={"students": many[:21]}, headers=bearer(teacher))).content) == 1
+    assert pages((await client.post("/students/cards.pdf", json={"students": many}, headers=bearer(teacher))).content) == 2
+    assert (await client.post("/students/cards.pdf", json={"students": cards}, headers=student_bearer(uuid4()))).status_code == 403
+
+
+async def test_internal_teacher_groups(client, teacher):
+    a = await create_group(client, teacher, "7А")
+    b = await create_group(client, teacher, "8Б")
+    await client.post(f"/groups/{b['id']}/archive", headers=bearer(teacher))
+    headers = {"X-Internal-Token": "dev-internal-token"}
+    active = (await client.get(f"/internal/teachers/{teacher}/groups", headers=headers)).json()
+    assert [g["title"] for g in active] == ["7А"] and active[0]["id"] == a["id"]
+    every = (await client.get(f"/internal/teachers/{teacher}/groups", params={"archived": True}, headers=headers)).json()
+    assert [g["title"] for g in every] == ["7А", "8Б"]
