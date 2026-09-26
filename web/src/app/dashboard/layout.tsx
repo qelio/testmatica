@@ -1,5 +1,6 @@
 "use client";
 
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -15,6 +16,8 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Свёрнутое меню (только иконки) — на широком экране; запоминается в браузере.
+  const [collapsed, setCollapsed] = useState(readCollapsed);
   const unreadChats = useUnreadChats(auth.status === "authenticated", pathname);
 
   useEffect(() => {
@@ -46,6 +49,18 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
               <path d="M3 5h14M3 10h14M3 15h14" strokeLinecap="round" />
             </svg>
           </button>
+          <button
+            className="hidden rounded-lg p-2 text-fg-soft hover:bg-muted lg:block"
+            aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
+            title={collapsed ? "Развернуть меню" : "Свернуть меню"}
+            aria-expanded={!collapsed}
+            onClick={() => {
+              setCollapsed(!collapsed);
+              saveCollapsed(!collapsed);
+            }}
+          >
+            {collapsed ? <PanelLeftOpen size={20} strokeWidth={1.8} /> : <PanelLeftClose size={20} strokeWidth={1.8} />}
+          </button>
           <Logo compact />
           <div className="flex-1" />
           <UserMenu />
@@ -54,42 +69,73 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
 
       <div className="flex flex-1">
         <aside
-          className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:static lg:block lg:w-64 lg:shrink-0`}
+          className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4rem)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
         >
           <nav className="space-y-1">
-            {nav.map((item) =>
-              item.ready ? (
+            {nav.map((item) => {
+              const Icon = item.icon;
+              const count = item.badge ? badges[item.badge] : 0;
+              // В свёрнутом меню подпись — во всплывающей подсказке, счётчик — точкой на иконке.
+              const tip = collapsed ? `${item.title}${item.ready ? "" : " — скоро"}${count ? ` (${count})` : ""}` : undefined;
+              const icon = (
+                <span className="relative shrink-0">
+                  <Icon size={18} strokeWidth={1.8} aria-hidden />
+                  {collapsed && count > 0 && <span className="absolute -top-1 -right-1 hidden h-2 w-2 rounded-full bg-brand lg:block" />}
+                </span>
+              );
+              const label = <span className={`min-w-0 flex-1 truncate ${collapsed ? "lg:sr-only" : ""}`}>{item.title}</span>;
+              return item.ready ? (
                 <Link
                   key={item.href}
                   href={item.href}
+                  title={tip}
                   onClick={() => setMenuOpen(false)}
-                  className={`block rounded-xl px-3 py-2.5 text-sm font-medium ${isActive(pathname, item.href) ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${collapsed ? "lg:justify-center lg:px-0" : ""} ${isActive(pathname, item.href) ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
                 >
-                  <span className="flex items-center justify-between">
-                    {item.title}
-                    {item.badge && badges[item.badge] > 0 && (
-                      <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-white">
-                        {badges[item.badge]}
-                      </span>
-                    )}
-                  </span>
+                  {icon}
+                  {label}
+                  {count > 0 && (
+                    <span className={`grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-white ${collapsed ? "lg:hidden" : ""}`}>
+                      {count}
+                    </span>
+                  )}
                 </Link>
               ) : (
                 <span
                   key={item.href}
-                  className="flex cursor-default items-center justify-between rounded-xl px-3 py-2.5 text-sm text-fg-soft"
+                  title={tip}
+                  className={`flex cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-fg-soft ${collapsed ? "lg:justify-center lg:px-0 lg:opacity-60" : ""}`}
                 >
-                  {item.title}
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px]">скоро</span>
+                  {icon}
+                  {label}
+                  <span className={`rounded-md bg-muted px-1.5 py-0.5 text-[11px] ${collapsed ? "lg:hidden" : ""}`}>скоро</span>
                 </span>
-              ),
-            )}
+              );
+            })}
           </nav>
         </aside>
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );
+}
+
+const COLLAPSED_KEY = "tm:sidebar-collapsed";
+
+function readCollapsed(): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveCollapsed(value: boolean): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, value ? "1" : "0");
+  } catch {
+    /* хранилище недоступно — просто не запомним */
+  }
 }
 
 /** Сколько чатов с непрочитанными сообщениями — для значка в меню. */
