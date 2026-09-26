@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 
-import { Alert, Badge, Button, EmptyState, Spinner } from "@/components/ui";
-import { classroom } from "@/lib/api";
+import { REVIEW_STATUS, ReviewForm } from "@/components/reviews";
+import { Alert, Badge, Button, EmptyState, Modal, Spinner } from "@/components/ui";
+import { classroom, marketplace, type MyTeacher } from "@/lib/api";
 import { errorText, useLoad } from "@/lib/hooks";
 
 export default function MyTeachersPage() {
   const teachers = useLoad(() => classroom.myTeachers(), []);
   const groups = useLoad(() => classroom.myGroups(), []);
+  const reviews = useLoad(() => marketplace.myReviews(), []);
+  const [reviewing, setReviewing] = useState<MyTeacher | null>(null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState<string>();
 
@@ -71,7 +74,21 @@ export default function MyTeachersPage() {
             <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
               {active.map((t) => (
                 <li key={t.link_id} className="px-5 py-3.5">
-                  <p className="font-medium">{t.full_name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="min-w-0 flex-1 font-medium">{t.full_name}</p>
+                    {(() => {
+                      const mine = reviews.data?.find((r) => r.tutor_id === t.teacher_id);
+                      if (mine?.status === "removed") return <Badge tone="warn">{REVIEW_STATUS.removed.text}</Badge>;
+                      return (
+                        <>
+                          {mine && <Badge tone={REVIEW_STATUS[mine.status].tone}>отзыв {mine.rating}/10 · {REVIEW_STATUS[mine.status].text}</Badge>}
+                          <button className="text-sm font-medium text-brand hover:underline" onClick={() => setReviewing(t)}>
+                            {mine ? "Изменить отзыв" : "Оставить отзыв"}
+                          </button>
+                        </>
+                      );
+                    })()}
+                  </div>
                   {t.groups.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {t.groups.map((g) => (
@@ -85,6 +102,19 @@ export default function MyTeachersPage() {
           )}
         </section>
       )}
+
+      <Modal open={!!reviewing} onClose={() => setReviewing(null)} title={`Отзыв: ${reviewing?.full_name ?? ""}`}>
+        {reviewing && (
+          <ReviewForm
+            tutorId={reviewing.teacher_id}
+            mine={reviews.data?.find((r) => r.tutor_id === reviewing.teacher_id) ?? null}
+            onSaved={() => {
+              setReviewing(null);
+              reviews.reload();
+            }}
+          />
+        )}
+      </Modal>
 
       {groups.data && groups.data.length > 0 && (
         <section className="space-y-3">

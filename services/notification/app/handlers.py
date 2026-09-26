@@ -321,6 +321,9 @@ async def on_marketplace_event(envelope: Envelope, session: AsyncSession) -> Non
         session.add(Notification(user_id=UUID(d["student_id"]), kind="request_expired", title=f"Заявка закрылась: {d['subject']}",
                                  body="Прошло 14 дней. Можно создать новую.", payload={"request_id": d["request_id"]}))
         return
+    if t.startswith("marketplace.review."):
+        _review_notification(session, t, d)
+        return
     if t == "marketplace.education.approved":
         session.add(Notification(user_id=UUID(d["user_id"]), kind="education_approved",
                                  title=f"Документ «{d['title']}» подтверждён",
@@ -329,3 +332,36 @@ async def on_marketplace_event(envelope: Envelope, session: AsyncSession) -> Non
         session.add(Notification(user_id=UUID(d["user_id"]), kind="education_rejected",
                                  title=f"Документ «{d['title']}» не принят", body=d.get("comment") or "",
                                  payload={"doc_id": d["doc_id"]}))
+
+
+def _review_notification(session: AsyncSession, t: str, d: dict) -> None:
+    """Отзывы: автору — решение модератора, педагогу — новый отзыв, решение по ответу и спору.
+    href в payload — куда ведёт уведомление в интерфейсе."""
+    tutor, student = UUID(d["tutor_id"]), UUID(d["student_id"])
+    to_student = {"review_id": d["review_id"], "href": f"/tutors/{d['tutor_id']}#reviews"}
+    to_tutor = {"review_id": d["review_id"], "href": "/dashboard/profile#reviews"}
+    comment = d.get("comment") or ""
+    add = session.add
+    if t == "marketplace.review.approved":
+        add(Notification(user_id=student, kind="review_approved", title=f"Ваш отзыв о педагоге {d['tutor_name']} опубликован",
+                         payload=to_student))
+        add(Notification(user_id=tutor, kind="review_new", title=f"Новый отзыв: {d['rating']}/10 от {d['student_name']}",
+                         body="Можно ответить публично или оспорить отзыв.", payload=to_tutor))
+    elif t == "marketplace.review.rejected":
+        add(Notification(user_id=student, kind="review_rejected", title=f"Отзыв о педагоге {d['tutor_name']} не опубликован",
+                         body=comment, payload=to_student))
+    elif t == "marketplace.review.removed":
+        add(Notification(user_id=student, kind="review_removed", title=f"Модератор удалил ваш отзыв о педагоге {d['tutor_name']}",
+                         body=comment, payload=to_student))
+    elif t == "marketplace.review.reply_approved":
+        add(Notification(user_id=tutor, kind="review_reply_approved", title=f"Ваш ответ на отзыв {d['student_name']} опубликован",
+                         payload=to_tutor))
+        add(Notification(user_id=student, kind="review_reply_new", title=f"Педагог {d['tutor_name']} ответил на ваш отзыв",
+                         payload=to_student))
+    elif t == "marketplace.review.reply_rejected":
+        add(Notification(user_id=tutor, kind="review_reply_rejected", title=f"Ответ на отзыв {d['student_name']} не опубликован",
+                         body=comment, payload=to_tutor))
+    elif t == "marketplace.review.dispute_resolved":
+        title = "Спор по отзыву решён: отзыв удалён" if d["upheld"] else "Спор по отзыву решён: отзыв оставлен"
+        add(Notification(user_id=tutor, kind="review_dispute_resolved", title=title, body=comment,
+                         payload=to_tutor | {"conversation_id": d["dispute_id"]}))

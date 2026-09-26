@@ -87,3 +87,30 @@ async def test_education_docs_enter_queue(client):
     assert (item["kind"], item["kind_label"], item["details"]["institution"]) == ("education_doc", "Документ об образовании", "МПГУ")
     await apply(handlers.on_marketplace_event, "marketplace.education.withdrawn", doc_id=doc, user_id=author)
     assert (await client.get("/queue", headers=bearer(uuid4()))).json() == []
+
+
+async def test_reviews_replies_and_disputes(client):
+    review, student, tutor, moderator = uuid4(), uuid4(), uuid4(), uuid4()
+    base = {"review_id": review, "tutor_id": tutor, "student_id": student, "tutor_name": "Мария Иванова",
+            "student_name": "Оля Смирнова", "rating": 3}
+    await apply(handlers.on_marketplace_event, "marketplace.review.submitted", **base, text="Скучно")
+    # Правка до проверки — та же заявка с новым текстом.
+    await apply(handlers.on_marketplace_event, "marketplace.review.submitted", **(base | {"rating": 4}), text="Скучновато")
+    [item] = (await client.get("/queue", headers=bearer(moderator))).json()
+    assert item["kind"] == "review" and item["title"] == "Отзыв о педагоге Мария Иванова: 4/10"
+    assert item["details"]["text"] == "Скучновато" and item["author_id"] == str(student)
+    await client.post(f"/queue/{item['id']}/decide", json={"decision": "approve"}, headers=bearer(moderator))
+    assert (await outbox("moderation.decision.made"))[0]["data"]["kind"] == "review"
+
+    await apply(handlers.on_marketplace_event, "marketplace.review.reply_submitted", **base, text="Спасибо", review_text="Скучновато")
+    await apply(handlers.on_marketplace_event, "marketplace.review.disputed", **base, reason="Не была на занятиях",
+                text="Скучновато", dispute_id=uuid4())
+    kinds = {i["kind"]: i for i in (await client.get("/queue", headers=bearer(moderator))).json()}
+    assert set(kinds) == {"review_reply", "review_dispute"} and kinds["review_dispute"]["author_id"] == str(tutor)
+    assert kinds["review_dispute"]["details"]["reason"] == "Не была на занятиях"
+
+    # Ученик переписал отзыв — старые ответ и спор снимаются с проверки, отзыв снова в очереди.
+    await apply(handlers.on_marketplace_event, "marketplace.review.submitted", **base, text="Переписала отзыв")
+    assert [i["kind"] for i in (await client.get("/queue", headers=bearer(moderator))).json()] == ["review"]
+    await apply(handlers.on_marketplace_event, "marketplace.review.withdrawn", review_id=review, tutor_id=tutor)
+    assert (await client.get("/queue", headers=bearer(moderator))).json() == []

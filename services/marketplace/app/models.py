@@ -167,3 +167,49 @@ class Response(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------- отзывы (шаг 4.3) ----------
+
+REVIEW_REMOVED = "removed"  # удалён модератором (в т.ч. по спору педагога)
+DISPUTE_OPEN, DISPUTE_UPHELD, DISPUTE_DISMISSED = "open", "upheld", "dismissed"
+
+
+class Review(Base):
+    """Отзыв ученика о педагоге: оценка 1–10 и текст. Публикуется после модерации (ТЗ, раздел 3).
+
+    Один отзыв от ученика педагогу; правка отправляет его на повторную проверку.
+    Ответ педагога и спор по отзыву — тоже через модератора.
+    """
+
+    __tablename__ = "reviews"
+    __table_args__ = (
+        CheckConstraint("rating BETWEEN 1 AND 10", name="rating_valid"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected', 'removed')", name="status_valid"),
+        CheckConstraint("reply_status IS NULL OR reply_status IN ('pending', 'approved', 'rejected')", name="reply_status_valid"),
+        CheckConstraint("dispute_status IS NULL OR dispute_status IN ('open', 'upheld', 'dismissed')", name="dispute_status_valid"),
+        Index("uq_reviews_tutor_student", "tutor_id", "student_id", unique=True),
+        Index("ix_reviews_tutor_published", "tutor_id", "status", "published_at"),
+        Index("ix_reviews_student", "student_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    tutor_id: Mapped[UUID]
+    student_id: Mapped[UUID]
+    rating: Mapped[int] = mapped_column(SmallInteger)
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10), default=PENDING)
+    comment: Mapped[str | None] = mapped_column(Text)  # модератора: почему не опубликован / удалён
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Публичный ответ педагога
+    reply_text: Mapped[str | None] = mapped_column(Text)
+    reply_status: Mapped[str | None] = mapped_column(String(10))
+    reply_comment: Mapped[str | None] = mapped_column(Text)
+    reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Спор: педагог оспаривает отзыв, разговор с модератором — в чате поддержки (id чата = dispute_id)
+    dispute_id: Mapped[UUID | None]
+    dispute_reason: Mapped[str | None] = mapped_column(Text)
+    dispute_status: Mapped[str | None] = mapped_column(String(10))
+    dispute_comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

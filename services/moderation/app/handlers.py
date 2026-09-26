@@ -62,9 +62,54 @@ async def on_academic_event(envelope: Envelope, session: AsyncSession) -> None:
         )
 
 
+async def _submit(session: AsyncSession, kind: str, ref_id: UUID, title: str, author_id: UUID, details: dict) -> None:
+    """Новая заявка; если по объекту уже есть открытая — обновить её (автор отредактировал до проверки)."""
+    values = {"title": title[:300], "author_id": author_id, "details": details}
+    await session.execute(
+        insert(QueueItem)
+        .values(kind=kind, ref_id=ref_id, status=PENDING, **values)
+        .on_conflict_do_update(index_elements=["kind", "ref_id"], index_where=text("status = 'pending'"), set_=values)
+    )
+
+
+async def _withdraw(session: AsyncSession, kinds: tuple[str, ...], ref_id: UUID) -> None:
+    await session.execute(
+        update(QueueItem)
+        .where(QueueItem.kind.in_(kinds), QueueItem.ref_id == ref_id, QueueItem.status == PENDING)
+        .values(status=WITHDRAWN)
+    )
+
+
+async def _on_review_event(t: str, d: dict, session: AsyncSession) -> None:
+    """Отзывы: сам отзыв (автор — ученик), ответ педагога и спор (автор — педагог)."""
+    ref = UUID(d["review_id"])
+    rating = f"{d['rating']}/10" if d.get("rating") else ""
+    common = {"rating": d.get("rating"), "tutor_id": d.get("tutor_id"), "tutor_name": d.get("tutor_name"),
+              "student_name": d.get("student_name")}
+    if t == "marketplace.review.submitted":
+        # Отзыв изменён — прежние ответ и спор относились к старой версии.
+        await _withdraw(session, ("review_reply", "review_dispute"), ref)
+        await _submit(session, "review", ref, f"Отзыв о педагоге {d['tutor_name']}: {rating}", UUID(d["student_id"]),
+                      common | {"text": d["text"]})
+    elif t == "marketplace.review.reply_submitted":
+        await _submit(session, "review_reply", ref, f"Ответ на отзыв {d['student_name']} ({rating})", UUID(d["tutor_id"]),
+                      common | {"text": d["text"], "review_text": d.get("review_text")})
+    elif t == "marketplace.review.reply_withdrawn":
+        await _withdraw(session, ("review_reply",), ref)
+    elif t == "marketplace.review.disputed":
+        await _submit(session, "review_dispute", ref, f"Спор по отзыву {d['student_name']} ({rating})", UUID(d["tutor_id"]),
+                      common | {"reason": d["reason"], "review_text": d.get("text"), "dispute_id": d["dispute_id"]})
+    elif t in ("marketplace.review.withdrawn", "marketplace.review.removed"):
+        kinds = ("review", "review_reply", "review_dispute") if t.endswith("withdrawn") else ("review_reply", "review_dispute")
+        await _withdraw(session, kinds, ref)
+
+
 async def on_marketplace_event(envelope: Envelope, session: AsyncSession) -> None:
-    """Документы об образовании репетиторов."""
+    """Документы об образовании и отзывы о репетиторах."""
     d = envelope.data
+    if envelope.type.startswith("marketplace.review."):
+        await _on_review_event(envelope.type, d, session)
+        return
     if envelope.type == "marketplace.education.submitted":
         await session.execute(
             insert(QueueItem)

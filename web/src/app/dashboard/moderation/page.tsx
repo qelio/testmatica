@@ -15,6 +15,55 @@ const LINKS: Record<string, (id: string) => string> = {
   education_doc: (id) => `/dashboard/moderation/education/${id}`,
 };
 
+// Подписи кнопок: для спора «одобрить» — значит согласиться с педагогом и удалить отзыв.
+const ACTIONS: Record<string, { approve: string; reject: string; rejectTitle: string; rejectLabel: string }> = {
+  review: { approve: "Опубликовать", reject: "Не публиковать", rejectTitle: "Не публиковать отзыв", rejectLabel: "Причина (увидит автор)" },
+  review_reply: { approve: "Опубликовать ответ", reject: "Не публиковать", rejectTitle: "Не публиковать ответ", rejectLabel: "Причина (увидит педагог)" },
+  review_dispute: { approve: "Удалить отзыв", reject: "Оставить отзыв", rejectTitle: "Оставить отзыв опубликованным", rejectLabel: "Почему отзыв остаётся (увидит педагог)" },
+};
+const DEFAULT_ACTIONS = { approve: "Одобрить", reject: "Вернуть на доработку", rejectTitle: "Вернуть на доработку", rejectLabel: "Что нужно исправить (увидит автор)" };
+
+const str = (v: unknown) => (typeof v === "string" ? v : null);
+
+/** Что показать модератору прямо в карточке: текст отзыва, ответа, причину спора. */
+function ReviewDetails({ item }: { item: QueueItem }) {
+  const d = item.details;
+  const quote = (label: string, text: string | null) =>
+    text && (
+      <div className="text-sm">
+        <p className="text-fg-soft">{label}</p>
+        <p className="whitespace-pre-line">{text}</p>
+      </div>
+    );
+  return (
+    <div className="mt-3 space-y-2 rounded-xl bg-muted p-3">
+      {item.kind === "review" && quote(`Отзыв ученика (${d.rating}/10)`, str(d.text))}
+      {item.kind === "review_reply" && (
+        <>
+          {quote(`Отзыв ученика ${str(d.student_name) ?? ""} (${d.rating}/10)`, str(d.review_text))}
+          {quote("Ответ педагога", str(d.text))}
+        </>
+      )}
+      {item.kind === "review_dispute" && (
+        <>
+          {quote(`Отзыв ученика ${str(d.student_name) ?? ""} (${d.rating}/10)`, str(d.review_text))}
+          {quote("Почему педагог просит удалить", str(d.reason))}
+          {str(d.dispute_id) && (
+            <Link href={`/dashboard/chats?c=${d.dispute_id}`} className="inline-block text-sm font-medium text-brand hover:underline">
+              Чат с педагогом →
+            </Link>
+          )}
+        </>
+      )}
+      {str(d.tutor_id) && (
+        <Link href={`/tutors/${d.tutor_id}#reviews`} target="_blank" className="block text-sm text-brand hover:underline">
+          Профиль педагога {str(d.tutor_name) ?? ""} ↗
+        </Link>
+      )}
+    </div>
+  );
+}
+
 export default function ModerationPage() {
   const [status, setStatus] = useState<"pending" | "approved" | "rejected">("pending");
   const queue = useLoad(() => moderation.queue(status), [status]);
@@ -73,6 +122,7 @@ export default function ModerationPage() {
                     {item.author_name} · {fmtDateTime(item.created_at)}
                   </p>
                   {item.comment && <p className="mt-2 text-sm">Комментарий: {item.comment}</p>}
+                  {item.kind in ACTIONS && <ReviewDetails item={item} />}
                 </div>
                 {LINKS[item.kind] && (
                   <Link href={LINKS[item.kind](item.ref_id)} target="_blank" className="text-sm font-medium text-brand hover:underline">
@@ -82,9 +132,9 @@ export default function ModerationPage() {
               </div>
               {item.status === "pending" && (
                 <div className="mt-4 flex gap-2">
-                  <Button onClick={() => approve(item)}>Одобрить</Button>
+                  <Button onClick={() => approve(item)}>{(ACTIONS[item.kind] ?? DEFAULT_ACTIONS).approve}</Button>
                   <Button variant="secondary" onClick={() => setRejecting(item)}>
-                    Вернуть на доработку
+                    {(ACTIONS[item.kind] ?? DEFAULT_ACTIONS).reject}
                   </Button>
                 </div>
               )}
@@ -109,7 +159,7 @@ function RejectModal({ item, onClose, onDone }: { item: QueueItem | null; onClos
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   return (
-    <Modal open={!!item} onClose={onClose} title="Вернуть на доработку">
+    <Modal open={!!item} onClose={onClose} title={(item && ACTIONS[item.kind]?.rejectTitle) ?? DEFAULT_ACTIONS.rejectTitle}>
       {item && (
         <form
           className="space-y-4"
@@ -130,7 +180,7 @@ function RejectModal({ item, onClose, onDone }: { item: QueueItem | null; onClos
         >
           {error && <Alert>{error}</Alert>}
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium">Что нужно исправить (увидит автор)</span>
+            <span className="mb-1.5 block text-sm font-medium">{(ACTIONS[item.kind] ?? DEFAULT_ACTIONS).rejectLabel}</span>
             <textarea
               rows={4}
               required
@@ -141,7 +191,7 @@ function RejectModal({ item, onClose, onDone }: { item: QueueItem | null; onClos
             />
           </label>
           <Button type="submit" loading={busy} disabled={!comment.trim()} className="w-full">
-            Отправить автору
+            {(ACTIONS[item.kind] ?? DEFAULT_ACTIONS).reject}
           </Button>
         </form>
       )}

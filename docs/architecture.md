@@ -97,7 +97,8 @@ flowchart LR
 | `moderation.decision.made` | moderation | content / assessment / marketplace / billing, notification |
 | `marketplace.request.published` | marketplace | notification (репетиторам по предмету) |
 | `marketplace.request.agreed` | marketplace | classroom (привязка), schedule, notification |
-| `marketplace.review.submitted` | marketplace | moderation |
+| `marketplace.review.submitted` / `reply_submitted` / `disputed` / `withdrawn` / `removed` | marketplace | moderation (очередь), chat (спор → чат поддержки) |
+| `marketplace.review.approved` / `rejected` / `reply_approved` / `reply_rejected` / `dispute_resolved` | marketplace | notification, chat |
 | `billing.lesson.paid` / `refunded` | billing | schedule, video (доступ к звонку), notification |
 | `billing.dispute.opened` / `resolved` | billing | moderation, notification |
 | `billing.payout.completed` | billing | notification |
@@ -167,7 +168,7 @@ flowchart LR
 ### moderation
 - `queue_items` — kind, ref_id, title, author_id, details, priority, status (pending / approved / rejected / withdrawn), comment, decided_by; одна открытая заявка на объект
 - Очередь FIFO (сначала приоритет — для подписчиков на этапе 5, затем время поступления); отклонение — только с комментарием
-- Заявки создаются событиями других сервисов (`content.course.submitted`), решение уходит событием `moderation.decision.made`
+- Заявки создаются событиями других сервисов (`content.course.submitted`, `marketplace.review.*` …), решение уходит событием `moderation.decision.made`; повторное событие по открытой заявке обновляет её (автор отредактировал до проверки)
 
 ### assessment
 Этап 2.3 — банк задач и решения (тесты, ДЗ и КТП — этапы 2.4–2.5):
@@ -205,13 +206,17 @@ flowchart LR
 - `requests` — заявка ученика: адресная (tutor_id, «Хочу с вами заниматься») или открытая (видят репетиторы предмета с включённым профилем); цель, «что знаю» / «что хочу», удобное время, цена ученика, длительность 30/45/60/90, комментарий; open → agreed / closed / expired (14 дней)
 - `responses` — переговоры репетитора по заявке: текущая цена и чьё это предложение; «Договорились» — только принять цену другой стороны. Id отклика = id чата переговоров (chat, kind = deal; писать можно без привязки — решение №12; служебные сообщения о цене и итоге)
 - `marketplace.deal.agreed` → classroom: привязка ученика, индивидуальные занятия платные, цена и длительность (для оплаты на этапе 4.4); остальные отклики закрываются с уведомлением
-Дальше (4.3–4.5):
+Этап 4.3 (сделано):
+- `reviews` — tutor_id, student_id (один отзыв от ученика педагогу), rating 1–10, text, status (pending / approved / rejected / removed), comment модератора, published_at; ответ педагога — reply_text / reply_status / reply_comment; спор — dispute_id (= id чата поддержки), dispute_reason, dispute_status (open / upheld / dismissed), dispute_comment
+- Оставить отзыв может ученик, привязанный к педагогу (в том числе бывший) — проверка через `classroom /internal/links`. Правка отзыва отправляет его на повторную проверку и снимает прежние ответ и спор
+- Отзыв, ответ и спор проверяются в moderation (kind = review / review_reply / review_dispute); решение приходит в `moderation.decision.made`. Спор «одобрен» — отзыв снимается (removed); модератор может снять отзыв и напрямую (`DELETE /moderation/reviews/{id}`)
+- Рейтинг профиля (`rating`, `reviews_count`) пересчитывается по опубликованным отзывам — средняя оценка с одним знаком; фильтр «минимальный рейтинг» и сортировка поиска — по нему
+Дальше (4.4–4.5):
 - `competencies` — id, subject_id, name (справочник модератора)
 - `requests` — id, student_id, tutor_id (null = открытая), subject_id, goal, current_competencies, desired_competencies, schedule_pref (JSON), price, duration_min, comment, status (open / agreed / closed / expired), expires_at
 - `request_responses` — request_id, tutor_id, chat_id, status
 - `group_offers` — id, tutor_id, subject_id, program_template_id, schedule, price_per_student, min_students, max_students, enroll_until, status
 - `group_enrollments` — offer_id, student_id, status, unpaid_streak
-- `reviews` — id, tutor_id, student_id, rating (1–10), text, status, reply_text, reply_status
 
 ### billing
 - `accounts` — id, owner_id, kind (student_balance / teacher_balance / escrow / platform_revenue / provider_clearing), currency
@@ -229,9 +234,10 @@ flowchart LR
 
 ### chat
 - Реплики: `people` (identity), `rel_links`, `rel_groups`, `rel_group_members` (classroom; события `classroom.group|member|link.*`, для заполнения — `*.snapshot`)
-- `conversations` — kind (direct / group), group_id (один чат на группу) или pair_key (один диалог на пару), pinned_message_id, last_message_at
+- `conversations` — kind (direct / group / deal / support), group_id (один чат на группу) или pair_key (один диалог на пару), pinned_message_id, last_message_at
 - `conversation_members` — user_id, role (teacher / member), joined_at, left_at, last_read_at (непрочитанные считаются от него)
 - `messages` — author_id, text, is_announcement, created_at, deleted_at (мягкое удаление; история бессрочно)
+- Чат поддержки (kind = support): открывается по `marketplace.review.disputed` (id = dispute_id), участники — педагог и все модераторы/админы из реплики `people`; итог спора — служебным сообщением. Позже его заменит раздел «Поддержка»
 - Личные сообщения — только при связи (привязка педагог–ученик или общая активная группа); без связи диалог только для чтения
 - Реальное время: WebSocket `/ws` (первое сообщение — access-токен), доставка через Redis pub/sub `chat:user:<id>`
 - Уведомления: команда `notification.inapp` с `coalesce_key` — одно непрочитанное уведомление на чат; в аудит — событие без текста

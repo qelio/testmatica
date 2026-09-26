@@ -302,3 +302,20 @@ async def test_request_notifications(client):
     assert titles == ["Договорились: Математика", "Новый отклик на заявку: Математика"]
     assert (await client.get("/notifications", headers=bearer(a, ["teacher"]))).json()["items"][0]["title"] == \
         "Ученик выбрал другого репетитора: Математика"
+
+
+async def test_review_notifications(client):
+    tutor, pupil = uuid4(), uuid4()
+    c = consumer("notification.marketplace", handlers.on_marketplace_event)
+    base = {"review_id": str(uuid4()), "tutor_id": str(tutor), "student_id": str(pupil), "tutor_name": "Мария Иванова",
+            "student_name": "Оля Смирнова", "rating": 9, "comment": None}
+    await c.process(make_envelope("marketplace.review.approved", base))
+    item = (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"][0]
+    assert item["title"] == "Новый отзыв: 9/10 от Оля Смирнова"
+    assert item["payload"]["href"] == "/dashboard/profile#reviews"
+    mine = (await client.get("/notifications", headers=bearer(pupil))).json()["items"][0]
+    assert mine["title"] == "Ваш отзыв о педагоге Мария Иванова опубликован" and mine["payload"]["href"] == f"/tutors/{tutor}#reviews"
+    await c.process(make_envelope("marketplace.review.dispute_resolved", base | {
+        "dispute_id": str(uuid4()), "upheld": False, "comment": "Отзыв не нарушает правил"}))
+    item = (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"][0]
+    assert (item["title"], item["body"]) == ("Спор по отзыву решён: отзыв оставлен", "Отзыв не нарушает правил")
