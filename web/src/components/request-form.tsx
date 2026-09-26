@@ -67,7 +67,7 @@ export function RequestForm({
     goal: "ege",
     current_ids: [],
     desired_ids: [],
-    schedule: { weekdays: [], time_from: null, time_to: null },
+    schedule: { weekdays: [] },
     price: defaultPrice ?? 1000,
     duration_min: 60,
     comment: "",
@@ -120,7 +120,7 @@ export function RequestForm({
       <CompetencyPicker label="Что хочу получить" subjectId={form.subject_id} value={form.desired_ids} onChange={(v) => set("desired_ids", v)} />
 
       <fieldset>
-        <legend className="mb-1.5 text-sm font-medium">Когда удобно заниматься</legend>
+        <legend className="mb-1.5 text-sm font-medium">В какие дни удобно заниматься</legend>
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex gap-1">
             {WEEKDAYS.map((d, i) => {
@@ -143,12 +143,7 @@ export function RequestForm({
               );
             })}
           </div>
-          <div className="w-28">
-            <Field label="с" type="time" value={form.schedule.time_from ?? ""} onChange={(e) => set("schedule", { ...form.schedule, time_from: e.target.value || null })} />
-          </div>
-          <div className="w-28">
-            <Field label="до" type="time" value={form.schedule.time_to ?? ""} onChange={(e) => set("schedule", { ...form.schedule, time_to: e.target.value || null })} />
-          </div>
+          <span className="pb-2 text-xs text-fg-soft">Время согласуете с репетитором в чате</span>
         </div>
       </fieldset>
 

@@ -628,7 +628,7 @@ export function fmtSize(bytes: number): string {
 
 // ---- content (библиотека) ----
 
-export type SubjectRef = { id: string; name: string };
+export type SubjectRef = { id: string; name: string; hidden?: boolean };
 
 export type CourseStatus = "private" | "pending" | "published" | "rejected";
 
@@ -698,6 +698,10 @@ function readOpts(authed: boolean) {
 
 export const content = {
   subjects: () => api<SubjectRef[]>(`${CT}/subjects`, { auth: false }),
+  allSubjects: () => api<SubjectRef[]>(`${CT}/subjects?all=true`),
+  createSubject: (name: string) => api<SubjectRef>(`${CT}/subjects`, { method: "POST", body: { name } }),
+  updateSubject: (id: string, data: { name?: string; hidden?: boolean }) =>
+    api<SubjectRef>(`${CT}/subjects/${id}`, { method: "PATCH", body: data }),
   catalog: (params: { subject_id?: string; q?: string }) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
     return api<CourseSummary[]>(`${CT}/catalog?${qs}`, { auth: false });
@@ -1226,7 +1230,7 @@ export const marketplace = {
 
 export type Competency = { id: string; subject_id: string; title: string; position: number };
 export type RequestGoal = "ege" | "oge" | "school" | "gaps" | "olympiad" | "other";
-export type RequestSchedule = { weekdays: number[]; time_from: string | null; time_to: string | null };
+export type RequestSchedule = { weekdays: number[] };
 export type RequestInput = {
   tutor_id?: string | null;
   subject_id: string;

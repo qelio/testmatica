@@ -9,7 +9,7 @@ from testmatica_common.errors import ApiError
 
 from .. import logic
 from ..config import settings
-from ..deps import auth, classroom, db
+from ..deps import auth, classroom, db, subjects
 from ..models import (
     KIND_GROUP,
     KIND_INDIVIDUAL,
@@ -55,6 +55,7 @@ async def create_lessons(
     body: LessonCreate, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> CreatedLessons:
     group_title = None
+    await subjects.check(body.subject)  # предмет — из справочника модераторов
     subject = body.subject
     if body.kind == KIND_GROUP:
         group = await classroom.get(f"/internal/groups/{body.group_id}", params={"teacher_id": str(principal.user_id)})
@@ -180,6 +181,8 @@ async def update_lesson(
 
     if data.get("paid") is None:
         data.pop("paid", None)
+    if data.get("subject") and data["subject"] != lesson.subject:
+        await subjects.check(data["subject"])
     if "exam_item_ids" in data:
         data["exam_item_ids"] = list(dict.fromkeys(data["exam_item_ids"] or []))
     for t in targets:

@@ -45,6 +45,7 @@ export const NAV = {
     { title: "Банк задач", href: "/dashboard/tasks", ready: true },
     { title: "Библиотека", href: "/dashboard/library", ready: true },
     { title: "Типы оценок", href: "/dashboard/grade-types", ready: true },
+    { title: "Предметы", href: "/dashboard/subjects", ready: true },
     { title: "Компетенции", href: "/dashboard/competencies", ready: true },
     soon("Пользователи", "/dashboard/users"),
     soon("Журнал аудита", "/dashboard/audit"),

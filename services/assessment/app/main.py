@@ -6,7 +6,7 @@ from testmatica_common.logging import configure_logging
 from testmatica_common.messaging import COMMANDS_EXCHANGE, EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
-from . import attempts, handlers, rubric, runner
+from . import attempts, handlers, rubric, runner, subjects_sync
 from .api import assignments, exams, internal, quizzes, solving, tasks, topics
 from .config import settings
 from .deps import db
@@ -14,6 +14,7 @@ from .deps import db
 configure_logging(settings.service_name, settings.log_level)
 
 runtime = ServiceRuntime(settings, db)
+runtime.consumer("assessment.subjects", [(EVENTS_EXCHANGE, "content.subject.updated")], subjects_sync.on_subject_updated)
 runtime.consumer("assessment.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
 runtime.consumer("assessment.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
 runtime.consumer("assessment.content", [(EVENTS_EXCHANGE, "content.course.*")], handlers.on_content_event)

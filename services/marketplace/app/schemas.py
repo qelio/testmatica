@@ -97,9 +97,9 @@ Goal = Literal["ege", "oge", "school", "gaps", "olympiad", "other"]
 
 
 class ScheduleIn(BaseModel):
+    """Удобные дни недели; время ученик и репетитор согласуют в чате."""
+
     weekdays: list[int] = Field(default_factory=list, max_length=7)
-    time_from: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
-    time_to: str | None = Field(None, pattern=r"^\d{2}:\d{2}$")
 
     @field_validator("weekdays")
     @classmethod

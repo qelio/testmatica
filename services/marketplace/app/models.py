@@ -135,7 +135,7 @@ class LessonRequest(Base):
     goal: Mapped[str] = mapped_column(String(10))
     current_ids: Mapped[list[UUID]] = mapped_column(ARRAY(Uuid), default=list, server_default="{}")  # что уже знаю
     desired_ids: Mapped[list[UUID]] = mapped_column(ARRAY(Uuid), default=list, server_default="{}")  # что хочу получить
-    # {"weekdays": [0..6], "time_from": "16:00", "time_to": "20:00"}
+    # {"weekdays": [0..6]} — удобные дни; время согласуют в чате
     schedule: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     price: Mapped[int] = mapped_column(Integer)  # предлагает ученик (ТЗ: репетитор цену заранее не устанавливает)
     duration_min: Mapped[int] = mapped_column(SmallInteger)

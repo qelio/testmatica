@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { BillingSelect } from "@/components/billing";
+import { SubjectSelect } from "@/components/subject-select";
 import { ExamItemsByIds, ExamItemsField } from "@/components/exams";
 import { LessonAssignments } from "@/components/lesson-assignments";
 import { LessonKtp } from "@/components/lesson-ktp";
@@ -205,7 +206,7 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
           </p>
         </div>
       )}
-      <Field label="Предмет" placeholder="Если пусто — предмет группы" value={subject} onChange={(e) => setSubject(e.target.value)} />
+      <SubjectSelect value={subject} onChange={setSubject} empty={kind === "group" ? "Как у группы" : "Не указан"} />
       <Field label="Тема урока" value={topic} maxLength={300} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
       <Field
@@ -565,7 +566,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
           </option>
         ))}
       </Select>
-      <Field label="Предмет" value={subject} onChange={(e) => setSubject(e.target.value)} />
+      <SubjectSelect value={subject} onChange={setSubject} />
       <Field label="Тема урока" value={topic} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
       <BillingSelect label="Оплата" value={paid} free="Бесплатное занятие" paid="Платное занятие" onChange={setPaid} />

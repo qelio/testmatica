@@ -6,7 +6,7 @@ from testmatica_common.logging import configure_logging
 from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
-from . import deals, people
+from . import deals, people, subjects_sync
 from .api import groups, internal, invitations, me, students
 from .config import settings
 from .deps import db
@@ -14,6 +14,7 @@ from .deps import db
 configure_logging(settings.service_name, settings.log_level)
 
 runtime = ServiceRuntime(settings, db)
+runtime.consumer("classroom.subjects", [(EVENTS_EXCHANGE, "content.subject.updated")], subjects_sync.on_subject_updated)
 runtime.consumer("classroom.identity", [(EVENTS_EXCHANGE, "identity.user.*")], people.on_identity_event)
 runtime.consumer("classroom.marketplace", [(EVENTS_EXCHANGE, "marketplace.deal.agreed")], deals.on_marketplace_event)
 

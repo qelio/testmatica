@@ -7,7 +7,7 @@ from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import handlers
-from .api import catalog, editor, learning
+from .api import catalog, editor, learning, subjects
 from .config import settings
 from .deps import db
 
@@ -31,6 +31,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Тестматика · content", version="0.1.0", lifespan=lifespan, root_path=settings.root_path)
 install_error_handlers(app)
 app.include_router(health_router(db))
+app.include_router(subjects.router)
 app.include_router(catalog.router)
 app.include_router(learning.router)
 app.include_router(editor.router)

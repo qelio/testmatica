@@ -20,7 +20,7 @@ async def comps(client):
 
 def body(**extra):
     return {"subject_id": MATH, "goal": "ege", "price": 1200, "duration_min": 60, "comment": "Хочу на 80+",
-            "schedule": {"weekdays": [1, 3, 1], "time_from": "17:00", "time_to": "20:00"}} | extra
+            "schedule": {"weekdays": [1, 3, 1]}} | extra
 
 
 async def test_direct_request_and_agreement(client):
@@ -126,3 +126,20 @@ async def test_competencies_managed_by_moderators(client):
     assert c["title"] == "Параметры"
     assert (await client.patch(f"/competencies/{c['id']}", json={"title": "Задачи с параметром"}, headers=mod)).json()["title"] == "Задачи с параметром"
     assert (await client.delete(f"/competencies/{c['id']}", headers=mod)).status_code == 204
+
+
+
+async def test_subject_rename_updates_profiles_and_requests(client):
+    from testmatica_common.testing import make_envelope
+
+    from app import subjects_sync
+
+    tutor, pupil = uuid4(), uuid4()
+    await publish(client, tutor)
+    await client.post("/requests", json=body(), headers=bearer(pupil, S))
+    async with db.sessionmaker() as s, s.begin():
+        await subjects_sync.on_subject_updated(make_envelope("content.subject.updated", {
+            "subject_id": MATH, "name": "Математика (5–6 кл.)", "old_name": "Математика", "hidden": False}), s)
+    profile = (await client.get(f"/tutors/{tutor}")).json()
+    assert profile["subjects"] == [{"id": MATH, "name": "Математика (5–6 кл.)"}]
+    assert (await client.get("/requests/mine", headers=bearer(pupil, S))).json()[0]["subject_name"] == "Математика (5–6 кл.)"

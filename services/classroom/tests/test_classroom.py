@@ -252,3 +252,13 @@ async def test_marketplace_deal_links_student_as_paid(client, teacher):
     assert (s["full_name"], s["status"], s["source"], s["paid"], s["price"], s["lesson_minutes"]) == (
         "Оля Смирнова", "active", "marketplace", True, 1500, 60)
     assert (await outbox("classroom.link.created"))[0]["data"]["source"] == "marketplace"
+
+
+
+async def test_group_subject_from_directory(client, teacher):
+    bad = await client.post("/groups", json={"title": "8Б", "kind": "class", "subject": "Астрология"}, headers=bearer(teacher))
+    assert bad.json()["error"]["code"] == "unknown_subject"
+    ok = await client.post("/groups", json={"title": "8Б", "kind": "class", "subject": "Геометрия"}, headers=bearer(teacher))
+    assert ok.status_code == 201
+    upd = await client.patch(f"/groups/{ok.json()['id']}", json={"subject": "Хиромантия"}, headers=bearer(teacher))
+    assert upd.json()["error"]["code"] == "unknown_subject"
