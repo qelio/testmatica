@@ -20,6 +20,11 @@ runtime.consumer("notification.identity", [(EVENTS_EXCHANGE, "identity.user.*")]
 runtime.consumer("notification.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
 runtime.consumer("notification.video", [(EVENTS_EXCHANGE, "video.recording.ready")], handlers.on_video_event)
 runtime.consumer(
+    "notification.marketplace",
+    [(EVENTS_EXCHANGE, "marketplace.education.approved"), (EVENTS_EXCHANGE, "marketplace.education.rejected")],
+    handlers.on_marketplace_event,
+)
+runtime.consumer(
     "notification.academic",
     [(EVENTS_EXCHANGE, "academic.grade.*"), (EVENTS_EXCHANGE, "academic.plan_template.*")],
     handlers.on_academic_event,

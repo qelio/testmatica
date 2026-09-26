@@ -282,3 +282,17 @@ async def on_video_event(envelope: Envelope, session: AsyncSession) -> None:
         session.add(Notification(user_id=UUID(uid), kind="recording_ready", title=f"Запись занятия готова: {d['title']}",
                                  body="Смотреть и скачать можно в карточке занятия. Запись хранится 14 дней.",
                                  payload={"recording_id": d["recording_id"], "lesson_id": d["lesson_id"]}))
+
+
+async def on_marketplace_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Проверка документов об образовании — репетитору."""
+    d = envelope.data
+    if envelope.type == "marketplace.education.approved":
+        session.add(Notification(user_id=UUID(d["user_id"]), kind="education_approved",
+                                 title=f"Документ «{d['title']}» подтверждён",
+                                 body="В профиле появился бейдж «Образование подтверждено».", payload={"doc_id": d["doc_id"]}))
+    elif envelope.type == "marketplace.education.rejected":
+        session.add(Notification(user_id=UUID(d["user_id"]), kind="education_rejected",
+                                 title=f"Документ «{d['title']}» не принят", body=d.get("comment") or "",
+                                 payload={"doc_id": d["doc_id"]}))
+

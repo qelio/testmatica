@@ -196,8 +196,11 @@ flowchart LR
 - В облаке — отдельная группа узлов (или gVisor/Firecracker) без доступа в сеть
 
 ### marketplace
-- `tutor_profiles` — user_id, bio, photo_media_id, subjects, levels, formats, price_from, rating_avg, rating_count, education_verified, payments_enabled, is_searchable
-- `education_docs` — id, tutor_id, title, year, institution, media_id, moderation_status, reject_comment
+Этап 4.1 (сделано):
+- `tutor_profiles` — user_id, published («Показывать меня в поиске»; включается только у заполненного профиля), headline, about, photo_file_id (media, purpose avatar), subjects / subject_ids (справочник content), levels (1-4 / 5-9 / 10-11 / student / adult), formats (individual / group), price (ориентир за 60 минут), experience_years, rating, reviews_count, education_verified
+- `education_docs` — user_id, title, institution, year, file_id (media, purpose document), status (pending / approved / rejected), comment; проверка — очередь moderation (kind = education_doc), бейдж «Образование подтверждено» — при хотя бы одном одобренном документе. Гостю виден только бейдж, вошедшим — список документов без файлов, файл — только модератору
+- Поиск `GET /tutors` и профиль `GET /tutors/{id}` открыты без входа (ссылка «Поделиться»); онлайн-статус — из `identity /internal/users/presence` (last_seen_at обновляется при входе и продлении сессии)
+Дальше (4.2–4.5):
 - `competencies` — id, subject_id, name (справочник модератора)
 - `requests` — id, student_id, tutor_id (null = открытая), subject_id, goal, current_competencies, desired_competencies, schedule_pref (JSON), price, duration_min, comment, status (open / agreed / closed / expired), expires_at
 - `request_responses` — request_id, tutor_id, chat_id, status

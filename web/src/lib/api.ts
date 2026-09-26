@@ -591,7 +591,7 @@ export const chat = {
 
 // ---- media ----
 
-export type FilePurpose = "chat_attachment" | "answer" | "material" | "avatar";
+export type FilePurpose = "chat_attachment" | "answer" | "material" | "avatar" | "document";
 
 export type UploadedFile = { id: string; filename: string; mime: string; size: number; purpose: FilePurpose; url: string | null };
 
@@ -1123,5 +1123,81 @@ export const video = {
   end: (lessonId: string) => api<VideoRoom>(`${VD}/rooms/${lessonId}/end`, { method: "POST" }),
   recordings: (lessonId?: string) => api<LessonRecording[]>(`${VD}/recordings${lessonId ? `?lesson_id=${lessonId}` : ""}`),
   deleteRecording: (id: string) => api<void>(`${VD}/recordings/${id}`, { method: "DELETE" }),
+};
+
+// ---------- маркетплейс ----------
+
+export type TutorLevel = "1-4" | "5-9" | "10-11" | "student" | "adult";
+export type TutorFormat = "individual" | "group";
+export type Presence = { online: boolean; last_seen_at: string | null };
+export type TutorCard = {
+  user_id: string;
+  full_name: string;
+  photo_url: string | null;
+  headline: string;
+  subjects: SubjectRef[];
+  levels: TutorLevel[];
+  formats: TutorFormat[];
+  price: number | null;
+  experience_years: number | null;
+  rating: number | null;
+  reviews_count: number;
+  education_verified: boolean;
+  presence: Presence;
+};
+export type EducationDoc = {
+  id: string;
+  title: string;
+  institution: string;
+  year: number;
+  status: "pending" | "approved" | "rejected" | null;
+  comment: string | null;
+  filename: string | null;
+  file_url: string | null;
+};
+export type TutorPublic = TutorCard & { about: string; published: boolean; share_url: string; education: EducationDoc[] };
+export type MyTutorProfile = { profile: TutorPublic; photo_file_id: string | null; missing: string[]; education: EducationDoc[] };
+export type TutorProfileInput = {
+  published: boolean;
+  headline: string;
+  about: string;
+  photo_file_id: string | null;
+  subject_ids: string[];
+  levels: TutorLevel[];
+  formats: TutorFormat[];
+  price: number | null;
+  experience_years: number | null;
+};
+export type TutorSearch = {
+  subject_id?: string;
+  level?: TutorLevel | "";
+  format?: TutorFormat | "";
+  price_min?: number | "";
+  price_max?: number | "";
+  min_rating?: number | "";
+  verified?: boolean;
+  q?: string;
+  sort?: "rating" | "price_asc" | "price_desc" | "new";
+  offset?: number;
+};
+
+const MK = "/api/marketplace";
+
+export const marketplace = {
+  myProfile: () => api<MyTutorProfile>(`${MK}/me/profile`),
+  saveProfile: (data: TutorProfileInput) => api<MyTutorProfile>(`${MK}/me/profile`, { method: "PUT", body: data }),
+  addEducation: (data: { title: string; institution: string; year: number; file_id: string }) =>
+    api<MyTutorProfile>(`${MK}/me/education`, { method: "POST", body: data }),
+  deleteEducation: (id: string) => api<MyTutorProfile>(`${MK}/me/education/${id}`, { method: "DELETE" }),
+  search: (params: TutorSearch, authed: boolean) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== "" && v !== false)
+        .map(([k, v]) => [k, String(v)]),
+    );
+    return api<{ items: TutorCard[]; total: number }>(`${MK}/tutors?${qs}`, readOpts(authed));
+  },
+  tutor: (id: string, authed: boolean) => api<TutorPublic>(`${MK}/tutors/${id}`, readOpts(authed)),
+  educationForModerator: (id: string) => api<EducationDoc>(`${MK}/moderation/education/${id}`),
 };
 

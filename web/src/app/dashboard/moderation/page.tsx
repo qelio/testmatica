@@ -12,6 +12,7 @@ const LINKS: Record<string, (id: string) => string> = {
   course: (id) => `/dashboard/library/course/${id}`,
   task: (id) => `/dashboard/tasks/${id}`,
   plan_template: (id) => `/dashboard/planning/templates/${id}`,
+  education_doc: (id) => `/dashboard/moderation/education/${id}`,
 };
 
 export default function ModerationPage() {

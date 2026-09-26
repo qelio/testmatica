@@ -62,6 +62,24 @@ async def on_academic_event(envelope: Envelope, session: AsyncSession) -> None:
         )
 
 
+async def on_marketplace_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Документы об образовании репетиторов."""
+    d = envelope.data
+    if envelope.type == "marketplace.education.submitted":
+        await session.execute(
+            insert(QueueItem)
+            .values(kind="education_doc", ref_id=UUID(d["doc_id"]), title=d["title"], author_id=UUID(d["user_id"]),
+                    details={"institution": d.get("institution"), "year": d.get("year")}, status=PENDING)
+            .on_conflict_do_nothing(index_elements=["kind", "ref_id"], index_where=text("status = 'pending'"))
+        )
+    elif envelope.type == "marketplace.education.withdrawn":
+        await session.execute(
+            update(QueueItem)
+            .where(QueueItem.kind == "education_doc", QueueItem.ref_id == UUID(d["doc_id"]), QueueItem.status == PENDING)
+            .values(status=WITHDRAWN)
+        )
+
+
 async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None:
     d = envelope.data
     if envelope.type == "assessment.task.submitted":

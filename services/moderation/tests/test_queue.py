@@ -76,3 +76,14 @@ async def test_plan_templates_enter_queue(client):
         ("plan_template", "КТП в публичную библиотеку", 12)]
     await apply(handlers.on_academic_event, "academic.plan_template.unpublished", template_id=template, title="x", author_id=author)
     assert (await client.get("/queue", headers=bearer(uuid4()))).json() == []
+
+
+
+async def test_education_docs_enter_queue(client):
+    doc, author = uuid4(), uuid4()
+    await apply(handlers.on_marketplace_event, "marketplace.education.submitted", doc_id=doc, user_id=author,
+                title="Диплом — Мария Иванова", institution="МПГУ", year=2012)
+    [item] = (await client.get("/queue", headers=bearer(uuid4()))).json()
+    assert (item["kind"], item["kind_label"], item["details"]["institution"]) == ("education_doc", "Документ об образовании", "МПГУ")
+    await apply(handlers.on_marketplace_event, "marketplace.education.withdrawn", doc_id=doc, user_id=author)
+    assert (await client.get("/queue", headers=bearer(uuid4()))).json() == []
