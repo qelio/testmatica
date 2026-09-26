@@ -65,7 +65,6 @@ class UserOut(BaseModel):
     login: str | None
     full_name: str
     roles: list[str]
-    teacher_mode: str | None
     two_factor_method: str | None
     timezone: str
 
@@ -77,7 +76,6 @@ class UserOut(BaseModel):
             login=user.login,
             full_name=user.full_name,
             roles=user.role_names,
-            teacher_mode=user.teacher_mode,
             two_factor_method=user.two_factor_method,
             timezone=user.timezone,
         )
@@ -112,5 +110,4 @@ class ResetPasswordRequest(CodeRequest):
     _password = field_validator("new_password")(_check_password)
 
 
-class TeacherModeRequest(BaseModel):
-    mode: Literal["school", "tutor"]
+

@@ -15,6 +15,7 @@ def _clean(value: str | None) -> str | None:
 class GroupCreate(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     kind: Literal["class", "group"] = "group"
+    paid: bool = False
     subject: str | None = Field(None, max_length=80)
     description: str = Field("", max_length=2000)
 
@@ -25,6 +26,7 @@ class GroupUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=120)
     subject: str | None = Field(None, max_length=80)
     description: str | None = Field(None, max_length=2000)
+    paid: bool | None = None
 
     _title = field_validator("title", "subject")(_clean)
 
@@ -32,7 +34,7 @@ class GroupUpdate(BaseModel):
 class GroupOut(BaseModel):
     id: UUID
     kind: str
-    mode: str
+    paid: bool
     title: str
     subject: str | None
     description: str
@@ -60,6 +62,7 @@ class StudentOut(BaseModel):
     source: str
     managed: bool = Field(description="Аккаунт создан педагогом — можно менять имя и пароль")
     group_ids: list[UUID]
+    paid: bool = Field(description="Индивидуальные занятия платные")
 
 
 class ManualStudentCreate(BaseModel):
@@ -77,6 +80,10 @@ class StudentCredentials(BaseModel):
 
 class StudentUpdate(BaseModel):
     full_name: str = Field(min_length=1, max_length=200)
+
+
+class StudentBilling(BaseModel):
+    paid: bool
 
 
 class LinkRequestCreate(BaseModel):

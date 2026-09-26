@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 
 import { AddStudentModal } from "@/components/add-student";
+import { BillingSelect, PaidBadge } from "@/components/billing";
 import { ExamBoardView } from "@/components/exams";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Spinner } from "@/components/ui";
 import { classroom, type GroupDetail } from "@/lib/api";
@@ -52,6 +53,7 @@ export default function GroupPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">{g.title}</h1>
             <Badge>{g.kind === "class" ? "класс" : "группа"}</Badge>
+            <PaidBadge paid={g.paid} />
             {g.archived && <Badge tone="warn">в архиве</Badge>}
           </div>
           <p className="mt-1 text-fg-soft">
@@ -161,7 +163,7 @@ function EditGroupModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState({ title: group.title, subject: group.subject ?? "", description: group.description });
+  const [form, setForm] = useState({ title: group.title, subject: group.subject ?? "", description: group.description, paid: group.paid });
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   return (
@@ -177,6 +179,7 @@ function EditGroupModal({
               title: form.title,
               subject: form.subject || null,
               description: form.description,
+              paid: form.paid,
             });
             onSaved();
           } catch (err) {
@@ -189,6 +192,10 @@ function EditGroupModal({
         {error && <Alert>{error}</Alert>}
         <Field label="Название" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
         <Field label="Предмет" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
+        <div>
+          <BillingSelect label="Занятия" value={form.paid} free="Бесплатные" paid="Платные" onChange={(paid) => setForm({ ...form, paid })} />
+          <p className="mt-1.5 text-xs text-fg-soft">Действует на новые занятия; уже созданные не меняются.</p>
+        </div>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium">Описание</span>
           <textarea

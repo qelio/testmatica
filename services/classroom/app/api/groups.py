@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_TEACHER, Principal
@@ -18,7 +18,7 @@ def _out(group: Group, count: int) -> GroupOut:
     return GroupOut(
         id=group.id,
         kind=group.kind,
-        mode=group.mode,
+        paid=group.paid,
         title=group.title,
         subject=group.subject,
         description=group.description,
@@ -40,7 +40,6 @@ def _active_members():
 @router.get("", response_model=list[GroupOut])
 async def list_groups(
     archived: bool = False,
-    mode: str | None = Query(None, pattern="^(school|tutor)$", description="По умолчанию — текущий режим педагога"),
     principal: Principal = Depends(teacher),
     session: AsyncSession = Depends(db.session),
 ) -> list[GroupOut]:
@@ -48,7 +47,7 @@ async def list_groups(
     query = (
         select(Group, func.coalesce(counts.c.n, 0))
         .outerjoin(counts, counts.c.group_id == Group.id)
-        .where(Group.teacher_id == principal.user_id, Group.mode == (mode or principal.teacher_mode or "school"))
+        .where(Group.teacher_id == principal.user_id)
         .where(Group.archived_at.is_not(None) if archived else Group.archived_at.is_(None))
         .order_by(Group.title)
     )
@@ -61,7 +60,7 @@ async def create_group(
 ) -> GroupOut:
     group = Group(
         teacher_id=principal.user_id,
-        mode=principal.teacher_mode or "school",
+        paid=body.paid,
         kind=body.kind,
         title=body.title,
         subject=body.subject,
@@ -72,7 +71,7 @@ async def create_group(
     await outbox.event(
         session,
         "classroom.group.created",
-        {"group_id": str(group.id), "teacher_id": str(principal.user_id), "title": group.title, "mode": group.mode},
+        {"group_id": str(group.id), "teacher_id": str(principal.user_id), "title": group.title, "paid": group.paid},
         actor_id=principal.user_id,
     )
     await session.commit()
@@ -120,10 +119,13 @@ async def update_group(
         group.subject = data["subject"]
     if "description" in data:
         group.description = data["description"] or ""
+    if data.get("paid") is not None:
+        # Новые занятия группы будут платными или бесплатными; уже созданные не меняются.
+        group.paid = data["paid"]
     await outbox.event(
         session,
         "classroom.group.updated",
-        {"group_id": str(group.id), "teacher_id": str(group.teacher_id), "title": group.title},
+        {"group_id": str(group.id), "teacher_id": str(group.teacher_id), "title": group.title, "paid": group.paid},
         actor_id=principal.user_id,
     )
     await session.commit()

@@ -13,7 +13,6 @@ STATUS_DELETED = "deleted"
 
 ROLES = ("student", "teacher", "moderator", "admin")
 
-TEACHER_MODES = ("school", "tutor")
 
 
 class Base(DeclarativeBase):
@@ -38,7 +37,6 @@ class User(TimestampMixin, Base):
             name="status_valid",
         ),
         CheckConstraint("two_factor_method IN ('email', 'phone')", name="two_factor_method_valid"),
-        CheckConstraint("teacher_mode IN ('school', 'tutor')", name="teacher_mode_valid"),
         CheckConstraint("email IS NOT NULL OR login IS NOT NULL", name="has_identifier"),
     )
 
@@ -53,7 +51,6 @@ class User(TimestampMixin, Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # None — 2FA не настроена (только аккаунты, созданные педагогом без email и телефона).
     two_factor_method: Mapped[str | None] = mapped_column(String(10))
-    teacher_mode: Mapped[str | None] = mapped_column(String(10))
     managed_by_teacher_id: Mapped[UUID | None]
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

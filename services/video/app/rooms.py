@@ -18,8 +18,9 @@ log = logging.getLogger(__name__)
 
 
 def time_limit_for(lesson: dict) -> int | None:
-    """Бесплатный тариф: 40 минут на занятие. Платные занятия и подписка (этапы 4–5) — без лимита."""
-    return settings.free_time_limit_min
+    """Бесплатные занятия — до 40 минут (бесплатный тариф). Платные — без лимита (решение №5).
+    Подписка педагога (этап 5) снимет лимит и с бесплатных."""
+    return None if lesson.get("paid") else settings.free_time_limit_min
 
 
 def limit_ends_at(room: Room) -> datetime | None:

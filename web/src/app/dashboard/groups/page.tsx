@@ -4,20 +4,18 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { AddStudentModal, CredentialsView } from "@/components/add-student";
+import { BillingSelect, PaidBadge } from "@/components/billing";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
 import { classroom, type Group, type Invitation, type Student, type StudentCredentials } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { pluralStudents, SOURCE_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
 
 type Tab = "groups" | "students" | "invitations";
 
 export default function GroupsPage() {
-  const { user } = useAuth();
-  const isSchool = user?.teacher_mode !== "tutor";
   const [tab, setTab] = useState<Tab>("groups");
   const [archived, setArchived] = useState(false);
-  const groups = useLoad(() => classroom.groups(archived), [archived, user?.teacher_mode]);
+  const groups = useLoad(() => classroom.groups(archived), [archived]);
   const students = useLoad(() => classroom.students(), []);
   const invitations = useLoad(() => classroom.invitations(), []);
   const [creating, setCreating] = useState(false);
@@ -30,7 +28,7 @@ export default function GroupsPage() {
   };
 
   const tabs: { value: Tab; label: string; count?: number }[] = [
-    { value: "groups", label: isSchool ? "Классы и группы" : "Группы", count: groups.data?.length },
+    { value: "groups", label: "Классы и группы", count: groups.data?.length },
     { value: "students", label: "Ученики", count: students.data?.length },
     { value: "invitations", label: "Приглашения", count: invitations.data?.length },
   ];
@@ -38,12 +36,12 @@ export default function GroupsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{isSchool ? "Мои классы и группы" : "Мои группы и ученики"}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Классы, группы и ученики</h1>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setAdding(true)}>
             Добавить ученика
           </Button>
-          <Button onClick={() => setCreating(true)}>{isSchool ? "Создать класс" : "Создать группу"}</Button>
+          <Button onClick={() => setCreating(true)}>Создать класс или группу</Button>
         </div>
       </div>
 
@@ -86,7 +84,6 @@ export default function GroupsPage() {
 
       <CreateGroupModal
         open={creating}
-        isSchool={isSchool}
         onClose={() => setCreating(false)}
         onCreated={() => {
           setCreating(false);
@@ -135,7 +132,10 @@ function GroupsTab({
           >
             <div className="flex items-start justify-between gap-2">
               <h2 className="text-lg font-semibold">{g.title}</h2>
-              <Badge>{g.kind === "class" ? "класс" : "группа"}</Badge>
+              <span className="flex gap-1">
+                <PaidBadge paid={g.paid} />
+                <Badge>{g.kind === "class" ? "класс" : "группа"}</Badge>
+              </span>
             </div>
             {g.subject && <p className="mt-1 text-sm text-fg-soft">{g.subject}</p>}
             <p className="mt-4 text-sm text-fg-soft">{pluralStudents(g.student_count)}</p>
@@ -184,7 +184,8 @@ function StudentsTab({
               </p>
               <p className="mt-0.5 text-sm text-fg-soft">
                 {SOURCE_LABELS[s.source]}
-                {s.group_ids.length > 0 && ` · ${s.group_ids.map((id) => titles[id] ?? "группа другого режима").join(", ")}`}
+                {s.group_ids.length > 0 && ` · ${s.group_ids.map((id) => titles[id] ?? "архивная группа").join(", ")}`}
+                {s.paid && " · индивидуально платно"}
               </p>
             </div>
             {s.status === "pending" ? (
@@ -254,6 +255,24 @@ function StudentModal({
       ) : (
         <div className="space-y-5">
           {error && <Alert>{error}</Alert>}
+          <div>
+            <BillingSelect
+              label="Индивидуальные занятия"
+              value={student.paid}
+              free="Бесплатные"
+              paid="Платные"
+              onChange={(paid) =>
+                act(async () => {
+                  await classroom.setStudentBilling(student.student_id, paid);
+                  onChanged();
+                  close();
+                })
+              }
+            />
+            <p className="mt-1.5 text-xs text-fg-soft">
+              Не зависит от групп: ученик может бесплатно ходить в класс и отдельно заниматься с вами платно. Действует на новые занятия.
+            </p>
+          </div>
           {student.managed ? (
             <>
               <form
@@ -374,27 +393,24 @@ function InvitationsTab({
 
 function CreateGroupModal({
   open,
-  isSchool,
   onClose,
   onCreated,
 }: {
   open: boolean;
-  isSchool: boolean;
   onClose: () => void;
   onCreated: (g: Group) => void;
 }) {
-  // kind = null — значение по умолчанию для текущего режима (режим может смениться, пока страница открыта).
-  const [form, setForm] = useState<{ title: string; subject: string; kind: string | null }>({
+  const [form, setForm] = useState<{ title: string; subject: string; kind: "class" | "group"; paid: boolean }>({
     title: "",
     subject: "",
-    kind: null,
+    kind: "class",
+    paid: false,
   });
-  const kind = isSchool ? (form.kind ?? "class") : "group";
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
 
   return (
-    <Modal open={open} onClose={onClose} title={isSchool ? "Новый класс или группа" : "Новая группа"}>
+    <Modal open={open} onClose={onClose} title="Новый класс или группа">
       <form
         className="space-y-4"
         onSubmit={async (e) => {
@@ -405,9 +421,10 @@ function CreateGroupModal({
             const group = await classroom.createGroup({
               title: form.title,
               subject: form.subject || null,
-              kind: kind as "class" | "group",
+              kind: form.kind,
+              paid: form.paid,
             });
-            setForm({ title: "", subject: "", kind: null });
+            setForm({ title: "", subject: "", kind: "class", paid: false });
             onCreated(group);
           } catch (err) {
             setError(errorText(err));
@@ -417,15 +434,19 @@ function CreateGroupModal({
         }}
       >
         {error && <Alert>{error}</Alert>}
-        {isSchool && (
-          <Select label="Тип" value={kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+        <div className="grid grid-cols-2 gap-3">
+          <Select label="Тип" value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as "class" | "group" })}>
             <option value="class">Класс</option>
             <option value="group">Группа</option>
           </Select>
-        )}
+          <BillingSelect label="Занятия" value={form.paid} onChange={(paid) => setForm({ ...form, paid })} free="Бесплатные" paid="Платные" />
+        </div>
+        <p className="-mt-2 text-xs text-fg-soft">
+          Школьный класс или кружок — бесплатно. Платные занятия ученики будут оплачивать через платформу (появится на следующем этапе).
+        </p>
         <Field
           label="Название"
-          placeholder={isSchool ? "7А" : "Подготовка к ЕГЭ"}
+          placeholder={form.kind === "class" ? "7А" : "Подготовка к ЕГЭ"}
           required
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}

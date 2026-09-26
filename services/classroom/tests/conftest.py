@@ -68,13 +68,13 @@ def fake_identity() -> FakeIdentity:
     return fake
 
 
-def bearer(user_id: UUID, roles=("teacher",), mode: str | None = "school") -> dict:
-    token = tokens.issue(user_id, list(roles), settings.jwt_issuer, settings.jwt_audience, teacher_mode=mode)
+def bearer(user_id: UUID, roles=("teacher",)) -> dict:
+    token = tokens.issue(user_id, list(roles), settings.jwt_issuer, settings.jwt_audience)
     return {"Authorization": f"Bearer {token}"}
 
 
 def student_bearer(user_id: UUID) -> dict:
-    return bearer(user_id, ("student",), None)
+    return bearer(user_id, ("student",))
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -22,7 +22,7 @@ class GroupInfo(BaseModel):
     teacher_id: UUID
     title: str
     subject: str | None
-    mode: str
+    paid: bool
     kind: str
     archived: bool
     member_ids: list[UUID]
@@ -32,6 +32,7 @@ class LinkInfo(BaseModel):
     teacher_id: UUID
     student_id: UUID
     active: bool
+    paid: bool = False
 
 
 @router.get("/groups/{group_id}", response_model=GroupInfo)
@@ -48,7 +49,7 @@ async def group_info(
         teacher_id=group.teacher_id,
         title=group.title,
         subject=group.subject,
-        mode=group.mode,
+        paid=group.paid,
         kind=group.kind,
         archived=group.archived_at is not None,
         member_ids=list(members.scalars()),
@@ -62,4 +63,4 @@ async def link_info(
     link = await logic.get_link(session, teacher_id, student_id)
     if link is None:
         raise ApiError(404, "student_not_found", "Ученик не привязан к педагогу")
-    return LinkInfo(teacher_id=teacher_id, student_id=student_id, active=link.status == LINK_ACTIVE)
+    return LinkInfo(teacher_id=teacher_id, student_id=student_id, active=link.status == LINK_ACTIVE, paid=link.paid)

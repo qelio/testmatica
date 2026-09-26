@@ -25,7 +25,7 @@ async def _publish_snapshot() -> None:
                     "group_id": str(g.id),
                     "teacher_id": str(g.teacher_id),
                     "title": g.title,
-                    "mode": g.mode,
+                    "paid": g.paid,
                     "archived": g.archived_at is not None,
                 },
             )

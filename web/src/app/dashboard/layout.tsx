@@ -30,8 +30,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
   }
 
   const { user } = auth;
-  const isTeacher = user.roles.includes("teacher");
-  const nav = navFor(user.roles, user.teacher_mode);
+  const nav = navFor(user.roles);
   const badges = { chats: unreadChats };
 
   return (
@@ -49,7 +48,6 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           </button>
           <Logo compact />
           <div className="flex-1" />
-          {isTeacher && <ModeSwitch />}
           <UserMenu />
         </div>
       </header>
@@ -116,45 +114,6 @@ function useUnreadChats(enabled: boolean, pathname: string): number {
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
-}
-
-function ModeSwitch() {
-  const { user, switchTeacherMode } = useAuth();
-  const [pending, setPending] = useState(false);
-  if (!user) return null;
-  const modes = [
-    { value: "school", label: "Учитель", active: "bg-school text-white" },
-    { value: "tutor", label: "Репетитор", active: "bg-tutor text-white" },
-  ] as const;
-
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Режим работы"
-      className="flex shrink-0 rounded-xl border border-line bg-muted p-1 text-sm"
-    >
-      {modes.map((m) => (
-        <button
-          key={m.value}
-          role="radio"
-          aria-checked={user.teacher_mode === m.value}
-          disabled={pending}
-          onClick={async () => {
-            if (user.teacher_mode === m.value) return;
-            setPending(true);
-            try {
-              await switchTeacherMode(m.value);
-            } finally {
-              setPending(false);
-            }
-          }}
-          className={`rounded-lg px-3 py-1.5 font-medium transition-colors ${user.teacher_mode === m.value ? m.active : "text-fg-soft hover:text-fg"}`}
-        >
-          {m.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 function UserMenu() {

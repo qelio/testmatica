@@ -23,7 +23,6 @@ ROLE_ADMIN = "admin"
 class Principal:
     user_id: UUID
     roles: frozenset[str]
-    teacher_mode: str | None = None
 
     def has_any(self, *roles: str) -> bool:
         # Администратор имеет все права модератора (ТЗ, раздел 2).
@@ -125,7 +124,6 @@ class Auth:
         return Principal(
             user_id=UUID(claims["sub"]),
             roles=frozenset(claims.get("roles", [])),
-            teacher_mode=claims.get("teacher_mode"),
         )
 
     async def optional(

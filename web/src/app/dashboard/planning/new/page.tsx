@@ -20,7 +20,7 @@ export default function NewPlanPage() {
 function NewPlan() {
   const router = useRouter();
   const preset = useSearchParams().get("template") ?? "";
-  const groups = useLoad(async () => [...(await classroom.groups(false, "school")), ...(await classroom.groups(false, "tutor"))], []);
+  const groups = useLoad(() => classroom.groups(), []);
   const students = useLoad(() => classroom.students(), []);
   const mine = useLoad(() => planning.templates("mine"), []);
   const pub = useLoad(() => planning.templates("public"), []);

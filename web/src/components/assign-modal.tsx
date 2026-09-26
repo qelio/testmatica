@@ -44,7 +44,7 @@ function AssignForm({
   initialKind: Kind;
   preset?: AssignPreset;
 }) {
-  const groups = useLoad(async () => [...(await classroom.groups(false, "school")), ...(await classroom.groups(false, "tutor"))], []);
+  const groups = useLoad(() => classroom.groups(), []);
   const students = useLoad(() => classroom.students(), []);
   // Уроки за последнюю неделю и на две недели вперёд — к какому привязать работу и куда ставить оценку.
   const lessons = useLoad(() => {

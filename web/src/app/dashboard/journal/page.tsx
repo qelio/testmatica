@@ -30,13 +30,9 @@ function JournalScreen() {
   const [error, setError] = useState<string>();
 
   const targets = useLoad(async () => {
-    const [school, tutor, students] = await Promise.all([
-      classroom.groups(false, "school"),
-      classroom.groups(false, "tutor"),
-      classroom.students(),
-    ]);
+    const [groups, students] = await Promise.all([classroom.groups(), classroom.students()]);
     return {
-      groups: [...school, ...tutor],
+      groups,
       students: students.filter((s) => s.status === "active"),
     };
   }, []);

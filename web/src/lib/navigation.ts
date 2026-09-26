@@ -1,4 +1,4 @@
-// Разделы сайдбара по ролям и режимам педагога (ТЗ, раздел 2).
+// Разделы сайдбара по ролям (ТЗ, раздел 2).
 // ready: false — раздел появится на следующих этапах, пока показывается как «скоро».
 
 export type NavItem = { title: string; href: string; ready: boolean; badge?: "chats" };
@@ -9,22 +9,13 @@ const CHATS: NavItem = { title: "Сообщения", href: "/dashboard/chats", 
 const soon = (title: string, href: string): NavItem => ({ title, href, ready: false });
 
 export const NAV = {
-  school: [
+  // Одно меню педагога: режимов «учитель/репетитор» нет — платно или бесплатно указывается у группы и ученика.
+  teacher: [
     DASHBOARD,
     CHATS,
     { title: "Расписание", href: "/dashboard/schedule", ready: true },
-    { title: "Мои классы/группы", href: "/dashboard/groups", ready: true },
-    { title: "Планирование (КТП)", href: "/dashboard/planning", ready: true },
-    { title: "Задания и тесты", href: "/dashboard/assignments", ready: true },
-    { title: "Банк задач", href: "/dashboard/tasks", ready: true },
-    { title: "Библиотека", href: "/dashboard/library", ready: true },
-    soon("Поддержка", "/dashboard/support"),
-  ],
-  tutor: [
-    DASHBOARD,
-    CHATS,
-    { title: "Расписание", href: "/dashboard/schedule", ready: true },
-    { title: "Мои группы/ученики", href: "/dashboard/groups", ready: true },
+    { title: "Классы, группы, ученики", href: "/dashboard/groups", ready: true },
+    { title: "Журнал", href: "/dashboard/journal", ready: true },
     { title: "Планирование (КТП)", href: "/dashboard/planning", ready: true },
     { title: "Задания и тесты", href: "/dashboard/assignments", ready: true },
     { title: "Банк задач", href: "/dashboard/tasks", ready: true },
@@ -57,8 +48,8 @@ export const NAV = {
   ],
 } satisfies Record<string, NavItem[]>;
 
-export function navFor(roles: string[], teacherMode: string | null): NavItem[] {
+export function navFor(roles: string[]): NavItem[] {
   if (roles.includes("admin") || roles.includes("moderator")) return NAV.staff;
-  if (roles.includes("teacher")) return teacherMode === "tutor" ? NAV.tutor : NAV.school;
+  if (roles.includes("teacher")) return NAV.teacher;
   return NAV.student;
 }

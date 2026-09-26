@@ -22,7 +22,7 @@ class LessonInfo(BaseModel):
     id: UUID
     teacher_id: UUID
     kind: str
-    mode: str
+    paid: bool
     group_id: UUID | None
     student_id: UUID | None
     subject: str | None
@@ -42,7 +42,7 @@ async def _info(session: AsyncSession, lessons: list[Lesson]) -> list[LessonInfo
             id=lesson.id,
             teacher_id=lesson.teacher_id,
             kind=lesson.kind,
-            mode=lesson.mode,
+            paid=lesson.paid,
             group_id=lesson.group_id,
             student_id=lesson.student_id,
             subject=lesson.subject,

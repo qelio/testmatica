@@ -37,7 +37,7 @@ class World:
     def group(self, teacher: UUID, members: list[UUID], title="7А") -> UUID:
         gid = uuid4()
         self.groups[str(gid)] = {
-            "id": str(gid), "teacher_id": str(teacher), "title": title, "subject": "Алгебра", "mode": "school",
+            "id": str(gid), "teacher_id": str(teacher), "title": title, "subject": "Алгебра", "paid": False,
             "kind": "class", "archived": False, "member_ids": [str(m) for m in members],
         }
         return gid
@@ -49,7 +49,7 @@ class World:
         lid = uuid4()
         start = datetime.now(UTC).replace(microsecond=0) + timedelta(days=days)
         self.lessons[str(lid)] = {
-            "id": str(lid), "teacher_id": str(teacher), "kind": "group" if group_id else "individual", "mode": "school",
+            "id": str(lid), "teacher_id": str(teacher), "kind": "group" if group_id else "individual", "paid": False,
             "group_id": str(group_id) if group_id else None, "student_id": str(student_id) if student_id else None,
             "subject": subject, "topic": None, "starts_at": start.isoformat(),
             "ends_at": (start + timedelta(minutes=45)).isoformat(), "status": status,
@@ -95,7 +95,7 @@ def world() -> World:
 
 
 def bearer(user_id: UUID, roles=("teacher",)) -> dict:
-    token = tokens.issue(user_id, list(roles), settings.jwt_issuer, settings.jwt_audience, teacher_mode="school")
+    token = tokens.issue(user_id, list(roles), settings.jwt_issuer, settings.jwt_audience)
     return {"Authorization": f"Bearer {token}"}
 
 

@@ -170,3 +170,13 @@ async def test_recording_failure(client, lk, lessons):
 async def test_webhook_signature_required(client):
     resp = await client.post("/internal/webhooks/livekit", content="{}", headers={"Authorization": "bad"})
     assert resp.status_code == 401
+
+
+
+async def test_paid_lessons_have_no_time_limit(client, lessons):
+    teacher = uuid4()
+    lesson = lessons.lesson(teacher, [uuid4()], paid=True)
+    await client.post(f"/rooms/{lesson}/join", headers=bearer(teacher, T))
+    await webhook("participant_joined", f"lesson-{lesson}", identity=str(teacher), participant_sid="PA_1")
+    room = (await client.get(f"/rooms/{lesson}", headers=bearer(teacher, T))).json()
+    assert room["status"] == "active" and room["limit_ends_at"] is None

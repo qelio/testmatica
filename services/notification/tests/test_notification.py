@@ -126,7 +126,7 @@ async def test_link_request_notifies_student_and_acceptance_notifies_teacher(cli
 def schedule_event(type_, teacher, students, actor, **extra):
     data = {
         "lesson_ids": [str(uuid4())], "count": 1, "teacher_id": str(teacher), "teacher_name": "Мария Ивановна",
-        "student_ids": [str(s) for s in students], "title": "Петя", "subject": "Физика", "mode": "tutor",
+        "student_ids": [str(s) for s in students], "title": "Петя", "subject": "Физика", "paid": True,
         "kind": "individual", "starts_at": "2026-10-01T12:00:00+00:00", "ends_at": "2026-10-01T13:00:00+00:00",
     } | extra
     return make_envelope(type_, data, actor_id=actor)

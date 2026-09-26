@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { BillingSelect } from "@/components/billing";
 import { ExamItemsByIds, ExamItemsField } from "@/components/exams";
 import { LessonAssignments } from "@/components/lesson-assignments";
 import { LessonKtp } from "@/components/lesson-ktp";
@@ -82,11 +83,7 @@ function nextHour(): Date {
 }
 
 function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (message: string) => void }) {
-  // Расписание у педагога общее — показываем группы обоих режимов.
-  const groups = useLoad(
-    async () => [...(await classroom.groups(false, "school")), ...(await classroom.groups(false, "tutor"))],
-    [],
-  );
+  const groups = useLoad(() => classroom.groups(), []);
   const students = useLoad(() => classroom.students(), []);
   const [kind, setKind] = useState<"group" | "individual">("group");
   const [target, setTarget] = useState("");
@@ -97,6 +94,8 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
   const [topic, setTopic] = useState("");
   const [examItems, setExamItems] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState("");
+  // null — как у группы или ученика; можно поменять для этих занятий (например, пробное — бесплатно).
+  const [paidOverride, setPaidOverride] = useState<boolean | null>(null);
   const [repeat, setRepeat] = useState(false);
   // null — пользователь дни не выбирал: повторяем в день недели выбранной даты.
   const [pickedWeekdays, setWeekdays] = useState<number[] | null>(null);
@@ -111,8 +110,10 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
   const activeStudents = (students.data ?? []).filter((s) => s.status === "active");
   const options =
     kind === "group"
-      ? (groups.data ?? []).map((g) => ({ id: g.id, label: `${g.title} · ${g.mode === "tutor" ? "репетитор" : "школа"}` }))
-      : activeStudents.map((s) => ({ id: s.student_id, label: s.full_name }));
+      ? (groups.data ?? []).map((g) => ({ id: g.id, label: `${g.title}${g.paid ? " · платно" : ""}`, paid: g.paid }))
+      : activeStudents.map((s) => ({ id: s.student_id, label: `${s.full_name}${s.paid ? " · платно" : ""}`, paid: s.paid }));
+  const targetPaid = options.find((o) => o.id === target)?.paid ?? false;
+  const paid = paidOverride ?? targetPaid;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -135,6 +136,7 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
         subject: subject || null,
         topic: topic || null,
         exam_item_ids: examItems,
+        paid,
         video_url: videoUrl || null,
         repeat: repeatBody,
         timezone: timezone(),
@@ -167,8 +169,15 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
           </button>
         ))}
       </div>
-      <Select label={kind === "group" ? "Группа" : "Ученик"} value={target} onChange={(e) => setTarget(e.target.value)}>
-        <option value="">{options.length ? "Выберите…" : kind === "group" ? "Нет групп — создайте в «Мои классы»" : "Нет учеников"}</option>
+      <Select
+        label={kind === "group" ? "Группа" : "Ученик"}
+        value={target}
+        onChange={(e) => {
+          setTarget(e.target.value);
+          setPaidOverride(null);
+        }}
+      >
+        <option value="">{options.length ? "Выберите…" : kind === "group" ? "Нет групп — создайте в «Классы, группы, ученики»" : "Нет учеников"}</option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
@@ -186,6 +195,16 @@ function CreateLessonForm({ initial, onCreated }: { initial: Date; onCreated: (m
           </option>
         ))}
       </Select>
+      {target && (
+        <div>
+          <BillingSelect label="Оплата" value={paid} free="Бесплатное занятие" paid="Платное занятие" onChange={setPaidOverride} />
+          <p className="mt-1.5 text-xs text-fg-soft">
+            {paidOverride === null
+              ? `Как у ${kind === "group" ? "группы" : "ученика"}. Можно поменять — например, сделать пробное занятие бесплатным.`
+              : "Изменено только для этих занятий."}
+          </p>
+        </div>
+      )}
       <Field label="Предмет" placeholder="Если пусто — предмет группы" value={subject} onChange={(e) => setSubject(e.target.value)} />
       <Field label="Тема урока" value={topic} maxLength={300} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
@@ -312,7 +331,7 @@ function LessonDetails({
     <div className="space-y-4">
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={lesson.mode === "tutor" ? "warn" : "ok"}>{lesson.mode === "tutor" ? "репетитор" : "школа"}</Badge>
+        <Badge tone={lesson.paid ? "warn" : "ok"}>{lesson.paid ? "платное" : "бесплатное"}</Badge>
         <Badge>{lesson.kind === "group" ? "группа" : "индивидуальное"}</Badge>
         {lesson.series_id && <Badge>серия</Badge>}
         {cancelled && <Badge tone="warn">отменено</Badge>}
@@ -506,6 +525,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
   const [subject, setSubject] = useState(lesson.subject ?? "");
   const [topic, setTopic] = useState(lesson.topic ?? "");
   const [examItems, setExamItems] = useState(lesson.exam_item_ids);
+  const [paid, setPaid] = useState(lesson.paid);
   const [videoUrl, setVideoUrl] = useState(lesson.video_url ?? "");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
@@ -525,6 +545,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
             subject: subject || null,
             topic: topic || null,
             exam_item_ids: examItems,
+            paid,
             video_url: videoUrl || null,
           });
           onDone();
@@ -547,6 +568,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
       <Field label="Предмет" value={subject} onChange={(e) => setSubject(e.target.value)} />
       <Field label="Тема урока" value={topic} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
+      <BillingSelect label="Оплата" value={paid} free="Бесплатное занятие" paid="Платное занятие" onChange={setPaid} />
       <Field
         label="Внешняя ссылка на звонок (необязательно)"
         placeholder="https://… (Zoom, Meet и т. д.)"
