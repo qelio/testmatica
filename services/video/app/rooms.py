@@ -19,9 +19,11 @@ from .models import EXPIRED, FAILED, READY, RECORDING, Connection, Recording, Ro
 log = logging.getLogger(__name__)
 
 
-def time_limit_for(lesson: dict, plan: str) -> int | None:
-    """Бесплатные занятия на бесплатном тарифе — до 40 минут. Платные и все занятия на «Базовом» — без лимита (решение №5)."""
-    return None if lesson.get("paid") or plan == BASIC else settings.free_time_limit_min
+async def time_limit_for(lesson: dict, plan: str) -> int | None:
+    """Бесплатные занятия на бесплатном тарифе — до 40 минут (задаёт администратор). Платные и все на «Базовом» — без лимита (решение №5)."""
+    if lesson.get("paid") or plan == BASIC:
+        return None
+    return (await plans.settings())["free_video_minutes"]
 
 
 async def teacher_plan(teacher_id: UUID) -> str:
@@ -114,7 +116,8 @@ async def _on_egress(session: AsyncSession, ev: WebhookEvent, now: datetime) -> 
     if ev.egress_status == "EGRESS_COMPLETE" and ev.file_size:
         rec.status, rec.size, rec.duration_s = READY, ev.file_size, ev.file_duration_s
         basic = await teacher_plan(rec.teacher_id) == BASIC
-        rec.expires_at = now + timedelta(days=settings.basic_recording_days if basic else settings.free_recording_days)
+        limits = await plans.settings()
+        rec.expires_at = now + timedelta(days=limits["basic_recording_days" if basic else "free_recording_days"])
         await outbox.event(session, "video.recording.ready", {
             "recording_id": str(rec.id), "lesson_id": str(rec.lesson_id), "teacher_id": str(rec.teacher_id),
             "viewer_ids": [str(v) for v in rec.viewer_ids], "title": rec.title, "duration_s": rec.duration_s,
@@ -142,7 +145,7 @@ async def apply_retention(session: AsyncSession, teacher_id: UUID) -> None:
         select(Recording).where(Recording.teacher_id == teacher_id, Recording.status == READY)
         .order_by(Recording.started_at.desc()).with_for_update()
     )).scalars().all()
-    for rec in ready[settings.free_recordings_keep:]:
+    for rec in ready[(await plans.settings())["free_recordings_keep"]:]:
         await expire(session, rec)
 
 

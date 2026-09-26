@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from testmatica_common.ids import uuid7
 from testmatica_common.messaging import messaging_tables
@@ -54,6 +54,10 @@ class User(TimestampMixin, Base):
     managed_by_teacher_id: Mapped[UUID | None]
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Блокировка и удаление администратором. Удалённый аккаунт 30 дней можно восстановить, затем он обезличивается (решение №9).
+    status_reason: Mapped[str | None] = mapped_column(String(500))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     roles: Mapped[list["UserRole"]] = relationship(
         lazy="selectin", cascade="all, delete-orphan", back_populates="user"
@@ -62,6 +66,16 @@ class User(TimestampMixin, Base):
     @property
     def role_names(self) -> list[str]:
         return sorted(r.role for r in self.roles)
+
+
+class UserActivity(Base):
+    """День, когда пользователь был на платформе (вход или продление сессии) — для DAU/MAU."""
+
+    __tablename__ = "user_activity"
+    __table_args__ = (Index("ix_user_activity_day", "day"),)
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
 
 
 class UserRole(Base):

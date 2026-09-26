@@ -5,13 +5,14 @@ from uuid import UUID
 
 from fastapi import Request, Response
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 from testmatica_common.ids import uuid7
 
 from .config import settings
 from .deps import issuer, outbox
-from .models import STATUS_ACTIVE, RefreshToken, User
+from .models import STATUS_ACTIVE, RefreshToken, User, UserActivity
 from .schemas import Authenticated, UserOut
 from .security import generate_refresh_token, hash_token
 
@@ -72,6 +73,7 @@ async def start_session(
     row, raw = _new_refresh(user, uuid7(), request)
     session.add(row)
     user.last_seen_at = datetime.now(UTC)
+    await mark_active(session, user)
     await outbox.event(
         session, "identity.user.logged_in", {"user_id": str(user.id), "ip": client_ip(request)}, actor_id=user.id
     )
@@ -116,8 +118,16 @@ async def rotate(session: AsyncSession, request: Request, response: Response) ->
     row, new_raw = _new_refresh(user, current.family_id, request)
     session.add(row)
     user.last_seen_at = now
+    await mark_active(session, user)
     _set_cookie(response, new_raw)
     return _authenticated(user)
+
+
+async def mark_active(session: AsyncSession, user: User) -> None:
+    """Отметить день активности (DAU/MAU): сессия продлевается примерно раз в 15 минут, пока человек на сайте."""
+    await session.execute(
+        pg_insert(UserActivity).values(user_id=user.id, day=datetime.now(UTC).date()).on_conflict_do_nothing()
+    )
 
 
 async def revoke_by_cookie(session: AsyncSession, request: Request) -> None:

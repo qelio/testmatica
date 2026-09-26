@@ -393,6 +393,9 @@ async def on_billing_event(envelope: Envelope, session: AsyncSession) -> None:
         elif reason == "renewed":
             session.add(Notification(user_id=user, kind="subscription_renewed", title="Подписка продлена",
                                      body=f"Тариф «Базовый» действует до {_date(d['period_end'])}.", payload=link))
+        elif reason == "granted":
+            session.add(Notification(user_id=user, kind="subscription_granted", title="Тариф «Базовый» подключён администратором",
+                                     body=f"Действует до {_date(d['period_end'])}.", payload=link))
         elif reason == "expired":
             session.add(Notification(user_id=user, kind="subscription_expired", title="Подписка закончилась",
                                      body="Снова действуют ограничения бесплатного тарифа. Продлить можно в разделе «Тариф».",

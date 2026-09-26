@@ -468,7 +468,6 @@ services:
       TEST_DATABASE_URL: postgresql+asyncpg://billing:billing_dev@postgres:5432/billing_test
       # Пока только поддельный провайдер: оплата подтверждается на тестовой странице сайта.
       PAYMENT_PROVIDER: fake
-      BASIC_PRICE_RUB: "490"
     volumes:
       - ./services/billing:/app
       - *libs-volume

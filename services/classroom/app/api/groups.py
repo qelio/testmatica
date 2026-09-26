@@ -8,7 +8,6 @@ from testmatica_common.errors import ApiError
 from testmatica_common.plans import BASIC
 
 from .. import logic, people
-from ..config import settings
 from ..deps import auth, db, outbox, plans, subjects
 from ..models import Group, GroupMember
 from ..schemas import AddMember, GroupCreate, GroupDetail, GroupOut, GroupUpdate, MemberOut
@@ -62,12 +61,13 @@ async def check_group_limit(session: AsyncSession, teacher_id: UUID) -> None:
     active = await session.scalar(
         select(func.count()).select_from(Group).where(Group.teacher_id == teacher_id, Group.archived_at.is_(None))
     )
-    if active < settings.free_max_active_groups:
+    limit = (await plans.settings())["free_max_groups"]  # задаёт администратор
+    if active < limit:
         return
     if await plans.of(teacher_id) == BASIC:
         return
-    raise ApiError(403, "plan_limit", f"На бесплатном тарифе — до {settings.free_max_active_groups} активных классов и групп. "
-                   "Отправьте ненужную группу в архив или подключите тариф «Базовый».", {"limit": settings.free_max_active_groups})
+    raise ApiError(403, "plan_limit", f"На бесплатном тарифе — до {limit} активных классов и групп. "
+                   "Отправьте ненужную группу в архив или подключите тариф «Базовый».", {"limit": limit})
 
 
 @router.post("", response_model=GroupOut, status_code=201)

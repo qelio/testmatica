@@ -1564,3 +1564,81 @@ export const analytics = {
   export: (path: string, p: AnalyticsPeriod, format: "pdf" | "xlsx") =>
     apiFile(`${AC}/analytics/${path}/export?${periodQs(p, { format })}`, { method: "GET" }),
 };
+
+// ---- админ-панель ----
+
+export type AdminUser = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  login: string | null;
+  phone: string | null;
+  roles: string[];
+  status: "active" | "pending_verification" | "banned" | "deleted";
+  status_reason: string | null;
+  two_factor_method: string | null;
+  managed_by_teacher_id: string | null;
+  email_verified: boolean;
+  created_at: string;
+  last_seen_at: string | null;
+  deleted_at: string | null;
+  restore_until: string | null;
+};
+export type UserStats = {
+  total: number;
+  by_role: Record<string, number>;
+  by_status: Record<string, number>;
+  dau: number;
+  wau: number;
+  mau: number;
+  series: { day: string; active: number; registrations: number }[];
+};
+export type AuditRecord = { event_id: string; type: string; producer: string; actor_id: string | null; occurred_at: string; data: Record<string, unknown> };
+export type AuditStats = {
+  activity: { type: string; title: string; total: number; by_day: Record<string, number> }[];
+  top_teachers: { actor_id: string; actions: number }[];
+};
+export type AdminPayment = BillingPayment & { user_id: string; provider: string };
+export type BillingStats = {
+  subscribers: number;
+  auto_renew: number;
+  ever_paid: number;
+  revenue_rub: number;
+  months: { month: string; revenue_rub: number; payments: number }[];
+};
+
+function qs(params: Record<string, string | number | undefined | null | string[]>): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    if (Array.isArray(v)) v.forEach((x) => q.append(k, x));
+    else q.set(k, String(v));
+  }
+  return q.toString();
+}
+
+export const admin = {
+  users: (p: { q?: string; role?: string; status?: string; ids?: string[]; limit?: number; offset?: number }) =>
+    api<{ items: AdminUser[]; total: number }>(`${ID}/admin/users?${qs(p)}`),
+  user: (id: string) => api<AdminUser>(`${ID}/admin/users/${id}`),
+  editUser: (id: string, data: { full_name?: string; email?: string; login?: string }) =>
+    api<AdminUser>(`${ID}/admin/users/${id}`, { method: "PATCH", body: data }),
+  setRoles: (id: string, roles: string[]) => api<AdminUser>(`${ID}/admin/users/${id}/roles`, { method: "PUT", body: { roles } }),
+  ban: (id: string, reason: string) => api<AdminUser>(`${ID}/admin/users/${id}/ban`, { method: "POST", body: { reason } }),
+  unban: (id: string) => api<AdminUser>(`${ID}/admin/users/${id}/unban`, { method: "POST" }),
+  remove: (id: string, reason: string) => api<AdminUser>(`${ID}/admin/users/${id}/delete`, { method: "POST", body: { reason } }),
+  restore: (id: string) => api<AdminUser>(`${ID}/admin/users/${id}/restore`, { method: "POST" }),
+  resetPassword: (id: string) => api<{ password: string }>(`${ID}/admin/users/${id}/reset-password`, { method: "POST" }),
+  userStats: (days = 30) => api<UserStats>(`${ID}/admin/stats?days=${days}`),
+
+  audit: (p: { type_prefix?: string; user_id?: string; actor_id?: string; before?: string; limit?: number }) =>
+    api<AuditRecord[]>(`/api/audit/audit?${qs(p)}`),
+  auditStats: (days = 30) => api<AuditStats>(`/api/audit/audit/stats?days=${days}`),
+
+  settings: () => api<Record<string, number>>(`${BL}/admin/settings`),
+  saveSettings: (values: Record<string, number>) => api<Record<string, number>>(`${BL}/admin/settings`, { method: "PUT", body: { values } }),
+  payments: (p: { status?: string; user_id?: string; limit?: number; offset?: number }) => api<AdminPayment[]>(`${BL}/admin/payments?${qs(p)}`),
+  billingStats: () => api<BillingStats>(`${BL}/admin/stats`),
+  grant: (userId: string, days: number, reason: string) =>
+    api<{ period_end: string }>(`${BL}/admin/subscriptions/${userId}/grant`, { method: "POST", body: { days, reason } }),
+};
