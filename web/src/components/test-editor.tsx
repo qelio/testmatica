@@ -1,9 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { AssignModal } from "@/components/assign-modal";
 import { ExamChips } from "@/components/exams";
 import { TaskPicker } from "@/components/task-picker";
 import { Alert, Badge, Button, Field, Select } from "@/components/ui";
@@ -16,7 +16,7 @@ type Item = { task_id: string; points: number; title: string; task?: TaskSummary
 const TEXTAREA =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
 
-/** Редактор теста: задачи из банка, баллы, порядок, перемешивание, таймер. Отсюда же тест выдаётся. */
+/** Редактор теста: задачи из банка, баллы, порядок, перемешивание, таймер. Назначают тест в разделе «Назначение тестов». */
 export function TestEditor({ test }: { test?: Quiz }) {
   const router = useRouter();
   const [title, setTitle] = useState(test?.title ?? "");
@@ -30,7 +30,6 @@ export function TestEditor({ test }: { test?: Quiz }) {
   );
   const [picking, setPicking] = useState(false);
   const [dirty, setDirty] = useState(!test);
-  const [assigning, setAssigning] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -182,12 +181,15 @@ export function TestEditor({ test }: { test?: Quiz }) {
         <Button type="submit" loading={busy} disabled={!dirty && !!test}>
           {test ? (dirty ? "Сохранить" : "Сохранено") : "Создать тест"}
         </Button>
-        {test && (
-          <Button type="button" variant="secondary" disabled={dirty || !items.length} onClick={() => setAssigning(true)}>
-            Выдать…
-          </Button>
+        {test && !dirty && items.length > 0 && (
+            <Link
+              href={`/dashboard/assignments/new?test=${test.id}`}
+              className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted"
+            >
+              Назначить…
+            </Link>
         )}
-        {test && dirty && <span className="self-center text-sm text-fg-soft">Сохраните изменения, чтобы выдать тест</span>}
+        {test && dirty && <span className="self-center text-sm text-fg-soft">Сохраните изменения, чтобы назначить тест</span>}
         {test && test.assignments_count === 0 && (
           <Button
             type="button"
@@ -197,7 +199,7 @@ export function TestEditor({ test }: { test?: Quiz }) {
               if (!window.confirm("Удалить тест?")) return;
               try {
                 await assessment.deleteTest(test.id);
-                router.replace("/dashboard/assignments?tab=tests");
+                router.replace("/dashboard/tests");
               } catch (err) {
                 setError(errorText(err));
               }
@@ -207,14 +209,6 @@ export function TestEditor({ test }: { test?: Quiz }) {
           </Button>
         )}
       </div>
-      {test && (
-        <AssignModal
-          testId={test.id}
-          open={assigning}
-          onClose={() => setAssigning(false)}
-          onAssigned={(a) => router.push(`/dashboard/assignments/${a.id}`)}
-        />
-      )}
     </form>
   );
 }

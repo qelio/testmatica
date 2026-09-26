@@ -16,9 +16,14 @@ from .models import Grade, GradeType
 log = logging.getLogger(__name__)
 
 
+KINDS = {"live": "Тест на уроке", "homework": "ДЗ", "test": "Тест"}
+
+
 def _comment(d: dict) -> str:
-    kind = "Тест на уроке" if d.get("kind") == "live" else "ДЗ"
-    return f"{kind} «{d['title']}»: {d['percent']:g}% ({d['score']:g} из {d['max_score']:g})"
+    text = f"{KINDS.get(d.get('kind'), 'Тест')} «{d['title']}»: {d['percent']:g}% ({d['score']:g} из {d['max_score']:g})"
+    if (d.get("attempts") or 1) > 1:
+        text += f", лучшая из {d['attempts']} попыток"
+    return text
 
 
 async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None:

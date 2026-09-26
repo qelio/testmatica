@@ -1,4 +1,4 @@
-"""Выдача тестов (ДЗ и тест на уроке) и их прохождение учениками."""
+"""Назначение тестов (просто тест, на дом, на уроке) и их прохождение учениками."""
 
 import random
 from datetime import UTC, datetime, timedelta
@@ -52,7 +52,7 @@ teacher = auth.require(ROLE_TEACHER, ROLE_MODERATOR)
 async def assign(
     test_id: UUID, body: AssignIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> AssignmentOut:
-    """Выдать тест группе или ученику — как ДЗ или как тест на уроке. Состав теста фиксируется."""
+    """Назначить тест группе или ученику: просто тест, на дом (к уроку) или на уроке. Состав теста фиксируется."""
     test = await own_test(session, test_id, principal)
     if not test.items:
         raise ApiError(422, "test_empty", "Добавьте в тест хотя бы одну задачу")
@@ -72,14 +72,15 @@ async def assign(
         raise ApiError(422, "deadline_past", "Дедлайн уже прошёл")
 
     a = Assignment(
-        test_id=test.id, teacher_id=principal.user_id, title=test.title, description=test.description, kind=body.kind,
+        test_id=test.id, teacher_id=principal.user_id, title=body.title or test.title, test_title=test.title,
+        description=test.description, kind=body.kind,
         target_type=body.target_type, target_id=body.target_id, target_title=target_title, lesson_id=body.lesson_id,
-        deadline=body.deadline,
+        opens_at=body.opens_at, deadline=body.deadline, max_attempts=body.max_attempts,
         settings={"order_mode": test.order_mode, "shuffle_options": test.shuffle_options, "time_mode": test.time_mode,
                   "time_limit_s": test.time_limit_s},
         items=[{"task_id": str(i.task_id), "points": i.points} for i in test.items],
         grade_to_journal=body.grade_to_journal, grade_type_id=body.grade_type_id if body.grade_to_journal else None,
-        students=[AssignmentStudent(student_id=s) for s in student_ids],
+        students=[AssignmentStudent(student_id=s, allowed_attempts=body.max_attempts or 1) for s in student_ids],
     )
     session.add(a)
     await session.flush()
@@ -87,6 +88,7 @@ async def assign(
         session, "assessment.assignment.created",
         {"assignment_id": str(a.id), "title": a.title, "kind": a.kind, "teacher_id": str(a.teacher_id),
          "student_ids": [str(s) for s in student_ids], "deadline": a.deadline.isoformat() if a.deadline else None,
+         "opens_at": a.opens_at.isoformat() if a.opens_at else None,
          "lesson_id": str(a.lesson_id) if a.lesson_id else None},
         actor_id=principal.user_id,
     )
@@ -142,18 +144,22 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
     )
     own = rows[0] if rows and not teacher_view else None
     deadline = attempts.deadline_for(a, own) if own else a.deadline
-    can_start = False
+    not_open_yet = bool(a.opens_at and now < a.opens_at)
+    can_start, attempts_left = False, None
     if own is not None:
         mine = [t for t in all_attempts if t.student_id == p.user_id]
+        limit = attempts.attempts_limit(a, own)
+        attempts_left = None if limit is None else max(0, limit - len(mine))
         can_start = (
-            a.closed_at is None and not (deadline and now >= deadline)
-            and not any(t.status == IN_PROGRESS for t in mine) and len(mine) < own.allowed_attempts
+            a.closed_at is None and not not_open_yet and not (deadline and now >= deadline)
+            and not any(t.status == IN_PROGRESS for t in mine) and (limit is None or len(mine) < limit)
         )
     return AssignmentOut(
-        id=a.id, test_id=a.test_id, title=a.title, description=a.description, kind=a.kind, target_type=a.target_type,
+        id=a.id, test_id=a.test_id, title=a.title, test_title=a.test_title, description=a.description, kind=a.kind, target_type=a.target_type,
         target_id=a.target_id, target_title=a.target_title, teacher_id=a.teacher_id,
-        teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, deadline=deadline,
-        overdue=bool(deadline and now >= deadline), closed=a.closed_at is not None, settings=a.settings,
+        teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, opens_at=a.opens_at,
+        deadline=deadline, not_open_yet=not_open_yet, overdue=bool(deadline and now >= deadline), closed=a.closed_at is not None,
+        max_attempts=a.max_attempts, attempts_left=attempts_left, settings=a.settings,
         tasks_count=len(a.items), max_score=sum(i["points"] for i in a.items), grade_to_journal=a.grade_to_journal,
         grade_type_id=a.grade_type_id, created_at=a.created_at, students=students, can_start=can_start,
     )
@@ -227,7 +233,8 @@ async def reassign(
         raise ApiError(409, "attempt_in_progress", "Ученик ещё проходит тест")
     if deadline is not None and (deadline.tzinfo is None or deadline <= datetime.now(UTC)):
         raise ApiError(422, "deadline_past", "Укажите будущий дедлайн с часовым поясом")
-    row.allowed_attempts = len(tried) + 1
+    if a.max_attempts is not None:
+        row.allowed_attempts = max(row.allowed_attempts, len(tried) + 1)
     row.deadline = deadline
     if a.kind == LIVE:
         a.closed_at = None
@@ -274,10 +281,13 @@ async def start(assignment_id: UUID, principal: Principal = Depends(auth.princip
         deadline = attempts.deadline_for(a, row)
         if a.closed_at is not None:
             raise ApiError(409, "assignment_closed", "Педагог завершил тест")
+        if a.opens_at and now < a.opens_at:
+            raise ApiError(409, "not_open_yet", "Тест ещё не открыт")
         if deadline and now >= deadline:
             raise ApiError(409, "overdue", "Срок сдачи прошёл")
-        if len(mine) >= row.allowed_attempts:
-            raise ApiError(409, "already_submitted", "Работа уже сдана. Пройти ещё раз можно, если педагог переназначит")
+        limit = attempts.attempts_limit(a, row)
+        if limit is not None and len(mine) >= limit:
+            raise ApiError(409, "already_submitted", "Попытки закончились. Пройти ещё раз можно, если педагог переназначит")
         order = [i["task_id"] for i in a.items]
         rnd = random.SystemRandom()
         if a.settings.get("order_mode") == "random":

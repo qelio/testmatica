@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { AssignModal } from "@/components/assign-modal";
 import { ExamItemsByIds } from "@/components/exams";
 import { EMPTY_LESSON, LessonForm, PlanItems } from "@/components/plan-lesson-form";
 import { Alert, Button, Field, Spinner } from "@/components/ui";
@@ -167,8 +166,6 @@ function LessonRow({
   onAddAfter: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [assignTest, setAssignTest] = useState<string | null>(null);
-  const router = useRouter();
   const slot = plan.slots.find((s) => s.id === lesson.schedule_lesson_id);
   const homeTests = lesson.home_items.filter((x) => x.kind === "test" && x.ref_id);
   const last = n === plan.lessons.length;
@@ -233,9 +230,19 @@ function LessonRow({
                 <p className="text-xs font-medium tracking-wide text-fg-soft uppercase">На дом</p>
                 <PlanItems items={lesson.home_items} />
                 {homeTests.map((t) => (
-                  <button key={t.ref_id} onClick={() => setAssignTest(t.ref_id!)} className="mt-1 block text-sm font-medium text-brand hover:underline">
-                    Выдать «{t.title}» как ДЗ
-                  </button>
+                  <Link
+                    key={t.ref_id}
+                    href={`/dashboard/assignments/new?${new URLSearchParams({
+                      test: t.ref_id!,
+                      kind: "homework",
+                      target_type: plan.target_type,
+                      target: plan.target_id,
+                      ...(lesson.schedule_lesson_id ? { lesson: lesson.schedule_lesson_id } : {}),
+                    })}`}
+                    className="mt-1 block text-sm font-medium text-brand hover:underline"
+                  >
+                    Назначить «{t.title}» как ДЗ
+                  </Link>
                 ))}
               </div>
             </div>
@@ -267,15 +274,6 @@ function LessonRow({
           </div>
         </div>
       </div>
-      {assignTest && (
-        <AssignModal
-          testId={assignTest}
-          open
-          preset={{ targetType: plan.target_type, targetId: plan.target_id, lessonId: lesson.schedule_lesson_id ?? "" }}
-          onClose={() => setAssignTest(null)}
-          onAssigned={(a) => router.push(`/dashboard/assignments/${a.id}`)}
-        />
-      )}
     </div>
   );
 }

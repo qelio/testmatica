@@ -93,7 +93,7 @@ function TestPicker({ onPick }: { onPick: (item: PlanItem) => void }) {
         if (t) onPick({ kind: "test", ref_id: t.id, title: t.title });
       }}
     >
-      <option value="">{tests.data?.length === 0 ? "Тестов пока нет — создайте в «Задания и тесты»" : "Выберите тест"}</option>
+      <option value="">{tests.data?.length === 0 ? "Тестов пока нет — создайте в разделе «Тесты»" : "Выберите тест"}</option>
       {tests.data?.map((t) => (
         <option key={t.id} value={t.id}>
           {t.title}

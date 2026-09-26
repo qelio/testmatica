@@ -384,18 +384,32 @@ class QuizSummary(BaseModel):
 
 
 class AssignIn(BaseModel):
-    kind: Literal["homework", "live"] = "homework"
+    kind: Literal["test", "homework", "live"] = Field(
+        "test", description="Просто тест / тест на дом (к уроку) / тест на уроке (к уроку, прогресс в реальном времени)"
+    )
+    title: str | None = Field(None, max_length=200, description="Название назначения для учеников; по умолчанию — название теста")
     target_type: Literal["student", "group"]
     target_id: UUID
-    lesson_id: UUID | None = Field(None, description="Урок в расписании; нужен для оценки в журнал")
-    deadline: datetime | None = None
+    lesson_id: UUID | None = Field(None, description="Урок в расписании — для ДЗ и теста на уроке; нужен и для оценки в журнал")
+    opens_at: datetime | None = Field(None, description="Когда откроется; по умолчанию — сразу")
+    deadline: datetime | None = Field(None, description="Когда закроется; по умолчанию — не закрывается")
+    max_attempts: int | None = Field(1, ge=1, le=50, description="Сколько попыток; null — без ограничений (засчитывается лучшая)")
     grade_to_journal: bool = False
     grade_type_id: UUID | None = None
 
+    _title = field_validator("title")(_clean)
+
     @model_validator(mode="after")
-    def _journal(self) -> "AssignIn":
-        if self.deadline is not None and self.deadline.tzinfo is None:
-            raise ValueError("Дедлайн нужно передавать с часовым поясом")
+    def _rules(self) -> "AssignIn":
+        for value in (self.opens_at, self.deadline):
+            if value is not None and value.tzinfo is None:
+                raise ValueError("Время нужно передавать с часовым поясом")
+        if self.opens_at and self.deadline and self.deadline <= self.opens_at:
+            raise ValueError("Тест должен закрываться позже, чем откроется")
+        if self.kind in ("homework", "live") and self.lesson_id is None:
+            raise ValueError("Выберите урок, к которому относится тест")
+        if self.kind == "test":
+            self.lesson_id = None
         if self.grade_to_journal and (self.lesson_id is None or self.grade_type_id is None):
             raise ValueError("Для оценки в журнал выберите урок и тип оценки")
         return self
@@ -427,7 +441,8 @@ class AssignmentStudentOut(BaseModel):
 class AssignmentOut(BaseModel):
     id: UUID
     test_id: UUID
-    title: str
+    title: str = Field(description="Название назначения — его видят ученики")
+    test_title: str = Field(description="Название теста на момент назначения — для педагога")
     description: str
     kind: str
     target_type: str
@@ -436,9 +451,12 @@ class AssignmentOut(BaseModel):
     teacher_id: UUID
     teacher_name: str
     lesson_id: UUID | None
+    opens_at: datetime | None
     deadline: datetime | None
+    not_open_yet: bool
     overdue: bool
     closed: bool
+    max_attempts: int | None = Field(description="Попыток на ученика; null — без ограничений")
     settings: dict[str, Any]
     tasks_count: int
     max_score: int
@@ -448,6 +466,7 @@ class AssignmentOut(BaseModel):
     # Педагогу — сводка по ученикам, ученику — только его строка.
     students: list[AssignmentStudentOut]
     can_start: bool = Field(False, description="Ученику: можно начать новую попытку")
+    attempts_left: int | None = Field(None, description="Ученику: сколько попыток осталось; null — без ограничений")
 
 
 class AttemptTask(BaseModel):

@@ -60,6 +60,11 @@ def current_ends_at(attempt: Attempt, a: Assignment) -> datetime | None:
     return attempt.current_started_at + limit
 
 
+def attempts_limit(a: Assignment, row: AssignmentStudent) -> int | None:
+    """Сколько попыток у ученика: по настройке работы (переназначение добавляет); None — без ограничений."""
+    return None if a.max_attempts is None else max(a.max_attempts, row.allowed_attempts)
+
+
 def deadline_for(a: Assignment, row: AssignmentStudent | None) -> datetime | None:
     """Личный дедлайн (после переназначения) важнее общего."""
     return (row.deadline if row and row.deadline else None) or a.deadline
@@ -182,11 +187,18 @@ async def recompute(session: AsyncSession, attempt: Attempt, a: Assignment | Non
     else:
         attempt.percent = attempt.grade = None
     if attempt.checked and before != (attempt.checked, attempt.score, attempt.grade):
+        # Попыток может быть несколько — в итог (журнал, уведомление) идёт лучшая (решение №15).
+        await session.flush()
+        checked = (await session.execute(
+            select(Attempt).where(Attempt.assignment_id == a.id, Attempt.student_id == attempt.student_id,
+                                  Attempt.status == SUBMITTED, Attempt.checked.is_(True))
+        )).scalars().all()
+        best = max(checked, key=lambda t: (t.percent or 0, t.submitted_at or t.started_at))
         await outbox.event(
             session, "assessment.attempt.graded",
-            {"attempt_id": str(attempt.id), "assignment_id": str(a.id), "student_id": str(attempt.student_id),
-             "teacher_id": str(a.teacher_id), "title": a.title, "kind": a.kind, "score": attempt.score,
-             "max_score": attempt.max_score, "percent": attempt.percent, "grade": attempt.grade,
+            {"attempt_id": str(best.id), "assignment_id": str(a.id), "student_id": str(attempt.student_id),
+             "teacher_id": str(a.teacher_id), "title": a.title, "kind": a.kind, "score": best.score,
+             "max_score": best.max_score, "percent": best.percent, "grade": best.grade, "attempts": len(checked),
              "to_journal": a.grade_to_journal, "lesson_id": str(a.lesson_id) if a.lesson_id else None,
              "grade_type_id": str(a.grade_type_id) if a.grade_type_id else None},
         )

@@ -59,7 +59,10 @@ async def test_homework_full_cycle(client, fakes):
     bad = await client.post(f"/tests/{test['id']}/assign", json={"target_type": "group", "target_id": gid, "grade_to_journal": True},
                             headers=bearer(teacher))
     assert bad.status_code == 422
-    a = await assign(client, teacher, test, target_type="group", target_id=gid, lesson_id=lesson, grade_to_journal=True,
+    no_lesson = await client.post(f"/tests/{test['id']}/assign", json={"kind": "homework", "target_type": "group", "target_id": gid},
+                                  headers=bearer(teacher))
+    assert no_lesson.status_code == 422  # ДЗ — к уроку
+    a = await assign(client, teacher, test, kind="homework", target_type="group", target_id=gid, lesson_id=lesson, grade_to_journal=True,
                      grade_type_id=grade_type, deadline=(datetime.now(UTC) + timedelta(days=2)).isoformat())
     assert a["target_title"] == "9Б" and len(a["students"]) == 2 and a["tasks_count"] == 4
     created = (await outbox("assessment.assignment.created"))[0]["data"]
@@ -191,7 +194,9 @@ async def test_live_test_close(client, fakes):
     tasks = await make_tasks(client, teacher)
     test = await make_test(client, teacher, tasks[:2], order_mode="random")
     gid = await group_of(fakes, teacher, a1, a2)
-    a = await assign(client, teacher, test, kind="live", target_type="group", target_id=gid)
+    lesson = str(uuid4())
+    fakes.lessons[lesson] = str(teacher)
+    a = await assign(client, teacher, test, kind="live", target_type="group", target_id=gid, lesson_id=lesson)
     attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(a1))).json()
     await answer(client, attempt, tasks[1], a1, text="3.5")
     closed = (await client.post(f"/assignments/{a['id']}/close", headers=bearer(teacher))).json()
@@ -220,3 +225,60 @@ async def test_test_editing_rules(client, fakes):
     assert (await client.get(f"/tests/{test['id']}", headers=bearer(other))).status_code == 404
     listed = (await client.get("/tests", headers=bearer(teacher))).json()
     assert listed[0]["assignments_count"] == 1 and listed[0]["tasks_count"] == 1
+
+
+
+async def test_opens_at_and_retakes_best_counts(client, fakes):
+    """Тест откроется позже; несколько попыток — в журнал уходит лучшая."""
+    teacher, pupil = uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:2])
+    await link(teacher, pupil)
+    lesson = str(uuid4())
+    fakes.lessons[lesson] = str(teacher)
+    a = await assign(client, teacher, test, kind="homework", target_type="student", target_id=str(pupil), lesson_id=lesson,
+                     opens_at=(datetime.now(UTC) + timedelta(hours=1)).isoformat(), max_attempts=2,
+                     grade_to_journal=True, grade_type_id=str(uuid4()))
+    view = (await client.get(f"/assignments/{a['id']}", headers=student(pupil))).json()
+    assert view["not_open_yet"] and not view["can_start"] and view["attempts_left"] == 2
+    assert (await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))).json()["error"]["code"] == "not_open_yet"
+    async with db.sessionmaker() as s, s.begin():
+        await s.execute(update(Assignment).where(Assignment.id == UUID(a["id"])).values(opens_at=datetime.now(UTC) - timedelta(minutes=1)))
+
+    right = next(o["id"] for o in tasks[0]["options"] if o["is_correct"])
+    first = (await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))).json()
+    await answer(client, first, tasks[0], pupil, option_ids=[right])
+    await answer(client, first, tasks[1], pupil, text="3.5")
+    await client.post(f"/attempts/{first['id']}/submit", headers=student(pupil))  # 100%
+    view = (await client.get(f"/assignments/{a['id']}", headers=student(pupil))).json()
+    assert view["can_start"] and view["attempts_left"] == 1
+
+    second = (await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))).json()
+    assert second["number"] == 2
+    await client.post(f"/attempts/{second['id']}/submit", headers=student(pupil))  # пусто — 0%
+    graded = [e["data"] for e in await outbox("assessment.attempt.graded")]
+    assert [g["percent"] for g in graded] == [100.0, 100.0]  # вторая попытка хуже — в итоге остаётся лучшая
+    assert graded[-1]["attempt_id"] == first["id"] and graded[-1]["attempts"] == 2
+    view = (await client.get(f"/assignments/{a['id']}", headers=student(pupil))).json()
+    assert not view["can_start"] and view["attempts_left"] == 0
+    assert (await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))).json()["error"]["code"] == "already_submitted"
+
+
+async def test_plain_test_unlimited_attempts(client, fakes):
+    teacher, pupil = uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:1])
+    await link(teacher, pupil)
+    a = await assign(client, teacher, test, target_type="student", target_id=str(pupil), max_attempts=None,
+                     lesson_id=str(uuid4()), title="  Тренировка   перед контрольной ")
+    assert a["kind"] == "test" and a["lesson_id"] is None and a["max_attempts"] is None  # у просто теста урока нет
+    # Своё название назначения; название теста сохраняется отдельно
+    assert a["title"] == "Тренировка перед контрольной" and a["test_title"] == test["title"]
+    same = await assign(client, teacher, test, target_type="student", target_id=str(pupil), title="   ")
+    assert same["title"] == test["title"]
+    for n in range(1, 4):
+        t = (await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))).json()
+        assert t["number"] == n
+        await client.post(f"/attempts/{t['id']}/submit", headers=student(pupil))
+    view = (await client.get(f"/assignments/{a['id']}", headers=student(pupil))).json()
+    assert view["can_start"] and view["attempts_left"] is None

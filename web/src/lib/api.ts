@@ -920,18 +920,25 @@ export type AttemptBrief = {
 export type Assignment = {
   id: string;
   test_id: string;
+  /** Название назначения — его видят ученики. */
   title: string;
+  /** Название теста на момент назначения — для педагога. */
+  test_title: string;
   description: string;
-  kind: "homework" | "live";
+  kind: AssignmentKind;
   target_type: "student" | "group";
   target_id: string;
   target_title: string;
   teacher_id: string;
   teacher_name: string;
   lesson_id: string | null;
+  opens_at: string | null;
   deadline: string | null;
+  not_open_yet: boolean;
   overdue: boolean;
   closed: boolean;
+  max_attempts: number | null;
+  attempts_left: number | null;
   settings: QuizSettings;
   tasks_count: number;
   max_score: number;
@@ -941,8 +948,12 @@ export type Assignment = {
   students: { student_id: string; full_name: string; allowed_attempts: number; attempts: AttemptBrief[] }[];
   can_start: boolean;
 };
+export type AssignmentKind = "test" | "homework" | "live";
 export type AssignInput = {
-  kind: "homework" | "live";
+  kind: AssignmentKind;
+  title?: string | null;
+  opens_at?: string | null;
+  max_attempts?: number | null;
   target_type: "student" | "group";
   target_id: string;
   lesson_id?: string | null;
