@@ -129,3 +129,20 @@ def fake_subjects():
     )
     subjects.reset()
 
+
+
+BASIC_TEACHERS: set[str] = set()
+
+
+@pytest.fixture(autouse=True)
+def fake_billing():
+    """Тарифы billing: по умолчанию бесплатный, «Базовый» — у педагогов из BASIC_TEACHERS."""
+    from app.deps import billing, plans
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        ids = json.loads(request.content)["user_ids"]
+        return httpx.Response(200, json={u: "basic" if u in BASIC_TEACHERS else "free" for u in ids})
+
+    billing.transport = httpx.MockTransport(handle)
+    plans.reset()
+    BASIC_TEACHERS.clear()

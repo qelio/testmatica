@@ -17,6 +17,7 @@ runtime.consumer("moderation.identity", [(EVENTS_EXCHANGE, "identity.user.*")], 
 runtime.consumer("moderation.content", [(EVENTS_EXCHANGE, "content.course.*")], handlers.on_content_event)
 runtime.consumer("moderation.assessment", [(EVENTS_EXCHANGE, "assessment.task.*")], handlers.on_assessment_event)
 runtime.consumer("moderation.academic", [(EVENTS_EXCHANGE, "academic.plan_template.*")], handlers.on_academic_event)
+runtime.consumer("moderation.billing", [(EVENTS_EXCHANGE, "billing.subscription.changed")], handlers.on_billing_event)
 runtime.consumer("moderation.marketplace", [(EVENTS_EXCHANGE, "marketplace.education.*"), (EVENTS_EXCHANGE, "marketplace.review.*")], handlers.on_marketplace_event)
 
 

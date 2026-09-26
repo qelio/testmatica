@@ -1330,3 +1330,40 @@ export type LessonRequest = {
   responses: DealResponse[];
 };
 export type Negotiation = { response: DealResponse; request: LessonRequest; role: "student" | "tutor"; can_agree: boolean };
+
+// ---- billing (подписка педагога) ----
+
+const BL = "/api/billing";
+
+export type BillingPayment = {
+  id: string;
+  purpose: string;
+  description: string;
+  amount_rub: number;
+  status: "pending" | "succeeded" | "canceled";
+  recurring: boolean;
+  confirmation_url: string | null;
+  error: string | null;
+  created_at: string;
+  paid_at: string | null;
+};
+export type SubscriptionState = {
+  plan: "free" | "basic";
+  period_end: string | null;
+  auto_renew: boolean;
+  payment_method_title: string | null;
+  price_rub: number;
+  pending_payment: BillingPayment | null;
+};
+
+export const billing = {
+  subscription: () => api<SubscriptionState>(`${BL}/subscription`),
+  checkout: (autoRenew: boolean) => api<BillingPayment>(`${BL}/subscription/checkout`, { method: "POST", body: { auto_renew: autoRenew } }),
+  setAutoRenew: (enabled: boolean) => api<SubscriptionState>(`${BL}/subscription/auto-renew`, { method: "PUT", body: { enabled } }),
+  forgetCard: () => api<SubscriptionState>(`${BL}/subscription/payment-method`, { method: "DELETE" }),
+  payments: () => api<BillingPayment[]>(`${BL}/payments`),
+  payment: (id: string) => api<BillingPayment>(`${BL}/payments/${id}`),
+  /** Только для поддельного провайдера: тестовая страница оплаты сообщает результат. */
+  fakeResult: (id: string, outcome: "success" | "cancel", cardLast4: string) =>
+    api<BillingPayment>(`${BL}/fake-provider/payments/${id}`, { method: "POST", body: { outcome, card_last4: cardLast4 } }),
+};

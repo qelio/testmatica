@@ -102,7 +102,7 @@ flowchart LR
 | `billing.lesson.paid` / `refunded` | billing | schedule, video (доступ к звонку), notification |
 | `billing.dispute.opened` / `resolved` | billing | moderation, notification |
 | `billing.payout.completed` | billing | notification |
-| `billing.subscription.changed` | billing | все, кто проверяет лимиты тарифа |
+| `billing.subscription.changed` / `expiring`, `billing.payment.failed` | billing | moderation (приоритет), notification; classroom и video спрашивают тариф через `/internal/plans` |
 | `video.recording.ready` | video | notification |
 | `video.proctoring.tab_switched` | video | WebSocket педагогу (через notification) |
 | `*.*.*` (всё) | — | audit |
@@ -219,6 +219,14 @@ flowchart LR
 - `group_enrollments` — offer_id, student_id, status, unpaid_streak
 
 ### billing
+Сделано (подписка педагога, провайдер пока поддельный):
+- `subscriptions` — user_id, plan (basic), period_start / period_end (тариф «Базовый» действует, пока period_end в будущем; иначе — бесплатный), auto_renew, payment_method_id / payment_method_title (сохранённый у провайдера способ оплаты), renew_failures, reminded_at, expired_at
+- `payments` — user_id, purpose (subscription), amount_kop, status (pending / succeeded / canceled), provider, provider_payment_id, confirmation_url (страница оплаты), recurring (автопродление), save_method
+- Провайдеры — интерфейс `create` (платёж со страницей оплаты) и `charge` (списание сохранённым способом). Поддельный (`PAYMENT_PROVIDER=fake`): страница оплаты — `/dashboard/pay/<id>` на сайте, результат — `POST /fake-provider/payments/<id>` (карта •• 0002 — отказ). ЮKassa подключится тем же интерфейсом
+- Фоновая задача раз в 5 минут: автопродление за сутки до конца (после неудачи — не чаще раза в 6 часов, после 3 неудач автопродление выключается), напоминание за 3 дня без автопродления, возврат на бесплатный тариф
+- События: `billing.subscription.changed` (reason: purchased / renewed / expired / auto_renew_on / auto_renew_off), `billing.subscription.expiring`, `billing.payment.succeeded|failed`
+- Тариф для лимитов: `POST /internal/plans {user_ids}` → free / basic; в сервисах — `testmatica_common.plans.Plans` (кэшируется только «Базовый», коротко). Лимиты: classroom — до 3 активных групп; video — 40 минут на бесплатных занятиях, записи 3 шт. / 14 дней (на «Базовом» — без лимитов, 30 дней; при недоступном billing — как бесплатный); moderation — реплика `subscribers`, их заявки первыми
+Дальше (оплата занятий, этап 4.4):
 - `accounts` — id, owner_id, kind (student_balance / teacher_balance / escrow / platform_revenue / provider_clearing), currency
 - `ledger_entries` — id, transaction_id, account_id, amount (дебет/кредит), created_at — **двойная запись**: сумма по транзакции всегда 0
 - `transactions` — id, kind (topup / lesson_payment / escrow_release / refund / penalty / commission / payout / subscription), status, lesson_id, idempotency_key
@@ -229,7 +237,6 @@ flowchart LR
 - `disputes` — id, lesson_id, student_id, status, resolution, resolved_by
 - `verifications` — teacher_id, status (none / pending / approved / rejected), inn, legal_status, bank_details (зашифровано), documents, reject_comment
 - `receipts` — transaction_id, source (fns_api / manual), media_id
-- `subscriptions` — teacher_id, plan (free / basic), status, current_period_end
 - Балансы не хранятся «числом», а считаются по `ledger_entries` (с кэшированным снимком). Все операции — в одной транзакции с блокировкой счёта.
 
 ### chat

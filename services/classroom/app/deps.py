@@ -2,6 +2,7 @@ from testmatica_common.auth import Auth, TokenVerifier
 from testmatica_common.db import Database
 from testmatica_common.internal import InternalClient
 from testmatica_common.messaging import Outbox
+from testmatica_common.plans import Plans
 from testmatica_common.subjects import Subjects
 
 from .config import settings
@@ -12,3 +13,5 @@ outbox = Outbox(producer=settings.service_name)
 identity = InternalClient(settings.identity_url, settings.internal_token)
 content = InternalClient(settings.content_url, settings.internal_token)
 subjects = Subjects(content)
+billing = InternalClient(settings.billing_url, settings.internal_token)
+plans = Plans(billing)

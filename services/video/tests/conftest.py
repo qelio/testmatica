@@ -13,7 +13,7 @@ from testmatica_common.testing import TestTokens  # noqa: E402
 
 from app import storage  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.deps import auth, db, livekit, schedule  # noqa: E402
+from app.deps import auth, billing, db, livekit, plans, schedule  # noqa: E402
 from app.lk import LiveKitError, WebhookEvent  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
@@ -112,6 +112,23 @@ def s3(monkeypatch) -> list[str]:
     monkeypatch.setattr(storage, "delete", delete)
     monkeypatch.setattr(storage, "url", url)
     return deleted
+
+
+BASIC_TEACHERS: set[str] = set()
+
+
+@pytest.fixture(autouse=True)
+def fake_billing():
+    """Тарифы: по умолчанию бесплатный, «Базовый» — у педагогов из BASIC_TEACHERS."""
+    import json
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        ids = json.loads(request.content)["user_ids"]
+        return httpx.Response(200, json={u: "basic" if u in BASIC_TEACHERS else "free" for u in ids})
+
+    billing.transport = httpx.MockTransport(handle)
+    plans.reset()
+    BASIC_TEACHERS.clear()
 
 
 @pytest.fixture(autouse=True)

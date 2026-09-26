@@ -1,7 +1,9 @@
 """Обработчики сообщений из RabbitMQ."""
 
 import logging
+from datetime import datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -365,3 +367,38 @@ def _review_notification(session: AsyncSession, t: str, d: dict) -> None:
         title = "Спор по отзыву решён: отзыв удалён" if d["upheld"] else "Спор по отзыву решён: отзыв оставлен"
         add(Notification(user_id=tutor, kind="review_dispute_resolved", title=title, body=comment,
                          payload=to_tutor | {"conversation_id": d["dispute_id"]}))
+
+
+def _date(iso: str) -> str:
+    """Дата окончания периода для текста уведомления (по Москве — часовой пояс педагога здесь неизвестен)."""
+    d = datetime.fromisoformat(iso).astimezone(ZoneInfo("Europe/Moscow"))
+    months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+    return f"{d.day} {months[d.month - 1]}"
+
+
+async def on_billing_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Подписка педагога: оплачена, продлена, скоро закончится, закончилась, не удалось продлить."""
+    d, t = envelope.data, envelope.type
+    user = UUID(d["user_id"])
+    link = {"href": "/dashboard/subscription"}
+    if t == "billing.subscription.changed":
+        reason = d.get("reason")
+        if reason == "purchased":
+            session.add(Notification(user_id=user, kind="subscription_started", title="Тариф «Базовый» подключён",
+                                     body=f"Действует до {_date(d['period_end'])}. Все ограничения бесплатного тарифа сняты.",
+                                     payload=link))
+        elif reason == "renewed":
+            session.add(Notification(user_id=user, kind="subscription_renewed", title="Подписка продлена",
+                                     body=f"Тариф «Базовый» действует до {_date(d['period_end'])}.", payload=link))
+        elif reason == "expired":
+            session.add(Notification(user_id=user, kind="subscription_expired", title="Подписка закончилась",
+                                     body="Снова действуют ограничения бесплатного тарифа. Продлить можно в разделе «Тариф».",
+                                     payload=link))
+    elif t == "billing.subscription.expiring":
+        session.add(Notification(user_id=user, kind="subscription_expiring", title="Подписка скоро закончится",
+                                 body=f"Тариф «Базовый» действует до {_date(d['period_end'])}, автопродление выключено.",
+                                 payload=link))
+    elif t == "billing.payment.failed" and d.get("recurring"):
+        session.add(Notification(user_id=user, kind="subscription_renew_failed", title="Не удалось продлить подписку",
+                                 body=f"{d.get('error') or 'Оплата не прошла'}. Попробуем ещё раз; можно оплатить вручную.",
+                                 payload=link))

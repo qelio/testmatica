@@ -319,3 +319,16 @@ async def test_review_notifications(client):
         "dispute_id": str(uuid4()), "upheld": False, "comment": "Отзыв не нарушает правил"}))
     item = (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"][0]
     assert (item["title"], item["body"]) == ("Спор по отзыву решён: отзыв оставлен", "Отзыв не нарушает правил")
+
+
+async def test_subscription_notifications(client):
+    tutor = uuid4()
+    c = consumer("notification.billing", handlers.on_billing_event)
+    await c.process(make_envelope("billing.subscription.changed", {
+        "user_id": str(tutor), "plan": "basic", "period_end": "2026-10-26T12:00:00+00:00", "reason": "purchased", "auto_renew": True}))
+    await c.process(make_envelope("billing.payment.failed", {
+        "payment_id": str(uuid4()), "user_id": str(tutor), "purpose": "subscription", "recurring": False, "error": "Отменено"}))
+    items = (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"]
+    assert [(i["title"], i["body"]) for i in items] == [
+        ("Тариф «Базовый» подключён", "Действует до 26 октября. Все ограничения бесплатного тарифа сняты.")]
+    assert items[0]["payload"]["href"] == "/dashboard/subscription"

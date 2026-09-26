@@ -262,3 +262,21 @@ async def test_group_subject_from_directory(client, teacher):
     assert ok.status_code == 201
     upd = await client.patch(f"/groups/{ok.json()['id']}", json={"subject": "Хиромантия"}, headers=bearer(teacher))
     assert upd.json()["error"]["code"] == "unknown_subject"
+
+
+async def test_free_plan_group_limit(client):
+    from .conftest import BASIC_TEACHERS
+
+    teacher = uuid4()
+    ids = [(await create_group(client, teacher, f"Группа {n}"))["id"] for n in range(3)]
+    over = await client.post("/groups", json={"title": "Четвёртая", "kind": "group"}, headers=bearer(teacher))
+    assert over.status_code == 403 and over.json()["error"]["code"] == "plan_limit"
+    # Архивная группа не считается, но вернуть её из архива сверх лимита нельзя.
+    await client.post(f"/groups/{ids[0]}/archive", headers=bearer(teacher))
+    await create_group(client, teacher, "Четвёртая")
+    restore = await client.post(f"/groups/{ids[0]}/restore", headers=bearer(teacher))
+    assert restore.json()["error"]["code"] == "plan_limit"
+    # На «Базовом» ограничения нет.
+    BASIC_TEACHERS.add(str(teacher))
+    assert (await client.post(f"/groups/{ids[0]}/restore", headers=bearer(teacher))).status_code == 200
+    await create_group(client, teacher, "Пятая")

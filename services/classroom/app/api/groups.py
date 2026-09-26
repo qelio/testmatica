@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_TEACHER, Principal
+from testmatica_common.errors import ApiError
+from testmatica_common.plans import BASIC
 
 from .. import logic, people
-from ..deps import auth, db, outbox, subjects
+from ..config import settings
+from ..deps import auth, db, outbox, plans, subjects
 from ..models import Group, GroupMember
 from ..schemas import AddMember, GroupCreate, GroupDetail, GroupOut, GroupUpdate, MemberOut
 
@@ -54,11 +57,25 @@ async def list_groups(
     return [_out(g, n) for g, n in (await session.execute(query)).all()]
 
 
+async def _check_group_limit(session: AsyncSession, teacher_id: UUID) -> None:
+    """Бесплатный тариф — до 3 активных классов и групп; архивные не считаются. На «Базовом» — без ограничений."""
+    active = await session.scalar(
+        select(func.count()).select_from(Group).where(Group.teacher_id == teacher_id, Group.archived_at.is_(None))
+    )
+    if active < settings.free_max_active_groups:
+        return
+    if await plans.of(teacher_id) == BASIC:
+        return
+    raise ApiError(403, "plan_limit", f"На бесплатном тарифе — до {settings.free_max_active_groups} активных классов и групп. "
+                   "Отправьте ненужную группу в архив или подключите тариф «Базовый».", {"limit": settings.free_max_active_groups})
+
+
 @router.post("", response_model=GroupOut, status_code=201)
 async def create_group(
     body: GroupCreate, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> GroupOut:
     await subjects.check(body.subject)  # предмет — из справочника модераторов
+    await _check_group_limit(session, principal.user_id)
     group = Group(
         teacher_id=principal.user_id,
         paid=body.paid,
@@ -158,6 +175,7 @@ async def restore_group(
 ) -> GroupOut:
     group = await logic.owned_group(session, group_id, principal.user_id)
     if group.archived_at is not None:
+        await _check_group_limit(session, principal.user_id)
         group.archived_at = None
         await outbox.event(
             session,
