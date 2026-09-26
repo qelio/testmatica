@@ -5,6 +5,7 @@ class Settings(CommonSettings):
     service_name: str = "video"
 
     schedule_url: str = "http://schedule:8000"
+    assessment_url: str = "http://assessment:8000"
 
     # LiveKit: внутренний адрес API и адрес, который получает браузер.
     livekit_url: str = "http://livekit:7880"
@@ -33,6 +34,8 @@ class Settings(CommonSettings):
     free_recording_days: int = 14
     # Тариф «Базовый»: без лимита времени и количества записей, хранение 30 дней.
     basic_recording_days: int = 30
+    # Прокторинг: запись экрана хранится 2 недели (ТЗ, раздел 7).
+    proctor_recording_days: int = 14
     # Ёмкость комнат (ТЗ, раздел 7).
     individual_capacity: int = 2
     group_capacity: int = 16

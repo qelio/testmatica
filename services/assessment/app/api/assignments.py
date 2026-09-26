@@ -9,9 +9,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
+from testmatica_common.plans import BASIC
 
 from .. import access, attempts, views
-from ..deps import auth, classroom, db, media, outbox, schedule
+from ..deps import auth, classroom, db, media, outbox, plans, schedule
 from ..models import (
     CHECKING,
     CHOICE,
@@ -19,11 +20,13 @@ from ..models import (
     IN_PROGRESS,
     LIVE,
     LONG,
+    PROCTOR_ALERTS,
     SUBMITTED,
     Assignment,
     AssignmentStudent,
     Attempt,
     AttemptAnswer,
+    ProctorEvent,
     Submission,
     Task,
 )
@@ -36,6 +39,9 @@ from ..schemas import (
     AttemptTask,
     DraftIn,
     FileRef,
+    ProctorEventIn,
+    ProctorEventOut,
+    StartIn,
     SubmissionOut,
 )
 from .quizzes import own_test
@@ -70,6 +76,8 @@ async def assign(
         await schedule.get(f"/internal/lessons/{body.lesson_id}", params={"teacher_id": str(principal.user_id)})
     if body.deadline and body.deadline <= datetime.now(UTC):
         raise ApiError(422, "deadline_past", "Дедлайн уже прошёл")
+    if body.proctoring and await plans.of(principal.user_id) != BASIC:
+        raise ApiError(403, "plan_required", "Прокторинг доступен на тарифе «Базовый»")
 
     a = Assignment(
         test_id=test.id, teacher_id=principal.user_id, title=body.title or test.title, test_title=test.title,
@@ -80,6 +88,7 @@ async def assign(
                   "time_limit_s": test.time_limit_s},
         items=[{"task_id": str(i.task_id), "points": i.points} for i in test.items],
         grade_to_journal=body.grade_to_journal, grade_type_id=body.grade_type_id if body.grade_to_journal else None,
+        proctoring=body.proctoring,
         students=[AssignmentStudent(student_id=s, allowed_attempts=body.max_attempts or 1) for s in student_ids],
     )
     session.add(a)
@@ -131,12 +140,19 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
     all_attempts = (await session.execute(query)).scalars().all()
     await _sync_open(session, a, list(all_attempts))
     answered = await _answered(session, [t.id for t in all_attempts])
+    alerts: dict[UUID, int] = {}
+    if a.proctoring and teacher_view:
+        alerts = dict((await session.execute(
+            select(ProctorEvent.student_id, func.count()).where(ProctorEvent.assignment_id == a.id, ProctorEvent.kind.in_(PROCTOR_ALERTS))
+            .group_by(ProctorEvent.student_id)
+        )).all())
     names = await views.names(session, [r.student_id for r in rows] + [a.teacher_id])
     students = sorted(
         (
             AssignmentStudentOut(
                 student_id=r.student_id, full_name=names.get(r.student_id, "Ученик"), allowed_attempts=r.allowed_attempts,
                 attempts=[_brief(t, answered.get(t.id, 0)) for t in all_attempts if t.student_id == r.student_id],
+                proctor_alerts=alerts.get(r.student_id, 0),
             )
             for r in rows
         ),
@@ -155,7 +171,8 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
             and not any(t.status == IN_PROGRESS for t in mine) and (limit is None or len(mine) < limit)
         )
     return AssignmentOut(
-        id=a.id, test_id=a.test_id, title=a.title, test_title=a.test_title, description=a.description, kind=a.kind, target_type=a.target_type,
+        id=a.id, test_id=a.test_id, title=a.title, test_title=a.test_title, description=a.description, kind=a.kind,
+        proctoring=a.proctoring, target_type=a.target_type,
         target_id=a.target_id, target_title=a.target_title, teacher_id=a.teacher_id,
         teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, opens_at=a.opens_at,
         deadline=deadline, not_open_yet=not_open_yet, overdue=bool(deadline and now >= deadline), closed=a.closed_at is not None,
@@ -265,8 +282,12 @@ async def close(assignment_id: UUID, principal: Principal = Depends(teacher), se
 
 
 @router.post("/assignments/{assignment_id}/start", response_model=AttemptOut)
-async def start(assignment_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> AttemptOut:
-    """Начать попытку (или вернуться к начатой). Порядок заданий и вариантов — свой у каждого ученика."""
+async def start(
+    assignment_id: UUID, body: StartIn | None = None, principal: Principal = Depends(auth.principal),
+    session: AsyncSession = Depends(db.session),
+) -> AttemptOut:
+    """Начать попытку (или вернуться к начатой). Порядок заданий и вариантов — свой у каждого ученика.
+    С прокторингом новая попытка начинается только с согласием ученика на мониторинг."""
     a, is_teacher = await _assignment(session, assignment_id, principal)
     if is_teacher:
         raise ApiError(403, "forbidden", "Тест проходят ученики")
@@ -288,6 +309,8 @@ async def start(assignment_id: UUID, principal: Principal = Depends(auth.princip
         limit = attempts.attempts_limit(a, row)
         if limit is not None and len(mine) >= limit:
             raise ApiError(409, "already_submitted", "Попытки закончились. Пройти ещё раз можно, если педагог переназначит")
+        if a.proctoring and not (body and body.consent):
+            raise ApiError(409, "consent_required", "Тест с прокторингом: нужно согласие на мониторинг экрана")
         order = [i["task_id"] for i in a.items]
         rnd = random.SystemRandom()
         if a.settings.get("order_mode") == "random":
@@ -305,9 +328,12 @@ async def start(assignment_id: UUID, principal: Principal = Depends(auth.princip
             ends_at=now + timedelta(seconds=limit) if a.settings.get("time_mode") == "total" else None,
             task_order=order, option_orders=option_orders,
             current_started_at=now if a.settings.get("time_mode") == "per_task" else None,
+            proctor_consent_at=now if a.proctoring else None,
         )
         session.add(current)
         await session.flush()
+        if a.proctoring:
+            session.add(ProctorEvent(attempt_id=current.id, assignment_id=a.id, student_id=principal.user_id, kind="consent", at=now))
         await outbox.event(
             session, "assessment.attempt.started",
             {"attempt_id": str(current.id), "assignment_id": str(a.id), "student_id": str(principal.user_id),
@@ -368,7 +394,7 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
         settings=a.settings, started_at=t.started_at, ends_at=t.ends_at, current_index=t.current_index,
         current_ends_at=attempts.current_ends_at(t, a) if not submitted else None, submitted_at=t.submitted_at,
         auto_submitted=t.auto_submitted, score=t.score if t.checked or teacher_view else None, max_score=t.max_score,
-        percent=t.percent, grade=t.grade, checked=t.checked, server_time=datetime.now(UTC), tasks=out,
+        percent=t.percent, grade=t.grade, checked=t.checked, server_time=datetime.now(UTC), proctoring=a.proctoring, tasks=out,
     )
 
 
@@ -477,3 +503,33 @@ async def recheck(submission_id: UUID, principal: Principal = Depends(teacher), 
                          actor_id=principal.user_id)
     await session.commit()
     return views.submission_out(sub, with_log=True)
+
+
+# ---------- прокторинг ----------
+
+MAX_PROCTOR_EVENTS = 1000  # на попытку — защита от засорения журнала
+
+
+@router.post("/attempts/{attempt_id}/proctor-events", status_code=204)
+async def proctor_event(
+    attempt_id: UUID, body: ProctorEventIn, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)
+) -> None:
+    """Страница теста сообщает о событиях: показ экрана, смена вкладки, камера. Педагог видит их сразу — через комнату
+    прокторинга, а здесь они сохраняются для разбора после теста."""
+    t, a, is_teacher = await _attempt(session, attempt_id, principal)
+    if is_teacher or not a.proctoring:
+        raise ApiError(404, "attempt_not_found", "Попытка не найдена")
+    if t.status != IN_PROGRESS:
+        return
+    count = await session.scalar(select(func.count()).select_from(ProctorEvent).where(ProctorEvent.attempt_id == t.id))
+    if count >= MAX_PROCTOR_EVENTS:
+        return
+    session.add(ProctorEvent(attempt_id=t.id, assignment_id=a.id, student_id=t.student_id, kind=body.kind))
+    await session.commit()
+
+
+@router.get("/attempts/{attempt_id}/proctor-events", response_model=list[ProctorEventOut])
+async def proctor_events(attempt_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> list[ProctorEventOut]:
+    t, _, _ = await _attempt(session, attempt_id, principal)
+    rows = (await session.execute(select(ProctorEvent).where(ProctorEvent.attempt_id == t.id).order_by(ProctorEvent.at))).scalars()
+    return [ProctorEventOut(kind=e.kind, at=e.at) for e in rows]

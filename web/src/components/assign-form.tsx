@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { Alert, Button, Field, Select } from "@/components/ui";
-import { academic, type Assignment, type AssignmentKind, assessment, classroom, schedule } from "@/lib/api";
+import { academic, type Assignment, type AssignmentKind, assessment, billing, classroom, schedule } from "@/lib/api";
 import { fmtDateTime, fromInputs } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -53,6 +54,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
     return schedule.lessons(new Date(now - 30 * 864e5), new Date(now + 60 * 864e5));
   }, []);
   const gradeTypes = useLoad(() => academic.gradeTypes(), []);
+  const plan = useLoad(async () => (await billing.subscription()).plan, []);
 
   const [testId, setTestId] = useState(preset.testId ?? "");
   const [title, setTitle] = useState("");
@@ -66,6 +68,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
   const [closeTime, setCloseTime] = useState("20:00");
   const [attempts, setAttempts] = useState("1");
   const [toJournal, setToJournal] = useState(false);
+  const [proctoring, setProctoring] = useState(false);
   const [gradeTypeId, setGradeTypeId] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -95,6 +98,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
           max_attempts: attempts ? Number(attempts) : null,
           grade_to_journal: toJournal && !!lesson,
           grade_type_id: toJournal && lesson ? gradeTypeId || null : null,
+          proctoring,
         }),
       );
     } catch (err) {
@@ -239,6 +243,33 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
           ))}
         </Select>
       )}
+
+      <label className={`flex items-start gap-3 ${plan.data === "basic" ? "" : "opacity-60"}`}>
+        <input
+          type="checkbox"
+          checked={proctoring}
+          disabled={plan.data !== "basic"}
+          onChange={(e) => setProctoring(e.target.checked)}
+          className="mt-1 h-4 w-4 accent-brand"
+        />
+        <span className="text-sm">
+          <span className="font-medium">Прокторинг</span>
+          <span className="block text-fg-soft">
+            Ученик соглашается на мониторинг и показывает весь экран; вы видите экраны всех, сигналы о смене вкладки и можете включить
+            камеру. Экран записывается, запись хранится 2 недели.
+            {plan.data && plan.data !== "basic" && (
+              <>
+                {" "}
+                Доступно на тарифе{" "}
+                <Link href="/dashboard/subscription" className="text-brand hover:underline">
+                  «Базовый»
+                </Link>
+                .
+              </>
+            )}
+          </span>
+        </span>
+      </label>
 
       <Button type="submit" loading={busy} disabled={!testId || !targetId || (withLesson && !lessonId)} className="w-full">
         {kind === "live" && !openDate ? "Запустить тест" : "Назначить"}

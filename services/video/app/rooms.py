@@ -8,7 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import storage
+from . import proctoring, storage
 from .config import settings
 from testmatica_common.plans import BASIC, FREE
 
@@ -67,7 +67,11 @@ def _user_id(identity: str | None) -> UUID | None:
 async def on_webhook(session: AsyncSession, ev: WebhookEvent) -> None:
     now = datetime.now(UTC)
     if ev.event.startswith("egress_"):
-        await _on_egress(session, ev, now)
+        if not await proctoring.on_egress(session, ev, now):
+            await _on_egress(session, ev, now)
+        return
+    if ev.room and ev.room.startswith(proctoring.PREFIX):
+        await proctoring.on_webhook(session, ev)
         return
     if not ev.room or not ev.room.startswith("lesson-"):
         return
@@ -165,3 +169,4 @@ async def enforce_limits() -> None:
         )).scalars().all()
         for rec in old:
             await expire(session, rec)
+        await proctoring.expire_old(session, now)
