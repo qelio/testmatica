@@ -134,3 +134,22 @@ async def test_plan_from_scratch_and_save_as_template(client, world):
     assert t["title"] == "Подготовка к ОГЭ" and [x["topic"] for x in t["lessons"]] == ["Задание 1", "Задание 2"]
     # Чужого ученика — нельзя.
     assert (await client.post("/plans", json={"target_type": "student", "target_id": str(uuid4())}, headers=bearer(teacher))).status_code == 404
+
+
+async def test_admin_removes_template(client):
+    methodist, teacher, boss = uuid4(), uuid4(), uuid4()
+    t = await make_template(client, methodist, roles=("moderator",))
+    published = (await client.post(f"/plan-templates/{t['id']}/submit", headers=bearer(methodist, ("moderator",)))).json()
+    assert published["status"] == "published"
+    assert (await client.post(f"/admin/plan-templates/{t['id']}/remove", json={"reason": "Устарел"},
+                              headers=bearer(methodist, ("moderator",)))).status_code == 403
+    removed = (await client.post(f"/admin/plan-templates/{t['id']}/remove", json={"reason": "Устарел"}, headers=bearer(boss, ("admin",)))).json()
+    assert removed["status"] == "removed" and removed["review_comment"] == "Устарел"
+    assert (await outbox("academic.plan_template.removed"))[0]["data"]["reason"] == "Устарел"
+    # Из публичной библиотеки пропал, копию сделать нельзя.
+    public = (await client.get("/plan-templates", params={"scope": "public"}, headers=bearer(teacher))).json()
+    assert all(x["id"] != t["id"] for x in public)
+    assert (await client.post(f"/plan-templates/{t['id']}/copy", headers=bearer(teacher))).status_code == 404
+    assert (await client.post(f"/plan-templates/{t['id']}/copy", headers=bearer(methodist))).json()["error"]["code"] == "template_removed"
+    back = (await client.post(f"/admin/plan-templates/{t['id']}/restore", headers=bearer(boss, ("admin",)))).json()
+    assert back["status"] == "published"  # отмена — прежний статус, снова в библиотеке

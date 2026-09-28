@@ -455,7 +455,7 @@ export type PlanLesson = PlanLessonInput & {
   schedule_lesson_id: string | null;
   done: boolean;
 };
-export type TemplateStatus = "private" | "pending" | "published" | "rejected";
+export type TemplateStatus = "private" | "pending" | "published" | "rejected" | "removed";
 export type PlanTemplateSummary = {
   id: string;
   title: string;
@@ -661,7 +661,7 @@ export function fmtSize(bytes: number): string {
 
 export type SubjectRef = { id: string; name: string; hidden?: boolean };
 
-export type CourseStatus = "private" | "pending" | "published" | "rejected";
+export type CourseStatus = "private" | "pending" | "published" | "rejected" | "removed";
 
 export type CourseSummary = {
   id: string;
@@ -1241,8 +1241,20 @@ export type EducationDoc = {
   filename: string | null;
   file_url: string | null;
 };
-export type TutorPublic = TutorCard & { about: string; published: boolean; share_url: string; education: EducationDoc[] };
-export type MyTutorProfile = { profile: TutorPublic; photo_file_id: string | null; missing: string[]; education: EducationDoc[] };
+export type TutorPublic = TutorCard & {
+  about: string;
+  published: boolean;
+  share_url: string;
+  education: EducationDoc[];
+  blocked_reason?: string | null;
+};
+export type MyTutorProfile = {
+  profile: TutorPublic;
+  photo_file_id: string | null;
+  missing: string[];
+  education: EducationDoc[];
+  blocked_reason: string | null;
+};
 export type TutorProfileInput = {
   published: boolean;
   headline: string;
@@ -1617,6 +1629,15 @@ function qs(params: Record<string, string | number | undefined | null | string[]
   return q.toString();
 }
 
+export type AdminContentKind = "course" | "task" | "template" | "offer" | "tutor";
+const CONTENT_PATHS: Record<AdminContentKind, string> = {
+  course: "/api/content/admin/courses",
+  task: "/api/assessment/admin/tasks",
+  template: "/api/academic/admin/plan-templates",
+  offer: "/api/marketplace/admin/offers",
+  tutor: "/api/marketplace/admin/tutors",
+};
+
 export const admin = {
   users: (p: { q?: string; role?: string; status?: string; ids?: string[]; limit?: number; offset?: number }) =>
     api<{ items: AdminUser[]; total: number }>(`${ID}/admin/users?${qs(p)}`),
@@ -1639,6 +1660,11 @@ export const admin = {
   saveSettings: (values: Record<string, number>) => api<Record<string, number>>(`${BL}/admin/settings`, { method: "PUT", body: { values } }),
   payments: (p: { status?: string; user_id?: string; limit?: number; offset?: number }) => api<AdminPayment[]>(`${BL}/admin/payments?${qs(p)}`),
   billingStats: () => api<BillingStats>(`${BL}/admin/stats`),
+  /** Снять любой контент с платформы без очереди модерации / вернуть. */
+  removeContent: (kind: AdminContentKind, id: string, reason: string) =>
+    api<unknown>(`${CONTENT_PATHS[kind]}/${id}/${kind === "tutor" ? "hide" : "remove"}`, { method: "POST", body: { reason } }),
+  restoreContent: (kind: AdminContentKind, id: string) =>
+    api<unknown>(`${CONTENT_PATHS[kind]}/${id}/${kind === "tutor" ? "unhide" : "restore"}`, { method: "POST" }),
   grant: (userId: string, days: number, reason: string) =>
     api<{ period_end: string }>(`${BL}/admin/subscriptions/${userId}/grant`, { method: "POST", body: { days, reason } }),
 };

@@ -109,3 +109,21 @@ async def test_education_moderation_and_badge(client, fakes):
     assert next(d for d in mine["education"] if d["id"] == pending["id"])["comment"] == "Не видно печати"
     after = (await client.delete(f"/me/education/{doc['id']}", headers=bearer(maria))).json()
     assert after["profile"]["education_verified"] is False
+
+
+async def test_admin_hides_profile(client):
+    maria, boss = uuid4(), uuid4()
+    await person(maria, "Мария Иванова")
+    await publish(client, maria)
+    hidden = await client.post(f"/admin/tutors/{maria}/hide", json={"reason": "Контакты в описании"}, headers=bearer(boss, ("admin",)))
+    assert hidden.json()["published"] is False and hidden.json()["blocked_reason"] == "Контакты в описании"
+    assert (await client.get(f"/tutors/{maria}")).status_code == 404
+    assert (await client.get("/tutors")).json()["total"] == 0
+    # Педагог видит причину, включить показ не может.
+    mine = (await client.get("/me/profile", headers=bearer(maria))).json()
+    assert mine["blocked_reason"] == "Контакты в описании"
+    again = await client.put("/me/profile", json=FULL | {"published": True}, headers=bearer(maria))
+    assert again.json()["error"]["code"] == "profile_blocked"
+    assert (await client.post(f"/admin/tutors/{maria}/unhide", headers=bearer(boss, ("admin",)))).json()["blocked_reason"] is None
+    await publish(client, maria)
+    assert (await client.get(f"/tutors/{maria}")).status_code == 200

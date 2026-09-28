@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
-from .models import PENDING, PRIVATE, PUBLISHED, REJECTED, Material, Node, RelLink
+from .models import PENDING, PRIVATE, PUBLISHED, REJECTED, REMOVED, Material, Node, RelLink
 
 
 def is_staff(principal: Principal | None) -> bool:
@@ -27,6 +27,8 @@ async def can_read(session: AsyncSession, course: Node, principal: Principal | N
         return False
     if course.owner_id == principal.user_id or is_staff(principal):
         return True
+    if course.status == REMOVED:
+        return False  # снятый администратором курс ученикам автора тоже не показываем
     return await linked(session, course.owner_id, principal.user_id)
 
 

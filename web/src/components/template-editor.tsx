@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { AdminContentActions } from "@/components/admin-content";
 import { STATUS_LABELS } from "@/components/course-view";
 import { ExamItemsByIds } from "@/components/exams";
 import { LessonForm, PlanItems } from "@/components/plan-lesson-form";
@@ -105,10 +106,16 @@ export function TemplateEditor({ template, reload }: { template?: PlanTemplate; 
           <b>Модератор вернул шаблон:</b> {template.review_comment}
         </Alert>
       )}
+      {template?.status === "removed" && (
+        <Alert>
+          <b>Шаблон снят с платформы администратором.</b> {template.review_comment}
+        </Alert>
+      )}
       {template && (
         <div className="flex flex-wrap items-center gap-2">
           {mine && template.status !== "private" && <Badge tone={STATUS_LABELS[template.status].tone}>{STATUS_LABELS[template.status].text}</Badge>}
           {!mine && <span className="text-sm text-fg-soft">Автор: {template.author_name}</span>}
+          <AdminContentActions kind="template" id={template.id} removed={template.status === "removed"} onChanged={() => reload?.()} />
           <Link
             href={`/dashboard/planning/new?template=${template.id}`}
             className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"

@@ -68,9 +68,11 @@ class TutorPublic(TutorCard):
     published: bool
     share_url: str
     education: list[EducationOut] = Field(description="Одобренные документы — вошедшим пользователям; гостям — только бейдж")
+    blocked_reason: str | None = Field(None, description="Скрыт администратором — видят только сам педагог и модераторы")
 
 
 class MyProfile(BaseModel):
+    blocked_reason: str | None = Field(None, description="Профиль скрыт администратором — причина")
     profile: TutorPublic
     photo_file_id: UUID | None
     missing: list[str] = Field(description="Чего не хватает, чтобы профиль появился в поиске")

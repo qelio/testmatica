@@ -229,3 +229,27 @@ async def test_submit_fails_if_task_disappeared(client, fakes):
     del fakes.tasks[tid]  # задачу удалили в банке
     resp = await client.post(f"/courses/{course_id}/submit", headers=bearer(t))
     assert resp.json()["error"]["code"] == "tasks_unavailable"
+
+
+async def test_admin_removes_any_course(client):
+    t, pupil, boss = uuid4(), uuid4(), uuid4()
+    course_id, *_ = await build_course(client, t)
+    await link(t, pupil)
+    staff_course = (await client.post("/courses", json={"title": "Методичка"}, headers=bearer(boss, MOD))).json()
+    assert (await client.post(f"/admin/courses/{staff_course['id']}/remove", json={"reason": "проверка"},
+                              headers=bearer(boss, MOD))).status_code == 403  # модератору — нет, только администратору
+
+    removed = await client.post(f"/admin/courses/{course_id}/remove", json={"reason": "Нарушение авторских прав"},
+                                headers=bearer(boss, ("admin",)))
+    assert removed.json()["status"] == "removed"
+    event = (await outbox("content.course.removed"))[0]["data"]
+    assert event["reason"] == "Нарушение авторских прав" and event["author_id"] == str(t)
+    # Ученикам автора не видно, автор видит причину и не может править или отправить снова.
+    assert (await client.get(f"/courses/{course_id}", headers=student(pupil))).status_code == 404
+    own = (await client.get(f"/courses/{course_id}", headers=bearer(t))).json()
+    assert own["review_comment"] == "Нарушение авторских прав" and own["can_edit"] is False
+    assert (await client.post(f"/courses/{course_id}/submit", headers=bearer(t))).status_code in (403, 409)
+
+    restored = await client.post(f"/admin/courses/{course_id}/restore", headers=bearer(boss, ("admin",)))
+    assert restored.json()["status"] == "private" and restored.json()["review_comment"] is None  # был приватным
+    assert (await client.get(f"/courses/{course_id}", headers=student(pupil))).status_code == 200

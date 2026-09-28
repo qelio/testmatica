@@ -18,6 +18,7 @@ AUTO_TYPES = (CHOICE, SHORT, CODE)  # только такие можно доб�
 
 # Статусы, как у курсов: приватная задача сразу доступна автору; в публичный банк — через модерацию.
 PRIVATE, PENDING, PUBLISHED, REJECTED = "private", "pending", "published", "rejected"
+REMOVED = "removed"  # снята с платформы администратором: в банке и у учеников не видна, в выданных тестах работает
 
 # Статусы отправки решения.
 CHECKING = "checking"
@@ -122,7 +123,7 @@ class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         CheckConstraint("type IN ('choice', 'short', 'long', 'code')", name="type_valid"),
-        CheckConstraint("status IN ('private', 'pending', 'published', 'rejected')", name="status_valid"),
+        CheckConstraint("status IN ('private', 'pending', 'published', 'rejected', 'removed')", name="status_valid"),
         CheckConstraint("difficulty BETWEEN 1 AND 3", name="difficulty_valid"),
         CheckConstraint("file_mode IN ('none', 'optional', 'required')", name="file_mode_valid"),
         Index("ix_tasks_bank", "status", "subject_id", "type"),
@@ -159,6 +160,7 @@ class Task(Base):
 
     status: Mapped[str] = mapped_column(String(10), default=PRIVATE)
     review_comment: Mapped[str | None] = mapped_column(Text)
+    removed_from: Mapped[str | None] = mapped_column(String(10))  # статус до снятия администратором — для отмены
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     based_on_id: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

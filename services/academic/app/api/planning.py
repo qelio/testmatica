@@ -5,9 +5,10 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
+from testmatica_common.auth import ROLE_ADMIN, ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import people
@@ -17,6 +18,7 @@ from ..models import (
     TEMPLATE_PRIVATE,
     TEMPLATE_PUBLISHED,
     TEMPLATE_REJECTED,
+    TEMPLATE_REMOVED,
     Plan,
     PlanLesson,
     PlanTemplate,
@@ -84,7 +86,7 @@ async def _template_out(session: AsyncSession, t: PlanTemplate, p: Principal) ->
     [summary] = await _template_summaries(session, [t])
     mine = t.owner_id == p.user_id
     return TemplateOut(
-        **summary.model_dump(), description=t.description, review_comment=t.review_comment if mine else None,
+        **summary.model_dump(), description=t.description, review_comment=t.review_comment if mine or _is_staff(p) else None,
         based_on_id=t.based_on_id, can_edit=mine and (t.status in (TEMPLATE_PRIVATE, TEMPLATE_REJECTED) or (t.status == TEMPLATE_PUBLISHED and _is_staff(p))),
         lessons=[TemplateLessonOut(id=x.id, **_copy_fields(x)) for x in t.lessons],
     )
@@ -94,6 +96,14 @@ async def _visible_template(session: AsyncSession, template_id: UUID, p: Princip
     t = await session.get(PlanTemplate, template_id, with_for_update=lock)
     if t is None or not (t.owner_id == p.user_id or t.status == TEMPLATE_PUBLISHED or _is_staff(p)):
         raise ApiError(404, "template_not_found", "Шаблон не найден")
+    return t
+
+
+async def _usable_template(session: AsyncSession, template_id: UUID, p: Principal) -> PlanTemplate:
+    """Шаблон, на основе которого можно сделать копию или КТП: снятый администратором — нельзя."""
+    t = await _visible_template(session, template_id, p)
+    if t.status == TEMPLATE_REMOVED and not _is_staff(p):
+        raise ApiError(409, "template_removed", "Шаблон снят с платформы администратором")
     return t
 
 
@@ -153,6 +163,8 @@ async def update_template(
         raise ApiError(409, "template_pending", "Шаблон на проверке — отзовите его, чтобы изменить")
     if t.status == TEMPLATE_PUBLISHED and not _is_staff(principal):
         raise ApiError(409, "template_published", "Шаблон опубликован — снимите с публикации, чтобы изменить")
+    if t.status == TEMPLATE_REMOVED:
+        raise ApiError(409, "template_removed", "Шаблон снят с платформы администратором")
     _apply_template(t, body)
     await session.commit()
     return await _template_out(session, t, principal)
@@ -171,7 +183,7 @@ async def delete_template(template_id: UUID, principal: Principal = Depends(auth
 @router.post("/plan-templates/{template_id}/copy", response_model=TemplateOut, status_code=201)
 async def copy_template(template_id: UUID, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)) -> TemplateOut:
     """План на основе чужого: своя приватная копия, которую можно править."""
-    src = await _visible_template(session, template_id, principal)
+    src = await _usable_template(session, template_id, principal)
     t = PlanTemplate(owner_id=principal.user_id, title=src.title, subject=src.subject, level=src.level,
                      description=src.description, based_on_id=src.id,
                      lessons=[TemplateLesson(position=x.position, **_copy_fields(x)) for x in src.lessons])
@@ -320,7 +332,7 @@ async def create_plan(
 ) -> PlanOut:
     """КТП для группы или ученика: пустой (с нуля, постепенно) или из шаблона — со своими датами."""
     target_title, group_subject = await _target_title(principal, body.target_type, body.target_id, session)
-    template = await _visible_template(session, body.template_id, principal) if body.template_id else None
+    template = await _usable_template(session, body.template_id, principal) if body.template_id else None
     plan = Plan(
         teacher_id=principal.user_id, target_type=body.target_type, target_id=body.target_id, target_title=target_title,
         title=body.title or (template.title if template else "КТП"),
@@ -499,3 +511,45 @@ async def by_schedule_lesson(
         .order_by(Plan.title, PlanLesson.position)
     )
     return [LessonKtp(plan_id=pid, plan_title=title, lesson=_lesson_out(x)) for x, pid, title in rows]
+
+
+# ---------- администратор ----------
+
+
+class RemoveIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+@router.post("/admin/plan-templates/{template_id}/remove", response_model=TemplateOut)
+async def admin_remove_template(
+    template_id: UUID, body: RemoveIn, principal: Principal = Depends(auth.require(ROLE_ADMIN)), session: AsyncSession = Depends(db.session)
+) -> TemplateOut:
+    """Администратор снимает любой шаблон с платформы без очереди модерации. КТП, уже сделанные по нему, остаются."""
+    t = await session.get(PlanTemplate, template_id, with_for_update=True)
+    if t is None:
+        raise ApiError(404, "template_not_found", "Шаблон не найден")
+    if t.status != TEMPLATE_REMOVED:
+        t.removed_from = t.status
+        t.status, t.review_comment = TEMPLATE_REMOVED, body.reason.strip()
+        await outbox.event(session, "academic.plan_template.removed", {
+            "template_id": str(t.id), "title": t.title, "author_id": str(t.owner_id), "reason": t.review_comment,
+        }, actor_id=principal.user_id)
+        await session.commit()
+    return await _template_out(session, t, principal)
+
+
+@router.post("/admin/plan-templates/{template_id}/restore", response_model=TemplateOut)
+async def admin_restore_template(
+    template_id: UUID, principal: Principal = Depends(auth.require(ROLE_ADMIN)), session: AsyncSession = Depends(db.session)
+) -> TemplateOut:
+    t = await session.get(PlanTemplate, template_id, with_for_update=True)
+    if t is None or t.status != TEMPLATE_REMOVED:
+        raise ApiError(409, "not_removed", "Шаблон не снят с платформы")
+    # Прежний статус; бывший на проверке — в приватные (заявку из очереди уже сняли).
+    was = t.removed_from
+    t.status = was if was in (TEMPLATE_PUBLISHED, TEMPLATE_PRIVATE, TEMPLATE_REJECTED) else TEMPLATE_PRIVATE
+    t.review_comment, t.removed_from = None, None
+    await outbox.event(session, "academic.plan_template.restored",
+                       {"template_id": str(t.id), "title": t.title, "author_id": str(t.owner_id)}, actor_id=principal.user_id)
+    await session.commit()
+    return await _template_out(session, t, principal)

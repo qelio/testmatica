@@ -154,8 +154,28 @@ async def on_schedule_event(envelope: Envelope, session: AsyncSession) -> None:
         )
 
 
+# Администратор снял контент с платформы — автору: что, почему и где посмотреть.
+REMOVED = {
+    "content.course.removed": ("Курс «{}» снят", "course_id", "/dashboard/library/course/{}"),
+    "assessment.task.removed": ("Задача «{}» снята", "task_id", "/dashboard/tasks/{}"),
+    "academic.plan_template.removed": ("Шаблон КТП «{}» снят", "template_id", "/dashboard/planning/templates/{}"),
+}
+
+
+def _content_removed(session: AsyncSession, t: str, d: dict) -> bool:
+    if t not in REMOVED:
+        return False
+    what, key, href = REMOVED[t]
+    session.add(Notification(user_id=UUID(d["author_id"]), kind="content_removed",
+                             title=f"{what.format(d['title'])} с платформы администратором", body=d.get("reason") or "",
+                             payload={key: d[key], "href": href.format(d[key])}))
+    return True
+
+
 async def on_academic_event(envelope: Envelope, session: AsyncSession) -> None:
     data = envelope.data
+    if _content_removed(session, envelope.type, data):
+        return
     if envelope.type == "academic.plan_template.published" and envelope.actor_id != UUID(data["author_id"]):
         session.add(Notification(user_id=UUID(data["author_id"]), kind="plan_template_published",
                                  title=f"КТП «{data['title']}» опубликовано в библиотеке", payload={"template_id": data["template_id"]}))
@@ -219,6 +239,8 @@ async def on_inapp_command(envelope: Envelope, session: AsyncSession) -> None:
 async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
     """Автору — решение по курсу, отправленному в публичную библиотеку."""
     d = envelope.data
+    if _content_removed(session, envelope.type, d):
+        return
     if envelope.type == "content.course.published" and envelope.actor_id != UUID(d["author_id"]):
         session.add(
             Notification(
@@ -244,6 +266,8 @@ async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
 async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None:
     d = envelope.data
     t = envelope.type
+    if _content_removed(session, t, d):
+        return
     if t == "assessment.task.published" and envelope.actor_id != UUID(d["author_id"]):
         session.add(Notification(user_id=UUID(d["author_id"]), kind="task_published",
                                  title=f"Задача «{d['title']}» опубликована в банке", payload={"task_id": d["task_id"]}))
@@ -325,6 +349,10 @@ async def on_marketplace_event(envelope: Envelope, session: AsyncSession) -> Non
         return
     if t.startswith("marketplace.review."):
         _review_notification(session, t, d)
+        return
+    if t == "marketplace.profile.blocked":
+        session.add(Notification(user_id=UUID(d["user_id"]), kind="profile_blocked", title="Профиль репетитора скрыт администратором",
+                                 body=d.get("reason") or "", payload={"href": "/dashboard/profile"}))
         return
     if t.startswith(("marketplace.group_offer.", "marketplace.trial.")):
         _offer_notification(session, t, d)
@@ -452,6 +480,9 @@ def _offer_notification(session: AsyncSession, t: str, d: dict) -> None:
         for sid in students:
             add(Notification(user_id=sid, kind="offer_extended", title=f"Набор в группу {title} продлён",
                              body="Ваше место сохранено.", payload=offer))
+    elif t == "marketplace.group_offer.removed":
+        add(Notification(user_id=tutor, kind="offer_removed", title=f"Набор в группу {title} снят администратором",
+                         body=d.get("reason") or "", payload=manage))
     elif t == "marketplace.group_offer.cancelled":
         for sid in students:
             add(Notification(user_id=sid, kind="offer_cancelled", title=f"Набор в группу {title} отменён",

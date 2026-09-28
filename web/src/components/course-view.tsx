@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { AdminContentActions } from "@/components/admin-content";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
 import { classroom, content, type CourseStatus, type CourseTree } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -14,6 +15,7 @@ export const STATUS_LABELS: Record<CourseStatus, { text: string; tone: "neutral"
   pending: { text: "на проверке", tone: "brand" },
   published: { text: "опубликован", tone: "ok" },
   rejected: { text: "отклонён", tone: "warn" },
+  removed: { text: "снят администратором", tone: "warn" },
 };
 
 /** Окно с одним полем — переименование и добавление разделов/модулей. */
@@ -104,6 +106,9 @@ export function CourseView({ id, base }: { id: string; base: string }) {
           {c.status !== "published" && (c.owner_id === user?.id || user?.roles.includes("moderator")) && (
             <Badge tone={STATUS_LABELS[c.status].tone}>{STATUS_LABELS[c.status].text}</Badge>
           )}
+          <span className="ml-auto">
+            <AdminContentActions kind="course" id={c.id} removed={c.status === "removed"} onChanged={course.reload} />
+          </span>
         </div>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">{c.title}</h1>
         {c.description && <p className="mt-2 max-w-2xl text-fg-soft">{c.description}</p>}
@@ -126,6 +131,11 @@ export function CourseView({ id, base }: { id: string; base: string }) {
       {c.status === "rejected" && c.review_comment && (
         <Alert kind="info">
           <b>Модератор вернул курс на доработку:</b> {c.review_comment}
+        </Alert>
+      )}
+      {c.status === "removed" && (
+        <Alert>
+          <b>Курс снят с платформы администратором.</b> {c.review_comment}
         </Alert>
       )}
       {c.status === "pending" && c.owner_id === user?.id && (

@@ -351,3 +351,18 @@ async def test_offer_and_trial_notifications(client):
         "decision": "continue", "comment": "Всё понравилось", "title": "Борис"}))
     top = (await client.get("/notifications", headers=bearer(tutor, ["teacher"]))).json()["items"][0]
     assert (top["title"], top["body"]) == ("Борис хочет продолжить занятия после пробного", "Всё понравилось")
+
+
+async def test_admin_removal_notifications(client):
+    author = uuid4()
+    c = consumer("notification.content", handlers.on_content_event)
+    await c.process(make_envelope("content.course.removed", {
+        "course_id": str(uuid4()), "title": "Дроби", "author_id": str(author), "reason": "Нарушение авторских прав"}))
+    m = consumer("notification.marketplace", handlers.on_marketplace_event)
+    await m.process(make_envelope("marketplace.profile.blocked", {"user_id": str(author), "reason": "Контакты в описании"}))
+    items = (await client.get("/notifications", headers=bearer(author, ["teacher"]))).json()["items"]
+    assert [(i["title"], i["body"]) for i in items] == [
+        ("Профиль репетитора скрыт администратором", "Контакты в описании"),
+        ("Курс «Дроби» снят с платформы администратором", "Нарушение авторских прав"),
+    ]
+    assert items[1]["payload"]["href"].startswith("/dashboard/library/course/")
