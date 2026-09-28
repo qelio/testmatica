@@ -7,7 +7,7 @@ from testmatica_common.messaging import COMMANDS_EXCHANGE, EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import attempts, handlers, rubric, runner, subjects_sync
-from .api import assignments, exams, internal, quizzes, solving, tasks, topics
+from .api import admin, assignments, exams, internal, quizzes, solving, tasks, topics
 from .config import settings
 from .deps import db
 
@@ -43,3 +43,4 @@ app.include_router(assignments.router)
 app.include_router(tasks.router)
 app.include_router(solving.router)
 app.include_router(internal.router)
+app.include_router(admin.router)

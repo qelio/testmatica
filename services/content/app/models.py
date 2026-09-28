@@ -11,6 +11,7 @@ PRIVATE = "private"  # приватная библиотека педагога:
 PENDING = "pending"  # на модерации — изменения заблокированы
 PUBLISHED = "published"  # публичная библиотека: видна всем, включая гостей
 REJECTED = "rejected"  # отклонён модератором — можно исправить и отправить снова
+REMOVED = "removed"  # снят с платформы администратором: виден только автору (с причиной) и модераторам
 
 KINDS = ("course", "section", "module")
 CHILD_KIND = {"course": "section", "section": "module"}
@@ -67,7 +68,7 @@ class Node(Base):
     __tablename__ = "nodes"
     __table_args__ = (
         CheckConstraint("kind IN ('course', 'section', 'module')", name="kind_valid"),
-        CheckConstraint("status IS NULL OR status IN ('private', 'pending', 'published', 'rejected')", name="status_valid"),
+        CheckConstraint("status IS NULL OR status IN ('private', 'pending', 'published', 'rejected', 'removed')", name="status_valid"),
         CheckConstraint("(kind = 'course') = (parent_id IS NULL)", name="only_course_is_root"),
         Index("ix_nodes_course", "course_id"),
         Index("ix_nodes_owner", "owner_id"),
@@ -86,6 +87,7 @@ class Node(Base):
     # Только у курса:
     status: Mapped[str | None] = mapped_column(String(10))
     review_comment: Mapped[str | None] = mapped_column(Text)
+    removed_from: Mapped[str | None] = mapped_column(String(10))  # статус до снятия администратором — для отмены
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

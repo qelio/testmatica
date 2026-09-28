@@ -70,6 +70,8 @@ class TutorProfile(Base):
     rating: Mapped[float | None] = mapped_column(Float)
     reviews_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     education_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Администратор скрыл профиль: в поиске и по ссылке его нет, включить показ педагог не может.
+    blocked_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

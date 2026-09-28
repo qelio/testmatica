@@ -5,9 +5,10 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from testmatica_common.auth import ROLE_STUDENT, ROLE_TEACHER, Principal
+from testmatica_common.auth import ROLE_ADMIN, ROLE_STUDENT, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import profiles
@@ -327,6 +328,32 @@ async def leave(offer_id: UUID, principal: Principal = Depends(auth.principal), 
     await session.delete(e)
     await session.flush()
     await outbox.event(session, "marketplace.group_offer.left", _event(o, student_id=str(principal.user_id)), actor_id=principal.user_id)
+    await session.commit()
+    return await _one(session, o, principal)
+
+
+# ---------- администратор ----------
+
+
+class RemoveIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+@router.post("/admin/offers/{offer_id}/remove", response_model=OfferOut)
+async def admin_remove(
+    offer_id: UUID, body: RemoveIn, principal: Principal = Depends(auth.require(ROLE_ADMIN)), session: AsyncSession = Depends(db.session)
+) -> OfferOut:
+    """Снять набор с платформы: до запуска — отмена (записавшиеся получат уведомление), после — закрыть набор.
+    Уже идущая группа в classroom остаётся — занятия продолжаются."""
+    o = await _get(session, offer_id, lock=True)
+    reason = body.reason.strip()
+    if o.status in EDITABLE:
+        o.status, o.closed_at = OFFER_CANCELLED, datetime.now(UTC)
+        await outbox.event(session, "marketplace.group_offer.cancelled", _event(o, student_ids=await _student_ids(session, o.id)),
+                           actor_id=principal.user_id)
+    elif o.status == OFFER_STARTED:
+        o.status, o.closed_at = OFFER_CLOSED, datetime.now(UTC)
+    await outbox.event(session, "marketplace.group_offer.removed", _event(o, reason=reason), actor_id=principal.user_id)
     await session.commit()
     return await _one(session, o, principal)
 

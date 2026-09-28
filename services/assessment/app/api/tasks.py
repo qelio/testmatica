@@ -11,7 +11,7 @@ from testmatica_common.errors import ApiError
 
 from .. import access, views
 from ..deps import auth, db, outbox
-from ..models import AUTO_TYPES, CODE, PENDING, PRIVATE, PUBLISHED, REJECTED, ExamItem, Task, TaskOption, TaskTest, Topic
+from ..models import AUTO_TYPES, CODE, PENDING, PRIVATE, PUBLISHED, REJECTED, REMOVED, ExamItem, Task, TaskOption, TaskTest, Topic
 from ..schemas import TaskIn, TaskOut, TaskPage, TopicMove
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -135,6 +135,8 @@ async def delete(task_id: UUID, principal: Principal = Depends(author), session:
 async def copy(task_id: UUID, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)) -> TaskOut:
     """Взять задачу из банка за основу: приватная копия со всеми ответами и тестами."""
     source = await access.viewable(session, task_id, principal)
+    if source.status == REMOVED and not access.is_staff(principal):
+        raise ApiError(404, "task_not_found", "Задача не найдена")
     if not access.can_see_key(source, principal):
         raise ApiError(403, "forbidden", "Эту задачу нельзя скопировать")
     body = TaskIn(

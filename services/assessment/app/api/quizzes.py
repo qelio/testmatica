@@ -63,7 +63,8 @@ async def _apply(session: AsyncSession, test: Test, body: QuizIn, p: Principal) 
     tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_([i.task_id for i in body.items])))).scalars()}
     for item in body.items:
         task = tasks.get(item.task_id)
-        if task is None or not await access.can_view(session, task, p) or not (task.owner_id == p.user_id or task.status == "published"):
+        if task is None or not await access.can_view(session, task, p) or not (task.owner_id == p.user_id or task.status == "published") \
+                or task.status == "removed":
             raise ApiError(422, "task_not_available", "Задача недоступна — возможно, её сняли с публикации")
     for field in ("title", "description", "order_mode", "shuffle_options", "time_mode", "time_limit_s"):
         setattr(test, field, getattr(body, field))

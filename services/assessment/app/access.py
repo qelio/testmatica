@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
-from .models import PENDING, PRIVATE, PUBLISHED, REJECTED, RelLink, Task
+from .models import PENDING, PRIVATE, PUBLISHED, REJECTED, REMOVED, RelLink, Task
 
 
 def is_staff(p: Principal | None) -> bool:
@@ -25,6 +25,8 @@ async def can_view(session: AsyncSession, task: Task, p: Principal | None) -> bo
         return False
     if task.owner_id == p.user_id or is_staff(p):
         return True
+    if task.status == REMOVED:
+        return False  # снятую администратором задачу ученикам автора не показываем
     return await linked(session, task.owner_id, p.user_id)
 
 

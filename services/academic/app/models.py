@@ -106,6 +106,7 @@ class Attendance(Base):
 # Модули лежат в content, тесты — в assessment; здесь только ссылки и названия для показа.
 
 TEMPLATE_PRIVATE, TEMPLATE_PENDING, TEMPLATE_PUBLISHED, TEMPLATE_REJECTED = "private", "pending", "published", "rejected"
+TEMPLATE_REMOVED = "removed"  # снят с платформы администратором
 
 
 class PlanTemplate(Base):
@@ -113,7 +114,7 @@ class PlanTemplate(Base):
 
     __tablename__ = "plan_templates"
     __table_args__ = (
-        CheckConstraint("status IN ('private', 'pending', 'published', 'rejected')", name="status_valid"),
+        CheckConstraint("status IN ('private', 'pending', 'published', 'rejected', 'removed')", name="status_valid"),
         Index("ix_plan_templates_owner", "owner_id", "updated_at"),
         Index("ix_plan_templates_catalog", "status", "subject"),
     )
@@ -126,6 +127,7 @@ class PlanTemplate(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(10), default=TEMPLATE_PRIVATE)
     review_comment: Mapped[str | None] = mapped_column(Text)
+    removed_from: Mapped[str | None] = mapped_column(String(10))  # статус до снятия администратором — для отмены
     based_on_id: Mapped[UUID | None]
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

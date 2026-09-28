@@ -128,3 +128,17 @@ async def test_trial_followup(client):
     assert (await client.get("/trials/pending", headers=bearer(olya, STUDENT))).json() == []
     again = await client.post(f"/trials/{lesson}/answer", json={"decision": "stop"}, headers=bearer(olya, STUDENT))
     assert again.json()["error"]["code"] == "trial_answered"
+
+
+async def test_admin_removes_offer(client):
+    maria, a, boss = uuid4(), uuid4(), uuid4()
+    await person(maria, "Мария Иванова")
+    o = (await client.post("/offers", json=body(), headers=bearer(maria))).json()
+    await client.post(f"/offers/{o['id']}/join", headers=bearer(a, STUDENT))
+    assert (await client.post(f"/admin/offers/{o['id']}/remove", json={"reason": "Спам"}, headers=bearer(boss, ("moderator",)))).status_code == 403
+    removed = (await client.post(f"/admin/offers/{o['id']}/remove", json={"reason": "Реклама чужого сайта"},
+                                 headers=bearer(boss, ("admin",)))).json()
+    assert removed["status"] == "cancelled" and removed["joinable"] is False
+    assert (await outbox("marketplace.group_offer.cancelled"))[0]["data"]["student_ids"] == [str(a)]
+    assert (await outbox("marketplace.group_offer.removed"))[0]["data"]["reason"] == "Реклама чужого сайта"
+    assert (await client.get("/offers")).json() == []

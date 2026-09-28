@@ -12,7 +12,7 @@ from testmatica_common.internal import internal_guard
 from .. import views
 from ..config import settings
 from ..deps import db
-from ..models import AUTO_TYPES, IN_PROGRESS, PUBLISHED, Assignment, Attempt, Task
+from ..models import AUTO_TYPES, IN_PROGRESS, PUBLISHED, REMOVED, Assignment, Attempt, Task
 from ..schemas import ProctorAccess, ProctorStudent
 
 router = APIRouter(prefix="/internal", tags=["internal"], dependencies=[Depends(internal_guard(settings.internal_token))])
@@ -39,7 +39,7 @@ async def lookup(body: LookupIn, session: AsyncSession = Depends(db.session)) ->
     return [
         TaskBrief(
             id=t.id, title=t.title, type=t.type, status=t.status, owner_id=t.owner_id, auto_checked=t.type in AUTO_TYPES,
-            usable=t.owner_id == body.user_id or t.status == PUBLISHED,
+            usable=(t.owner_id == body.user_id or t.status == PUBLISHED) and t.status != REMOVED,
         )
         for t in rows
     ]

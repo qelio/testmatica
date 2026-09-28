@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 
+import { AdminContentActions } from "@/components/admin-content";
 import { priceText, Program, seatsText } from "@/components/offers";
 import { Avatar, Rating } from "@/components/tutor-card";
 import { Alert, Badge, Button, Spinner } from "@/components/ui";
@@ -120,6 +121,12 @@ export default function OfferPage() {
         >
           {copied ? "Ссылка скопирована" : "Поделиться"}
         </Button>
+        <AdminContentActions
+          kind="offer"
+          id={o.id}
+          removed={o.status === "cancelled" || o.status === "closed"}
+          onChanged={offer.reload}
+        />
       </div>
       {o.enrolled && o.status === "recruiting" && (
         <p className="text-sm text-fg-soft">Место за вами. Когда наберётся минимум, педагог запустит группу — занятия появятся в расписании.</p>

@@ -323,3 +323,32 @@ async def test_proctoring(client, fakes):
     assert boss["role"] == "teacher" and boss["students"][0]["attempt_id"] == t["id"]
     stranger = await client.get(f"/internal/proctoring/{a['id']}", params={"user_id": str(other)}, headers=INTERNAL)
     assert stranger.status_code == 404
+
+
+async def test_admin_removes_task_but_issued_tests_keep_working(client, fakes):
+    teacher, pupil, boss = uuid4(), uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:2])
+    await link(teacher, pupil)
+    a = await assign(client, teacher, test, target_type="student", target_id=str(pupil))
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))).json()
+
+    only_mod = await client.post(f"/admin/tasks/{tasks[0]['id']}/remove", json={"reason": "Ошибка в условии"},
+                                 headers=bearer(boss, ("moderator",)))
+    assert only_mod.status_code == 403
+    removed = (await client.post(f"/admin/tasks/{tasks[0]['id']}/remove", json={"reason": "Ошибка в условии"},
+                                 headers=bearer(boss, ("admin",)))).json()
+    assert removed["status"] == "removed" and removed["review_comment"] == "Ошибка в условии"
+    assert (await outbox("assessment.task.removed"))[0]["data"]["author_id"] == str(teacher)
+
+    # Выданная работа продолжает работать, ученику сама задача вне теста не видна.
+    view = (await client.get(f"/attempts/{attempt['id']}", headers=student(pupil))).json()
+    assert len(view["tasks"]) == 2
+    assert (await client.get(f"/tasks/{tasks[0]['id']}", headers=student(pupil))).status_code == 404
+    # В новый тест не добавить, копию не сделать.
+    bad = await client.post("/tests", json={"title": "Новый", "items": [{"task_id": tasks[0]["id"], "points": 1}]}, headers=bearer(teacher))
+    assert bad.json()["error"]["code"] == "task_not_available"
+    assert (await client.post(f"/tasks/{tasks[0]['id']}/copy", headers=bearer(teacher))).status_code == 404
+
+    restored = (await client.post(f"/admin/tasks/{tasks[0]['id']}/restore", headers=bearer(boss, ("admin",)))).json()
+    assert restored["status"] == "private"

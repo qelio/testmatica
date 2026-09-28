@@ -74,7 +74,7 @@ async def full(session: AsyncSession, t: Task, p: Principal | None) -> TaskOut:
         time_limit_s=t.time_limit_s,
         memory_limit_mb=t.memory_limit_mb,
         tests=[{"input": c.input, "expected": c.expected} for c in t.tests] if key else None,
-        review_comment=t.review_comment if p is not None and t.owner_id == p.user_id else None,
+        review_comment=t.review_comment if p is not None and (t.owner_id == p.user_id or access.is_staff(p)) else None,
         can_edit=p is not None and access.can_edit(t, p),
         multiple=t.type == CHOICE and sum(o.is_correct for o in t.options) > 1,
     )

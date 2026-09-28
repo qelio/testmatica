@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { CodeEditor } from "@/components/code-editor";
+import { AdminContentActions } from "@/components/admin-content";
 import { STATUS_LABELS } from "@/components/course-view";
 import { ExamChips } from "@/components/exams";
 import { Markdown } from "@/components/markdown";
@@ -70,7 +71,10 @@ export default function TaskPage() {
           <Badge tone="brand">{TASK_TYPE_LABELS[t.type]}</Badge>
           <Badge>{DIFFICULTY_LABELS[t.difficulty]}</Badge>
           <ExamChips labels={t.exam_items} />
-          {mine && t.status !== "private" && <Badge tone={STATUS_LABELS[t.status].tone}>{STATUS_LABELS[t.status].text}</Badge>}
+          {(mine || staff) && t.status !== "private" && <Badge tone={STATUS_LABELS[t.status].tone}>{STATUS_LABELS[t.status].text}</Badge>}
+          <span className="ml-auto">
+            <AdminContentActions kind="task" id={t.id} removed={t.status === "removed"} onChanged={task.reload} />
+          </span>
         </div>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{t.title}</h1>
         <p className="mt-1 text-sm text-fg-soft">
@@ -83,6 +87,11 @@ export default function TaskPage() {
       {mine && t.status === "rejected" && t.review_comment && (
         <Alert kind="info">
           <b>Модератор вернул задачу:</b> {t.review_comment}
+        </Alert>
+      )}
+      {t.status === "removed" && (
+        <Alert>
+          <b>Задача снята с платформы администратором.</b> {t.review_comment}
         </Alert>
       )}
 

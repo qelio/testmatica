@@ -95,12 +95,17 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
         </div>
       </div>
 
+      {saved.blocked_reason && (
+        <Alert>
+          <b>Профиль скрыт администратором:</b> {saved.blocked_reason}. Показ в поиске недоступен — напишите в поддержку.
+        </Alert>
+      )}
       <section className={`rounded-2xl border p-5 ${saved.profile.published ? "border-ok/40 bg-ok/5" : "border-line bg-surface"}`}>
         <label className="flex items-start gap-3">
           <input
             type="checkbox"
             checked={form.published}
-            disabled={busy}
+            disabled={busy || !!saved.blocked_reason}
             onChange={(e) => {
               set("published", e.target.checked);
               void save(e.target.checked);

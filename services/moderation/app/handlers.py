@@ -36,7 +36,7 @@ async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
             )
             .on_conflict_do_nothing(index_elements=["kind", "ref_id"], index_where=text("status = 'pending'"))
         )
-    elif envelope.type in ("content.course.unpublished", "content.course.deleted"):
+    elif envelope.type in ("content.course.unpublished", "content.course.deleted", "content.course.removed"):
         # Автор отозвал курс с проверки — заявка закрывается.
         await session.execute(
             update(QueueItem)
@@ -55,7 +55,7 @@ async def on_academic_event(envelope: Envelope, session: AsyncSession) -> None:
                     details={"lessons_count": d.get("lessons_count"), "subject": d.get("subject")}, status=PENDING)
             .on_conflict_do_nothing(index_elements=["kind", "ref_id"], index_where=text("status = 'pending'"))
         )
-    elif envelope.type == "academic.plan_template.unpublished":
+    elif envelope.type in ("academic.plan_template.unpublished", "academic.plan_template.removed"):
         await session.execute(
             update(QueueItem)
             .where(QueueItem.kind == "plan_template", QueueItem.ref_id == UUID(d["template_id"]), QueueItem.status == PENDING)
@@ -135,7 +135,7 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
                     details={"type": d.get("type")}, status=PENDING)
             .on_conflict_do_nothing(index_elements=["kind", "ref_id"], index_where=text("status = 'pending'"))
         )
-    elif envelope.type in ("assessment.task.unpublished", "assessment.task.deleted"):
+    elif envelope.type in ("assessment.task.unpublished", "assessment.task.deleted", "assessment.task.removed"):
         await session.execute(
             update(QueueItem)
             .where(QueueItem.kind == "task", QueueItem.ref_id == UUID(d["task_id"]), QueueItem.status == PENDING)

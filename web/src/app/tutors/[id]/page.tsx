@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { AdminContentActions } from "@/components/admin-content";
 import { OfferCard } from "@/components/offers";
 import { RequestForm } from "@/components/request-form";
 import { TutorReviewsSection } from "@/components/reviews";
@@ -32,7 +33,12 @@ export default function TutorPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      {own && !t.published && (
+      {t.blocked_reason && (
+        <Alert>
+          <b>Профиль скрыт администратором.</b> {t.blocked_reason}
+        </Alert>
+      )}
+      {own && !t.published && !t.blocked_reason && (
         <Alert kind="info">
           Профиль скрыт из поиска — так его видите только вы. Включить показ можно в{" "}
           <Link href="/dashboard/profile" className="font-medium underline">
@@ -78,6 +84,7 @@ export default function TutorPage() {
         >
           {copied ? "Ссылка скопирована" : "Поделиться"}
         </Button>
+        <AdminContentActions kind="tutor" id={t.user_id} removed={!!t.blocked_reason} onChanged={tutor.reload} />
       </div>
 
       <section className="grid gap-3 rounded-2xl border border-line bg-surface p-5 text-sm sm:grid-cols-2">
