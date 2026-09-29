@@ -1,5 +1,10 @@
 from uuid import uuid4
 
+from testmatica_common.testing import make_envelope
+
+from app import handlers
+from app.deps import db
+
 from .conftest import MATH, PHYSICS, bearer, decide, outbox, person
 
 FULL = {
@@ -40,8 +45,30 @@ async def test_profile_publish_rules(client, fakes):
     assert (await outbox("marketplace.profile.published"))[0]["data"]["user_id"] == str(maria)
     guest = (await client.get(f"/tutors/{maria}")).json()  # ссылка «Поделиться» — без входа
     assert guest["full_name"] == "Мария Иванова" and guest["about"].startswith("Готовлю")
+    assert fakes.avatars[str(maria)] == photo  # фото анкеты уходит в identity — оно же в личном кабинете
     foreign_photo = fakes.file(uuid4())
     assert (await client.put("/me/profile", json=FULL | {"photo_file_id": foreign_photo}, headers=bearer(maria))).status_code == 422
+
+
+async def test_photo_follows_account_avatar(client, fakes):
+    """Фото из личного кабинета приходит событием и становится фото анкеты; новая анкета берёт его сразу."""
+    maria, olga = uuid4(), uuid4()
+    await person(maria, "Мария Иванова")
+    await publish(client, maria)
+    photo = fakes.file(maria)
+    async with db.sessionmaker() as s, s.begin():
+        await handlers.on_identity_event(make_envelope("identity.user.avatar_changed", {"user_id": str(maria), "file_id": photo}), s)
+    mine = (await client.get("/me/profile", headers=bearer(maria))).json()
+    assert mine["photo_file_id"] == photo and mine["profile"]["photo_url"] == f"http://s3/{photo}"
+    async with db.sessionmaker() as s, s.begin():
+        await handlers.on_identity_event(make_envelope("identity.user.avatar_changed", {"user_id": str(maria), "file_id": None}), s)
+    assert (await client.get("/me/profile", headers=bearer(maria))).json()["photo_file_id"] is None
+
+    other = fakes.file(olga)
+    async with db.sessionmaker() as s, s.begin():
+        await handlers.on_identity_event(make_envelope("identity.user.snapshot", {
+            "user_id": str(olga), "full_name": "Ольга", "roles": ["teacher"], "avatar_file_id": other}), s)
+    assert (await client.get("/me/profile", headers=bearer(olga))).json()["photo_file_id"] == other
 
 
 async def test_search_filters_and_presence(client, fakes):

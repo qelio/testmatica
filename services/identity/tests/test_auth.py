@@ -73,6 +73,7 @@ async def test_registration_publishes_event(client):
         "full_name": "Иван Петров",
         "login": None,
         "roles": ["student"],
+        "avatar_file_id": None,
         "status": "pending_verification",
     }
     assert len(await events("identity.user.email_verified")) == 1

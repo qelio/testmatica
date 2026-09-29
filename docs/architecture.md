@@ -115,6 +115,7 @@ flowchart LR
 ### identity
 - `users` — id, email (nullable, unique), login (unique), phone, password_hash, full_name, status (pending_verification / active / banned / deleted), two_factor_method (email / phone / null — только для аккаунтов без контактов), managed_by_teacher_id, last_seen_at, timezone
 - `user_roles` — user_id, role (student / teacher / moderator / admin)
+- Личный кабинет (`/me`): имя и часовой пояс, фото (`avatar_file_id`, файл в media с целью avatar; оно же в анкете репетитора — marketplace меняет его через `POST /internal/users/{id}/avatar` и получает событием), смена email кодом на новый адрес (`otp` purpose email_change), смена пароля, `PUT /me/2fa` — вход с кодом (обязателен модераторам и администраторам)
 - `otp_challenges` — одноразовые коды (подтверждение email, вход, сброс пароля): хэш кода, срок, попытки
 - `refresh_tokens` — хэш токена, family_id (цепочка ротаций), revoked_at, revoke_reason
 - Счётчики неудачных входов — в Redis

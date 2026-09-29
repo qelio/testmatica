@@ -171,6 +171,9 @@ def _sum(parts: list[Progress]) -> Progress:
     )
 
 
+STAGES = ("theory", "practice", "control")  # этапы работы с заданием: материал, практика, контроль
+
+
 @router.get("/exam-board", response_model=ExamBoard)
 async def board(
     exam_id: UUID,
@@ -189,11 +192,16 @@ async def board(
                                      ExamMark.item_id.in_(item_ids))
     if can_edit:
         marks_q = marks_q.where(ExamMark.teacher_id == principal.user_id)
-    marks: dict[UUID, ExamMark] = {}
+    # Ученик видит отметки всех своих педагогов: этап отмечен, если его отметил хоть один.
+    marks: dict[UUID, dict] = {}
     for m in (await session.execute(marks_q.order_by(ExamMark.updated_at))).scalars():
-        # Ученик видит отметки всех своих педагогов: «пройдено», если отметил хоть один.
-        if m.item_id not in marks or m.done:
-            marks[m.item_id] = m
+        cur = marks.setdefault(m.item_id, {"theory": False, "practice": False, "control": False, "done": False,
+                                           "done_at": None, "note": ""})
+        for f in STAGES + ("done",):
+            cur[f] = cur[f] or getattr(m, f)
+        if m.done and (cur["done_at"] is None or (m.done_at and m.done_at < cur["done_at"])):
+            cur["done_at"] = m.done_at
+        cur["note"] = m.note
 
     in_bank = dict((await session.execute(
         text("""
@@ -207,10 +215,11 @@ async def board(
     rows = []
     for item in exam.items:
         per = [StudentProgress(student_id=s, **progress.get((item.id, s), Progress()).model_dump()) for s in students]
-        mark = marks.get(item.id)
+        mark = marks.get(item.id) or {}
         rows.append(BoardRow(
-            item_id=item.id, number=item.number, title=item.title, done=bool(mark and mark.done),
-            done_at=mark.done_at if mark else None, note=(mark.note if mark else "") if can_edit else None,
+            item_id=item.id, number=item.number, title=item.title,
+            **{f: mark.get(f, False) for f in STAGES + ("done",)},
+            done_at=mark.get("done_at"), note=mark.get("note", "") if can_edit else None,
             progress=_sum(per), by_student=per if target_type == "group" else [], tasks_in_bank=in_bank.get(item.id, 0),
         ))
     return ExamBoard(
@@ -221,27 +230,26 @@ async def board(
 
 @router.put("/exam-marks", status_code=204)
 async def set_mark(body: MarkIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> None:
-    """Отметить задание пройденным и/или записать примечание — для своего ученика или своей группы."""
+    """Этапы (материал, практика, контроль), «пройдено» и примечание — для своего ученика или своей группы.
+    Меняются только переданные поля."""
     _, can_edit = await _students(session, principal, body.target_type, body.target_id)
     if not can_edit:
         raise ApiError(403, "forbidden", "Отметки ставит педагог")
     if await session.get(ExamItem, body.item_id) is None:
         raise ApiError(404, "exam_item_not_found", "Задание не найдено")
     now = datetime.now(UTC)
+    given = body.model_dump(include={*STAGES, "done", "note"}, exclude_none=True)
+    if "note" in given:
+        given["note"] = given["note"].strip()
     stmt = insert(ExamMark).values(
         teacher_id=principal.user_id, target_type=body.target_type, target_id=body.target_id, item_id=body.item_id,
-        done=body.done, done_at=now if body.done else None, note=body.note.strip(), updated_at=now,
+        **given, done_at=now if given.get("done") else None, updated_at=now,
     )
-    await session.execute(stmt.on_conflict_do_update(
-        constraint="uq_exam_marks_target_item",
-        set_={
-            "done": stmt.excluded.done,
-            # Дата «пройдено» не сдвигается при правке примечания.
-            "done_at": func.coalesce(ExamMark.done_at, stmt.excluded.done_at) if body.done else None,
-            "note": stmt.excluded.note,
-            "updated_at": now,
-        },
-    ))
+    update = {f: getattr(stmt.excluded, f) for f in given} | {"updated_at": now}
+    if "done" in given:
+        # Дата «пройдено» не сдвигается при повторной отметке.
+        update["done_at"] = func.coalesce(ExamMark.done_at, stmt.excluded.done_at) if given["done"] else None
+    await session.execute(stmt.on_conflict_do_update(constraint="uq_exam_marks_target_item", set_=update))
     await session.commit()
 
 

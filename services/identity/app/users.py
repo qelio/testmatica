@@ -63,4 +63,5 @@ def person_data(user: User) -> dict:
         "full_name": user.full_name,
         "login": user.login,
         "roles": user.role_names,
+        "avatar_file_id": str(user.avatar_file_id) if user.avatar_file_id else None,
     }

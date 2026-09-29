@@ -89,9 +89,23 @@ async def test_student_board_progress_and_marks(client):
     second = (await client.get("/exam-board", params=params, headers=bearer(teacher))).json()["rows"][1]
     assert second["done"] and second["note"] == "Разобрали" and second["done_at"] == first["done_at"]
 
+    # Этапы — материал, практика, контроль — отмечаются по одному и не затирают остальное.
+    base = {"target_type": "student", "target_id": str(pupil), "item_id": n2["id"]}
+    await client.put("/exam-marks", json=base | {"theory": True}, headers=bearer(teacher))
+    await client.put("/exam-marks", json=base | {"control": True}, headers=bearer(teacher))
+    row = (await client.get("/exam-board", params=params, headers=bearer(teacher))).json()["rows"][1]
+    assert (row["theory"], row["practice"], row["control"], row["done"], row["note"]) == (True, False, True, True, "Разобрали")
+    await client.put("/exam-marks", json=base | {"theory": False}, headers=bearer(teacher))
+    assert (await client.get("/exam-board", params=params, headers=bearer(teacher))).json()["rows"][1]["theory"] is False
+    # Новая строка — только с этапом.
+    await client.put("/exam-marks", json=base | {"item_id": rows[1]["item_id"], "practice": True}, headers=bearer(teacher))
+    fresh = (await client.get("/exam-board", params=params, headers=bearer(teacher))).json()["rows"][0]
+    assert fresh["practice"] and not fresh["done"] and fresh["note"] == ""
+
     # Ученик видит свой прогресс и отметки, но не примечания и не может отмечать.
     own = (await client.get("/exam-board", params=params, headers=student(pupil))).json()
     assert own["can_edit"] is False and own["rows"][1]["done"] and own["rows"][1]["note"] is None
+    assert own["rows"][1]["control"] and own["rows"][0]["practice"]
     assert (await client.put("/exam-marks", json=mark, headers=student(pupil))).status_code == 403
     # Чужой педагог — нет доступа.
     assert (await client.get("/exam-board", params=params, headers=bearer(stranger))).status_code == 404

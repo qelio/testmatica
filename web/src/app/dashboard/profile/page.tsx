@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { AvatarUploadButton } from "@/components/avatar-cropper";
 import { AttachButton, UploadChips, useUploads } from "@/components/files";
 import { ReviewsAboutMe } from "@/components/reviews";
 import { Avatar } from "@/components/tutor-card";
 import { Alert, Badge, Button, Field, Spinner } from "@/components/ui";
-import { content, marketplace, type MyTutorProfile, type TutorFormat, type TutorLevel, type TutorProfileInput } from "@/lib/api";
+import { content, identity, marketplace, type MyTutorProfile, type TutorFormat, type TutorLevel, type TutorProfileInput } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { FORMAT_LABELS, LEVEL_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -44,6 +46,7 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
   const [saved, setSaved] = useState(initial);
   const [form, setForm] = useState<TutorProfileInput>(() => toInput(initial));
   const photo = useUploads("avatar", 1);
+  const { setUser } = useAuth();
   const [error, setError] = useState<string>();
   const [info, setInfo] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -59,6 +62,8 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
       const next = await marketplace.saveProfile({ ...form, published, photo_file_id: photo.ids[0] ?? form.photo_file_id });
       setSaved(next);
       setForm(toInput(next));
+      // Фото одно на аккаунт — обновляем и аватар в шапке.
+      if (next.photo_file_id !== saved.photo_file_id) identity.me().then(setUser, () => {});
       photo.clear();
       setInfo(next.profile.published ? "Сохранено. Профиль виден в поиске." : "Сохранено.");
     } catch (e) {
@@ -137,9 +142,14 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
         <div className="flex flex-wrap items-center gap-4">
           <Avatar url={photoUrl} name={saved.profile.full_name} size={80} />
           <div className="space-y-1">
-            <AttachButton onFiles={photo.add} label="Загрузить фото" />
+            <AvatarUploadButton onCropped={(f) => photo.add([f])} disabled={photo.busy} label={photoUrl ? "Заменить фото" : "Загрузить фото"} />
             <UploadChips items={photo.items.filter((u) => u.status !== "done")} onRemove={photo.remove} />
-            <p className="text-xs text-fg-soft">JPG или PNG до 5 МБ. Фото сохранится вместе с профилем.</p>
+            <p className="text-xs text-fg-soft">JPG, PNG или WebP; кадр и масштаб выбираются после выбора файла. Фото сохранится вместе с профилем — это же фото в{" "}
+              <Link href="/dashboard/account" className="text-brand hover:underline">
+                личном кабинете
+              </Link>
+              .
+            </p>
           </div>
         </div>
         <Field

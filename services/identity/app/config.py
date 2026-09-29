@@ -5,6 +5,7 @@ class Settings(CommonSettings):
     service_name: str = "identity"
 
     redis_url: str = "redis://redis:6379/0"
+    media_url: str = "http://media:8000"
     # Секрет для HMAC одноразовых кодов. В проде — из секретов облака.
     secret_key: str
 

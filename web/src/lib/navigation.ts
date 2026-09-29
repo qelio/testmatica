@@ -6,6 +6,7 @@ import {
   BookOpen,
   ChartLine,
   ChartNoAxesCombined,
+  CircleUserRound,
   Boxes,
   CalendarDays,
   ClipboardCheck,
@@ -39,6 +40,7 @@ import {
 export type NavItem = { title: string; href: string; icon: LucideIcon; ready: boolean; badge?: "chats" };
 
 const DASHBOARD: NavItem = { title: "Дашборд", href: "/dashboard", icon: LayoutDashboard, ready: true };
+const ACCOUNT: NavItem = { title: "Личный кабинет", href: "/dashboard/account", icon: CircleUserRound, ready: true };
 // В ТЗ чаты не перечислены среди разделов, но без пункта меню до них не добраться.
 const CHATS: NavItem = { title: "Сообщения", href: "/dashboard/chats", icon: MessageSquare, ready: true, badge: "chats" };
 const soon = (title: string, href: string, icon: LucideIcon): NavItem => ({ title, href, icon, ready: false });
@@ -63,6 +65,7 @@ export const NAV = {
     { title: "Заявки учеников", href: "/dashboard/requests", icon: Inbox, ready: true },
     { title: "Наборы в группы", href: "/dashboard/offers", icon: UsersRound, ready: true },
     soon("Поддержка", "/dashboard/support", LifeBuoy),
+    ACCOUNT,
   ],
   student: [
     DASHBOARD,
@@ -78,6 +81,7 @@ export const NAV = {
     { title: "Мои заявки", href: "/dashboard/requests", icon: FileText, ready: true },
     soon("Баланс", "/dashboard/balance", Wallet),
     soon("Поддержка", "/dashboard/support", LifeBuoy),
+    ACCOUNT,
   ],
   staff: [
     DASHBOARD,
@@ -88,6 +92,7 @@ export const NAV = {
     { title: "Типы оценок", href: "/dashboard/grade-types", icon: Tags, ready: true },
     { title: "Предметы", href: "/dashboard/subjects", icon: Shapes, ready: true },
     { title: "Компетенции", href: "/dashboard/competencies", icon: Lightbulb, ready: true },
+    ACCOUNT,
   ],
   // Администратор — всё, что у модератора, и управление платформой (ТЗ, раздел 2).
   admin: [] as NavItem[],

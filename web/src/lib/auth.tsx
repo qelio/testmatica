@@ -19,6 +19,8 @@ type AuthState =
 type AuthContextValue = AuthState & {
   signIn: (session: Authenticated) => void;
   signOut: () => Promise<void>;
+  /** Обновить данные пользователя после правок в личном кабинете (имя, фото, email). */
+  setUser: (user: UserInfo) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -26,9 +28,16 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading", user: null });
 
+  const setUser = useCallback((user: UserInfo) => setState({ status: "authenticated", user }), []);
+
   const signIn = useCallback((session: Authenticated) => {
     setAccessToken(session.access_token);
     setState({ status: "authenticated", user: session.user });
+    // Фото профиля в токене нет — подтягиваем полные данные.
+    identity
+      .me()
+      .then((user) => setState((s) => (s.status === "authenticated" && s.user.id === user.id ? { status: "authenticated", user } : s)))
+      .catch(() => {});
   }, []);
 
   const signOut = useCallback(async () => {
@@ -50,8 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [signIn]);
 
   const value = useMemo(
-    () => ({ ...state, signIn, signOut }),
-    [state, signIn, signOut],
+    () => ({ ...state, signIn, signOut, setUser }),
+    [state, signIn, signOut, setUser],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
