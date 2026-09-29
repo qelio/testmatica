@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CodeEditor } from "@/components/code-editor";
 import { AttachButton, AttachmentView, UploadChips, useUploads } from "@/components/files";
@@ -9,6 +9,7 @@ import { Markdown } from "@/components/markdown";
 import { Alert, Badge, Button, Spinner } from "@/components/ui";
 import { assessment, type SolveView, type Submission } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { celebrateOnce } from "@/lib/confetti";
 import { fmtDateTime } from "@/lib/dates";
 import { DIFFICULTY_LABELS, FAILURE_LABELS, TASK_TYPE_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
@@ -70,6 +71,13 @@ function Solver({
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const checking = view.submissions.some((s) => s.status === "checking");
+  // Конфетти — только за новый верный ответ, а не за решённое раньше при открытии страницы.
+  const seenOnOpen = useRef(last?.id);
+  const lastId = last?.id;
+  const lastStatus = last?.status;
+  useEffect(() => {
+    if (lastId && lastId !== seenOnOpen.current && lastStatus === "correct") celebrateOnce(`submission:${lastId}`, { count: 90 });
+  }, [lastId, lastStatus]);
 
   // Пока код проверяется в песочнице — опрашиваем статус.
   useEffect(() => {

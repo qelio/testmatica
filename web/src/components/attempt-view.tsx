@@ -10,6 +10,7 @@ import { ReviewForm } from "@/components/review-form";
 import { resultText } from "@/components/task-solver";
 import { Alert, Badge, Button } from "@/components/ui";
 import { assessment, type Attempt, type AttemptTask, type Submission } from "@/lib/api";
+import { celebrateOnce } from "@/lib/confetti";
 import { fmtDateTime } from "@/lib/dates";
 import { FAILURE_LABELS, TASK_TYPE_LABELS } from "@/lib/format";
 import { errorText } from "@/lib/hooks";
@@ -359,6 +360,10 @@ function TaskHead({ item, n }: { item: AttemptTask; n: number }) {
 }
 
 function ResultHeader({ attempt, teacher }: { attempt: Attempt; teacher: boolean }) {
+  const excellent = !teacher && attempt.checked && (attempt.percent ?? 0) >= 90;
+  useEffect(() => {
+    if (excellent) celebrateOnce(`attempt:${attempt.id}`); // отличный результат — праздник один раз
+  }, [excellent, attempt.id]);
   if (attempt.status === "in_progress") {
     return <Alert kind="info">Ученик ещё решает — здесь видны его текущие ответы.</Alert>;
   }

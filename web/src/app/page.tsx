@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ChartLine,
   CircleCheck,
+  Flame,
   GraduationCap,
   type LucideIcon,
   Mail,
@@ -12,7 +13,9 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Star,
   Target,
+  Trophy,
   Users,
   Video,
   Wallet,
@@ -50,6 +53,17 @@ const FALLBACK_HERO: LandingOut["hero"] = {
   image_file_id: null,
 };
 
+/** Цвета карточек по кругу — классы целиком, чтобы Tailwind их нашёл. */
+const TONES = [
+  { icon: "bg-brand/15 text-brand", card: "hover:border-brand/40", glow: "from-brand/10" },
+  { icon: "bg-pink/15 text-pink", card: "hover:border-pink/40", glow: "from-pink/10" },
+  { icon: "bg-sun/20 text-sun", card: "hover:border-sun/50", glow: "from-sun/10" },
+  { icon: "bg-sky/15 text-sky", card: "hover:border-sky/40", glow: "from-sky/10" },
+  { icon: "bg-mint/15 text-mint", card: "hover:border-mint/40", glow: "from-mint/10" },
+  { icon: "bg-grape/15 text-grape", card: "hover:border-grape/40", glow: "from-grape/10" },
+];
+const STAT_TONES = ["text-brand", "text-pink", "text-sun", "text-mint", "text-sky", "text-grape"];
+
 /** Главная — содержимое задаёт администратор («Главная страница» в кабинете). Рендерится на сервере. */
 export default async function Home() {
   const data = await serverGet<LandingOut>("/api/content/site/landing");
@@ -59,40 +73,53 @@ export default async function Home() {
 
   return (
     <PublicShell wide>
-      {/* Первый экран */}
-      <section className="border-b border-line bg-gradient-to-b from-brand/10 to-transparent">
-        <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] md:py-24">
+      {/* Первый экран: цветные пятна на фоне и «живые» карточки платформы. */}
+      <section className="relative overflow-hidden border-b border-line">
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-24 -left-24 h-96 w-96 rounded-full bg-grape/25 blur-3xl" />
+          <div className="absolute top-10 right-0 h-80 w-80 rounded-full bg-sky/25 blur-3xl" />
+          <div className="absolute -bottom-32 left-1/3 h-96 w-96 rounded-full bg-pink/20 blur-3xl" />
+          <div className="absolute right-1/4 bottom-0 h-56 w-56 rounded-full bg-sun/25 blur-3xl" />
+        </div>
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] md:py-24">
           <div>
-            <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">{hero.title}</h1>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-grape/30 bg-surface/70 px-3 py-1 text-sm font-medium text-grape backdrop-blur">
+              <Sparkles size={15} aria-hidden /> Учителям, репетиторам и ученикам
+            </span>
+            <h1 className="mt-5 bg-gradient-to-br from-fg via-brand to-grape bg-clip-text text-4xl font-bold tracking-tight text-balance text-transparent sm:text-5xl lg:text-6xl">
+              {hero.title}
+            </h1>
             {hero.subtitle && <p className="mt-5 max-w-2xl text-lg text-fg-soft">{hero.subtitle}</p>}
             <div className="mt-8 flex flex-wrap gap-3">
               {hero.primary_text && hero.primary_href && (
-                <Link href={hero.primary_href} className="rounded-xl bg-brand px-5 py-3 font-medium text-white hover:bg-brand-strong">
-                  {hero.primary_text}
+                <Link
+                  href={hero.primary_href}
+                  className="rounded-2xl bg-gradient-to-r from-brand via-grape to-pink px-6 py-3.5 font-semibold text-white shadow-lg shadow-brand/30 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-grape/30"
+                >
+                  {hero.primary_text} →
                 </Link>
               )}
               {hero.secondary_text && hero.secondary_href && (
-                <Link href={hero.secondary_href} className="rounded-xl border border-line bg-surface px-5 py-3 font-medium hover:bg-muted">
+                <Link
+                  href={hero.secondary_href}
+                  className="rounded-2xl border border-line bg-surface/80 px-6 py-3.5 font-semibold backdrop-blur transition hover:-translate-y-0.5 hover:border-brand/40"
+                >
                   {hero.secondary_text}
                 </Link>
               )}
             </div>
           </div>
-          {data?.hero_image_url && (
-            // Картинка из хранилища по временной ссылке — обычный img, без оптимизатора Next.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.hero_image_url} alt="" className="w-full rounded-3xl border border-line object-cover shadow-sm" />
-          )}
+          <HeroArt imageUrl={data?.hero_image_url ?? null} />
         </div>
       </section>
 
       {data?.sections.stats && data.stats.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
           <dl className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
-            {data.stats.map((st) => (
-              <div key={st.label} className="rounded-2xl border border-line bg-surface p-5 text-center">
+            {data.stats.map((st, i) => (
+              <div key={st.label} className="rounded-3xl border border-line bg-surface p-6 text-center shadow-sm">
                 <dt className="sr-only">{st.label}</dt>
-                <dd className="text-3xl font-semibold text-brand">{st.value}</dd>
+                <dd className={`text-4xl font-bold tracking-tight ${STAT_TONES[i % STAT_TONES.length]}`}>{st.value}</dd>
                 <p className="mt-1 text-sm text-fg-soft">{st.label}</p>
               </div>
             ))}
@@ -102,17 +129,21 @@ export default async function Home() {
 
       {data?.sections.features && data.features.length > 0 && (
         <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Что есть на платформе</h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {data.features.map((f) => {
+          <SectionTitle kicker="Возможности">Что есть на платформе</SectionTitle>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {data.features.map((f, i) => {
               const Icon = ICONS[f.icon] ?? Sparkles;
+              const tone = TONES[i % TONES.length];
               return (
-                <div key={f.title} className="rounded-2xl border border-line bg-surface p-5">
-                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand/10 text-brand">
-                    <Icon size={20} aria-hidden />
+                <div
+                  key={f.title}
+                  className={`group rounded-3xl border border-line bg-gradient-to-br ${tone.glow} to-surface to-60% p-6 transition hover:-translate-y-1 hover:shadow-lg ${tone.card}`}
+                >
+                  <span className={`grid h-12 w-12 place-items-center rounded-2xl ${tone.icon} transition group-hover:scale-110 group-hover:-rotate-6`}>
+                    <Icon size={24} aria-hidden />
                   </span>
-                  <h3 className="mt-3 font-semibold">{f.title}</h3>
-                  {f.text && <p className="mt-1.5 text-sm text-fg-soft">{f.text}</p>}
+                  <h3 className="mt-4 text-lg font-semibold">{f.title}</h3>
+                  {f.text && <p className="mt-1.5 text-fg-soft">{f.text}</p>}
                 </div>
               );
             })}
@@ -121,50 +152,50 @@ export default async function Home() {
       )}
 
       {data?.sections.steps && (data.steps.students.length > 0 || data.steps.teachers.length > 0) && (
-        <section className="border-y border-line bg-muted/50">
-          <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{data.steps.title}</h2>
-            <div className="mt-6 grid gap-6 md:grid-cols-2">
-              {(
-                [
-                  ["Ученикам", data.steps.students],
-                  ["Педагогам", data.steps.teachers],
-                ] as const
-              ).map(([who, steps]) =>
-                steps.length ? (
-                  <div key={who} className="rounded-2xl border border-line bg-surface p-6">
-                    <h3 className="text-lg font-semibold">{who}</h3>
-                    <ol className="mt-4 space-y-3">
-                      {steps.map((step, i) => (
-                        <li key={i} className="flex gap-3">
-                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand text-sm font-semibold text-white">{i + 1}</span>
-                          <span className="pt-0.5">{step}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                ) : null,
-              )}
-            </div>
+        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+          <SectionTitle kicker="Как начать">{data.steps.title}</SectionTitle>
+          <div className="mt-8 grid gap-6 md:grid-cols-2">
+            {(
+              [
+                ["Ученикам", data.steps.students, "from-sky to-brand", "bg-sky"],
+                ["Педагогам", data.steps.teachers, "from-sun to-pink", "bg-pink"],
+              ] as const
+            ).map(([who, steps, gradient, dot]) =>
+              steps.length ? (
+                <div key={who} className="overflow-hidden rounded-3xl border border-line bg-surface shadow-sm">
+                  <h3 className={`bg-gradient-to-r ${gradient} px-6 py-4 text-lg font-semibold text-white`}>{who}</h3>
+                  <ol className="space-y-4 p-6">
+                    {steps.map((step, i) => (
+                      <li key={i} className="flex gap-3">
+                        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${dot} text-sm font-bold text-white`}>{i + 1}</span>
+                        <span className="pt-1">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ) : null,
+            )}
           </div>
         </section>
       )}
 
       {data?.sections.teachers && teachers.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{data.teachers.title}</h2>
-              {data.teachers.subtitle && <p className="mt-2 max-w-2xl text-fg-soft">{data.teachers.subtitle}</p>}
+        <section className="relative border-y border-line bg-gradient-to-b from-sun/10 via-transparent to-transparent">
+          <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <SectionTitle kicker="Преподаватели">{data.teachers.title}</SectionTitle>
+                {data.teachers.subtitle && <p className="mt-2 max-w-2xl text-fg-soft">{data.teachers.subtitle}</p>}
+              </div>
+              <Link href="/tutors" className="font-semibold text-brand hover:underline">
+                Все репетиторы →
+              </Link>
             </div>
-            <Link href="/tutors" className="font-medium text-brand hover:underline">
-              Все репетиторы →
-            </Link>
-          </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {teachers.map((t) => (
-              <TutorCardView key={t.user_id} tutor={notes.get(t.user_id) ? { ...t, headline: notes.get(t.user_id)! } : t} />
-            ))}
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              {teachers.map((t) => (
+                <TutorCardView key={t.user_id} tutor={notes.get(t.user_id) ? { ...t, headline: notes.get(t.user_id)! } : t} />
+              ))}
+            </div>
           </div>
         </section>
       )}
@@ -172,12 +203,12 @@ export default async function Home() {
       {data?.sections.news && data.latest_news.length > 0 && (
         <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{data.news.title}</h2>
-            <Link href="/news" className="font-medium text-brand hover:underline">
+            <SectionTitle kicker="Новости">{data.news.title}</SectionTitle>
+            <Link href="/news" className="font-semibold text-brand hover:underline">
               Все новости →
             </Link>
           </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
             {data.latest_news.map((n) => (
               <NewsCard key={n.id} news={n} />
             ))}
@@ -187,13 +218,17 @@ export default async function Home() {
 
       {data?.sections.faq && data.faq.length > 0 && (
         <section className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Частые вопросы</h2>
-          <div className="mt-6 divide-y divide-line rounded-2xl border border-line bg-surface">
-            {data.faq.map((f) => (
-              <details key={f.q} className="group px-5 py-4">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-medium">
+          <SectionTitle kicker="Вопросы и ответы">Частые вопросы</SectionTitle>
+          <div className="mt-8 space-y-3">
+            {data.faq.map((f, i) => (
+              <details key={f.q} className="group rounded-2xl border border-line bg-surface px-5 py-4 open:shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">
                   {f.q}
-                  <span className="text-fg-soft transition group-open:rotate-45">+</span>
+                  <span
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg transition group-open:rotate-45 ${TONES[i % TONES.length].icon}`}
+                  >
+                    +
+                  </span>
                 </summary>
                 <p className="mt-2 whitespace-pre-line text-fg-soft">{f.a}</p>
               </details>
@@ -202,8 +237,102 @@ export default async function Home() {
         </section>
       )}
 
+      {hero.primary_text && hero.primary_href && (
+        <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+          <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-brand via-grape to-pink px-6 py-12 text-center text-white shadow-xl shadow-grape/20 sm:px-12">
+            <div aria-hidden className="pointer-events-none absolute -top-10 -left-10 h-40 w-40 rounded-full bg-sun/40 blur-2xl" />
+            <div aria-hidden className="pointer-events-none absolute -right-10 -bottom-10 h-48 w-48 rounded-full bg-sky/40 blur-2xl" />
+            <h2 className="relative text-3xl font-bold tracking-tight sm:text-4xl">Готовы попробовать?</h2>
+            <p className="relative mx-auto mt-3 max-w-xl text-white/85">Регистрация бесплатная, а первые задачи можно решить уже сегодня.</p>
+            <Link
+              href={hero.primary_href}
+              className="relative mt-7 inline-block rounded-2xl bg-white px-7 py-3.5 font-semibold text-brand shadow-lg transition hover:-translate-y-0.5"
+            >
+              {hero.primary_text} →
+            </Link>
+          </div>
+        </section>
+      )}
+
       <Footer contacts={data?.contacts} />
     </PublicShell>
+  );
+}
+
+function SectionTitle({ kicker, children }: { kicker: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-sm font-semibold tracking-wide text-grape uppercase">{kicker}</p>
+      <h2 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{children}</h2>
+    </div>
+  );
+}
+
+/** Иллюстрация первого экрана: картинка администратора (если есть) и парящие карточки — как выглядит учёба на платформе. */
+function HeroArt({ imageUrl }: { imageUrl: string | null }) {
+  return (
+    <div aria-hidden className="relative mx-auto h-[22rem] w-full max-w-md sm:h-[26rem]">
+      {imageUrl ? (
+        // Картинка из хранилища по временной ссылке — обычный img, без оптимизатора Next.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageUrl} alt="" className="absolute inset-6 h-[calc(100%-3rem)] w-[calc(100%-3rem)] rounded-[2rem] border-4 border-surface object-cover shadow-2xl" />
+      ) : (
+        <div className="absolute inset-6 rounded-[2rem] border border-line bg-surface/80 p-6 shadow-2xl backdrop-blur">
+          <p className="text-sm font-medium text-fg-soft">Задача дня</p>
+          <p className="mt-1 text-lg font-semibold">Решите уравнение 2x − 6 = 0</p>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {["x = −3", "x = 3", "x = 12"].map((o, i) => (
+              <span
+                key={o}
+                className={`rounded-xl border px-2 py-2 text-center text-sm font-medium ${i === 1 ? "border-mint bg-mint/15 text-mint" : "border-line"}`}
+              >
+                {o}
+              </span>
+            ))}
+          </div>
+          <div className="mt-5">
+            <div className="flex justify-between text-xs font-medium text-fg-soft">
+              <span>Уровень 4 · Знаток</span>
+              <span>240 / 300</span>
+            </div>
+            <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full w-4/5 rounded-full bg-gradient-to-r from-sun via-pink to-grape" />
+            </div>
+          </div>
+          <div className="mt-5 flex gap-1.5">
+            {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((d, i) => (
+              <span
+                key={d}
+                className={`grid h-8 flex-1 place-items-center rounded-lg text-xs font-semibold ${i < 5 ? "bg-sun/20 text-sun" : "bg-muted text-fg-soft"}`}
+              >
+                {d}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="tm-float absolute -top-1 -right-2 flex items-center gap-2 rounded-2xl border border-line bg-surface px-3 py-2 shadow-lg [--tilt:4deg]">
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-mint/15 text-mint">
+          <CircleCheck size={18} />
+        </span>
+        <span className="text-sm font-semibold">
+          Верно! <span className="text-mint">+10 опыта</span>
+        </span>
+      </div>
+      <div className="tm-float absolute bottom-16 -left-4 flex items-center gap-2 rounded-2xl border border-line bg-surface px-3 py-2 shadow-lg [--tilt:-5deg] [animation-delay:-2s]">
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-sun/20 text-sun">
+          <Flame size={18} />
+        </span>
+        <span className="text-sm font-semibold">5 дней подряд</span>
+      </div>
+      <div className="tm-float absolute -right-3 bottom-2 flex items-center gap-2 rounded-2xl border border-line bg-surface px-3 py-2 shadow-lg [--tilt:3deg] [animation-delay:-4s]">
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-grape/15 text-grape">
+          <Trophy size={18} />
+        </span>
+        <span className="text-sm font-semibold">Отличник</span>
+        <Star size={14} className="fill-sun text-sun" />
+      </div>
+    </div>
   );
 }
 
