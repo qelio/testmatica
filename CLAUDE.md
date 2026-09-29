@@ -34,4 +34,4 @@
 
 - Next.js 16 — перед использованием API сверяться с `web/node_modules/next/dist/docs/` (см. `web/AGENTS.md`).
 - Запросы к API — через `web/src/lib/api.ts`; access-токен только в памяти, refresh — httpOnly-cookie.
-- Цвета — только токены из `globals.css` (`bg-surface`, `text-fg-soft`, `bg-brand`…), тёмная тема автоматически.
+- Цвета — только токены из `globals.css` (`bg-surface`, `text-fg-soft`, `bg-brand`…). Тема — по системе или выбор пользователя (`lib/theme.tsx`, атрибут `data-theme` на `<html>`); свои цвета компонентов (редактор кода) — через `useDarkMode()`.

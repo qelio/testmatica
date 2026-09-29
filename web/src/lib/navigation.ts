@@ -12,6 +12,7 @@ import {
   ClipboardList,
   FileText,
   GraduationCap,
+  House,
   Inbox,
   LayoutDashboard,
   LifeBuoy,
@@ -97,6 +98,7 @@ NAV.admin = [
   { title: "Пользователи", href: "/dashboard/users", icon: UserCog, ready: true },
   { title: "Статистика платформы", href: "/dashboard/platform-stats", icon: ChartNoAxesCombined, ready: true },
   { title: "Журнал аудита", href: "/dashboard/audit", icon: ScrollText, ready: true },
+  { title: "Главная страница", href: "/dashboard/site", icon: House, ready: true },
   { title: "Настройки платформы", href: "/dashboard/platform", icon: Settings, ready: true },
 ];
 

@@ -1,7 +1,9 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, false, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
 from testmatica_common.messaging import messaging_tables
@@ -139,3 +141,41 @@ class Favorite(Base):
     user_id: Mapped[UUID] = mapped_column(primary_key=True)
     material_id: Mapped[UUID] = mapped_column(ForeignKey("materials.id", ondelete="CASCADE"), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------- главная страница и новости (редактирует администратор) ----------
+
+NEWS_DRAFT, NEWS_PUBLISHED = "draft", "published"
+
+
+class SiteSetting(Base):
+    """Содержимое сайта: key = landing — разделы главной (схема — site.Landing)."""
+
+    __tablename__ = "site_settings"
+
+    key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    updated_by: Mapped[UUID | None]
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class News(Base):
+    """Новость на сайте: черновик виден только администраторам, опубликованная — всем."""
+
+    __tablename__ = "news"
+    __table_args__ = (
+        CheckConstraint("status IN ('draft', 'published')", name="status_valid"),
+        Index("ix_news_published", "status", "published_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    slug: Mapped[str] = mapped_column(String(120), unique=True)  # адрес: /news/<slug>
+    title: Mapped[str] = mapped_column(String(200))
+    summary: Mapped[str] = mapped_column(String(500), default="")
+    body: Mapped[str] = mapped_column(Text, default="")  # Markdown
+    cover_file_id: Mapped[UUID | None]
+    status: Mapped[str] = mapped_column(String(10), default=NEWS_DRAFT)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    author_id: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -127,3 +127,14 @@ async def test_admin_hides_profile(client):
     assert (await client.post(f"/admin/tutors/{maria}/unhide", headers=bearer(boss, ("admin",)))).json()["blocked_reason"] is None
     await publish(client, maria)
     assert (await client.get(f"/tutors/{maria}")).status_code == 200
+
+
+async def test_search_by_ids_only_published(client):
+    a, b, hidden = uuid4(), uuid4(), uuid4()
+    for u, n in ((a, "Анна"), (b, "Борис"), (hidden, "Скрытый")):
+        await person(u, n)
+    await publish(client, a)
+    await publish(client, b)
+    await client.put("/me/profile", json=FULL, headers=bearer(hidden))  # не опубликован
+    found = (await client.get("/tutors", params={"ids": [str(a), str(hidden)]})).json()
+    assert [t["full_name"] for t in found["items"]] == ["Анна"]

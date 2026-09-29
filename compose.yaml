@@ -574,6 +574,8 @@ services:
     environment:
       WATCHPACK_POLLING: "true"
       NEXT_TELEMETRY_DISABLED: "1"
+      # Сервер Next (главная, новости) ходит в API через шлюз внутри сети Docker.
+      INTERNAL_API_ORIGIN: http://traefik
     volumes:
       - ./web:/web
       - web-node-modules:/web/node_modules

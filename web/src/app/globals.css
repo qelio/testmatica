@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --bg: #f6f7fb;
   --surface: #ffffff;
   --muted: #eef0f6;
@@ -15,8 +16,10 @@
   --tutor: #c4320a;
 }
 
+/* Тёмная тема: по настройке системы, если пользователь не выбрал светлую, или по выбору пользователя (lib/theme.ts). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0e1117;
     --surface: #161b25;
     --muted: #1f2533;
@@ -30,6 +33,22 @@
     --school: #2ed3b7;
     --tutor: #fb6514;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1117;
+  --surface: #161b25;
+  --muted: #1f2533;
+  --line: #2b3243;
+  --fg: #e8eaf0;
+  --fg-soft: #9aa2b6;
+  --brand: #7c74ff;
+  --brand-strong: #948dff;
+  --danger: #f97066;
+  --ok: #32d583;
+  --school: #2ed3b7;
+  --tutor: #fb6514;
 }
 
 @theme inline {

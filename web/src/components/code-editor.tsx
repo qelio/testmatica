@@ -3,21 +3,8 @@
 import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
 import CodeMirror from "@uiw/react-codemirror";
-import { useSyncExternalStore } from "react";
 
-const DARK = "(prefers-color-scheme: dark)";
-
-function useDarkMode(): boolean {
-  return useSyncExternalStore(
-    (cb) => {
-      const mq = window.matchMedia(DARK);
-      mq.addEventListener("change", cb);
-      return () => mq.removeEventListener("change", cb);
-    },
-    () => window.matchMedia(DARK).matches,
-    () => false,
-  );
-}
+import { useDarkMode } from "@/lib/theme";
 
 /** Редактор кода с подсветкой Python. readOnly — для просмотра чужих решений. */
 export function CodeEditor({
