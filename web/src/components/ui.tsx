@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 export function Logo({ className = "", compact = false }: { className?: string; compact?: boolean }) {
   return (
     <Link href="/" className={`inline-flex items-center gap-2 font-semibold tracking-tight ${className}`}>
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand text-sm font-bold text-white">
+      <span className="grid h-8 w-8 shrink-0 -rotate-6 place-items-center rounded-lg bg-gradient-to-br from-brand via-grape to-pink text-sm font-bold text-white shadow-sm shadow-brand/30">
         Т
       </span>
       {/* compact: на узких экранах остаётся только значок */}

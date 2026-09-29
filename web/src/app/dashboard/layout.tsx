@@ -74,14 +74,14 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4rem)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
         >
           <nav className="space-y-1">
-            {nav.map((item) => {
+            {nav.map((item, i) => {
               const Icon = item.icon;
               const count = item.badge ? badges[item.badge] : 0;
               // В свёрнутом меню подпись — во всплывающей подсказке, счётчик — точкой на иконке.
               const tip = collapsed ? `${item.title}${item.ready ? "" : " — скоро"}${count ? ` (${count})` : ""}` : undefined;
               const icon = (
-                <span className="relative shrink-0">
-                  <Icon size={18} strokeWidth={1.8} aria-hidden />
+                <span className={`relative grid h-7 w-7 shrink-0 place-items-center rounded-lg ${ICON_TONES[i % ICON_TONES.length]}`}>
+                  <Icon size={16} strokeWidth={2.2} aria-hidden />
                   {collapsed && count > 0 && <span className="absolute -top-1 -right-1 hidden h-2 w-2 rounded-full bg-brand lg:block" />}
                 </span>
               );
@@ -123,6 +123,16 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
 }
 
 const COLLAPSED_KEY = "tm:sidebar-collapsed";
+
+// Цветные плашки иконок меню — по кругу; классы целиком, чтобы Tailwind их нашёл.
+const ICON_TONES = [
+  "bg-brand/15 text-brand",
+  "bg-pink/15 text-pink",
+  "bg-sky/15 text-sky",
+  "bg-sun/20 text-sun",
+  "bg-mint/15 text-mint",
+  "bg-grape/15 text-grape",
+];
 
 function readCollapsed(): boolean {
   try {

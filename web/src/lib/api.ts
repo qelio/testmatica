@@ -897,6 +897,20 @@ export type Exam = { id: string; kind: ExamKind; subject_id: string; subject_nam
 export type ExamLabel = { id: string; label: string; title: string };
 
 export type ExamProgress = { attempted: number; solved: number; attempts: number; correct_attempts: number; last_at: string | null };
+/** «Мои успехи» ученика: опыт, уровень, серия дней, достижения. */
+export type GameAchievement = { code: string; title: string; text: string; icon: string; earned: boolean; current: number; target: number };
+export type Game = {
+  xp: number;
+  level: { number: number; title: string; xp_from: number; xp_to: number };
+  streak: number;
+  best_streak: number;
+  today_active: boolean;
+  week: boolean[];
+  solved: number;
+  tests: number;
+  achievements: GameAchievement[];
+};
+
 /** Этапы работы с заданием: материал (теория), практика (сами, не на оценку), контроль (проверка знаний). */
 export type ExamStage = "theory" | "practice" | "control";
 export type ExamBoardRow = {
@@ -1116,6 +1130,7 @@ export const assessment = {
   deleteExamItem: (id: string) => api<void>(`${AS}/exam-items/${id}`, { method: "DELETE" }),
   examBoard: (examId: string, targetType: "student" | "group", targetId: string) =>
     api<ExamBoard>(`${AS}/exam-board?exam_id=${examId}&target_type=${targetType}&target_id=${targetId}`),
+  myGame: (tz: string) => api<Game>(`${AS}/me/game?tz=${encodeURIComponent(tz)}`),
   /** Меняются только переданные поля. */
   setExamMark: (
     data: { target_type: "student" | "group"; target_id: string; item_id: string } & Partial<

@@ -14,6 +14,12 @@
   --ok: #12805c;
   --school: #0e9384;
   --tutor: #c4320a;
+  /* Яркие акценты: лендинг, кабинет ученика, достижения. */
+  --sun: #f5a524;
+  --pink: #e8488a;
+  --sky: #0ea5e9;
+  --grape: #8b5cf6;
+  --mint: #10b981;
 }
 
 /* Тёмная тема: по настройке системы, если пользователь не выбрал светлую, или по выбору пользователя (lib/theme.ts). */
@@ -32,6 +38,11 @@
     --ok: #32d583;
     --school: #2ed3b7;
     --tutor: #fb6514;
+  --sun: #fbbf24;
+  --pink: #f472b6;
+  --sky: #38bdf8;
+  --grape: #a78bfa;
+  --mint: #34d399;
   }
 }
 
@@ -49,6 +60,11 @@
   --ok: #32d583;
   --school: #2ed3b7;
   --tutor: #fb6514;
+  --sun: #fbbf24;
+  --pink: #f472b6;
+  --sky: #38bdf8;
+  --grape: #a78bfa;
+  --mint: #34d399;
 }
 
 @theme inline {
@@ -64,6 +80,11 @@
   --color-ok: var(--ok);
   --color-school: var(--school);
   --color-tutor: var(--tutor);
+  --color-sun: var(--sun);
+  --color-pink: var(--pink);
+  --color-sky: var(--sky);
+  --color-grape: var(--grape);
+  --color-mint: var(--mint);
   --font-sans: var(--font-inter), system-ui, sans-serif;
 }
 
@@ -94,3 +115,19 @@ body {
 .prose-tm th, .prose-tm td { border: 1px solid var(--line); padding: 0.35em 0.7em; }
 .prose-tm img { max-width: 100%; border-radius: 10px; }
 .prose-tm .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.3em 0; }
+
+/* Мягкое «парение» декоративных карточек на главной; без анимации, если пользователь её отключил. */
+@keyframes tm-float {
+  0%, 100% { transform: translateY(0) rotate(var(--tilt, 0deg)); }
+  50% { transform: translateY(-10px) rotate(var(--tilt, 0deg)); }
+}
+.tm-float { animation: tm-float 6s ease-in-out infinite; }
+@keyframes tm-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  70% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.tm-pop { animation: tm-pop 0.45s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .tm-float, .tm-pop { animation: none; }
+}

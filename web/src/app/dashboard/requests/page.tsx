@@ -58,7 +58,7 @@ function StudentView() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Мои заявки</h1>
         <div className="flex gap-2">
-          <Link href="/tutors" className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted">
+          <Link href="/dashboard/tutors" className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted">
             Найти репетитора
           </Link>
           <Button onClick={() => setCreating(true)}>Открытая заявка</Button>
@@ -106,7 +106,7 @@ function StudentView() {
                   {r.responses.map((x) => (
                     <li key={x.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
                       <Avatar url={x.tutor.photo_url} name={x.tutor.full_name} size={36} />
-                      <Link href={`/tutors/${x.tutor.id}`} className="min-w-0 flex-1 font-medium hover:underline">
+                      <Link href={`/dashboard/tutors/${x.tutor.id}`} className="min-w-0 flex-1 font-medium hover:underline">
                         {x.tutor.full_name}
                       </Link>
                       <span>

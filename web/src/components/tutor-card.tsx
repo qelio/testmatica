@@ -44,9 +44,10 @@ export function PresenceDot({ presence }: { presence: TutorCard["presence"] }) {
 }
 
 /** Карточка в списке поиска. */
-export function TutorCardView({ tutor }: { tutor: TutorCard }) {
+/** base — «/dashboard», если карточка показана в кабинете. */
+export function TutorCardView({ tutor, base = "" }: { tutor: TutorCard; base?: string }) {
   return (
-    <Link href={`/tutors/${tutor.user_id}`} className="flex gap-4 rounded-2xl border border-line bg-surface p-5 transition-colors hover:border-brand/50">
+    <Link href={`${base}/tutors/${tutor.user_id}`} className="flex gap-4 rounded-2xl border border-line bg-surface p-5 transition-colors hover:border-brand/50">
       <Avatar url={tutor.photo_url} name={tutor.full_name} />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
