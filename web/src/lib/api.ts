@@ -148,6 +148,8 @@ export function saveFile(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+import type { Landing, LandingOut, NewsFull, NewsSummary } from "@/lib/server-api";
+
 // ---- identity ----
 
 const ID = "/api/identity";
@@ -623,7 +625,7 @@ export const chat = {
 
 // ---- media ----
 
-export type FilePurpose = "chat_attachment" | "answer" | "material" | "avatar" | "document";
+export type FilePurpose = "chat_attachment" | "answer" | "material" | "avatar" | "document" | "site";
 
 export type UploadedFile = { id: string; filename: string; mime: string; size: number; purpose: FilePurpose; url: string | null };
 
@@ -1296,6 +1298,11 @@ export const marketplace = {
     return api<{ items: TutorCard[]; total: number }>(`${MK}/tutors?${qs}`, readOpts(authed));
   },
   tutor: (id: string, authed: boolean) => api<TutorPublic>(`${MK}/tutors/${id}`, readOpts(authed)),
+  /** Опубликованные профили по списку id (для редактора главной). */
+  tutorsByIds: (ids: string[]) =>
+    ids.length
+      ? api<{ items: TutorCard[]; total: number }>(`${MK}/tutors?${new URLSearchParams(ids.map((id) => ["ids", id]))}&limit=50`, { auth: false })
+      : Promise.resolve({ items: [] as TutorCard[], total: 0 }),
   educationForModerator: (id: string) => api<EducationDoc>(`${MK}/moderation/education/${id}`),
 
   competencies: (subjectId: string) => api<Competency[]>(`${MK}/competencies?subject_id=${subjectId}`, { auth: false }),
@@ -1667,4 +1674,24 @@ export const admin = {
     api<unknown>(`${CONTENT_PATHS[kind]}/${id}/${kind === "tutor" ? "unhide" : "restore"}`, { method: "POST" }),
   grant: (userId: string, days: number, reason: string) =>
     api<{ period_end: string }>(`${BL}/admin/subscriptions/${userId}/grant`, { method: "POST", body: { days, reason } }),
+};
+
+// ---- главная страница и новости (администратор) ----
+
+export const site = {
+  landing: () => api<LandingOut>(`${CT}/admin/site/landing`),
+  saveLanding: (data: Landing) => api<LandingOut>(`${CT}/admin/site/landing`, { method: "PUT", body: data }),
+  news: () => api<NewsSummary[]>(`${CT}/admin/site/news`),
+  newsItem: (id: string) => api<NewsFull>(`${CT}/admin/site/news/${id}`),
+  createNews: (data: NewsInput) => api<NewsFull>(`${CT}/admin/site/news`, { method: "POST", body: data }),
+  updateNews: (id: string, data: NewsInput) => api<NewsFull>(`${CT}/admin/site/news/${id}`, { method: "PUT", body: data }),
+  deleteNews: (id: string) => api<void>(`${CT}/admin/site/news/${id}`, { method: "DELETE" }),
+};
+export type NewsInput = {
+  title: string;
+  slug?: string | null;
+  summary: string;
+  body: string;
+  cover_file_id: string | null;
+  status: "draft" | "published";
 };

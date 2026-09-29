@@ -10,6 +10,7 @@ import { chat } from "@/lib/api";
 import { ROLE_LABELS, useAuth } from "@/lib/auth";
 import { navFor } from "@/lib/navigation";
 import { useRealtime } from "@/lib/realtime";
+import { ThemeToggle } from "@/lib/theme";
 
 export default function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const auth = useAuth();
@@ -63,6 +64,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           </button>
           <Logo compact />
           <div className="flex-1" />
+          <ThemeToggle />
           <UserMenu />
         </div>
       </header>

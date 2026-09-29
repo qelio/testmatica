@@ -158,6 +158,7 @@ async def search(
     min_rating: float | None = Query(None, ge=1, le=10),
     verified: bool = Query(False, description="Только с подтверждённым образованием"),
     q: str | None = Query(None, max_length=100),
+    ids: list[UUID] | None = Query(None, max_length=50, description="Конкретные репетиторы — например, для главной страницы"),
     sort: str = Query("rating", pattern="^(rating|price_asc|price_desc|new)$"),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
@@ -179,6 +180,8 @@ async def search(
         query = query.where(TutorProfile.rating >= min_rating)
     if verified:
         query = query.where(TutorProfile.education_verified.is_(True))
+    if ids:
+        query = query.where(TutorProfile.user_id.in_(ids))
     if q:
         like = f"%{q.strip()}%"
         query = query.join(Person, Person.user_id == TutorProfile.user_id, isouter=True).where(

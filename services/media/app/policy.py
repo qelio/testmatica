@@ -30,6 +30,8 @@ PURPOSES: dict[str, Purpose] = {
     "avatar": Purpose(5 * MB, frozenset(IMAGES), "фото профиля"),
     # Дипломы, сертификаты, документы для верификации — только модератору и владельцу.
     "document": Purpose(20 * MB, frozenset(IMAGES | {".pdf"}), "документ"),
+    # Картинки главной страницы и обложки новостей — загружает администратор, видят все.
+    "site": Purpose(10 * MB, frozenset(IMAGES - {".heic"}), "картинка для сайта"),
 }
 
 

@@ -5,15 +5,18 @@ import { usePathname } from "next/navigation";
 
 import { Logo } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
+import { ThemeToggle } from "@/lib/theme";
 
 const LINKS = [
   { href: "/tutors", title: "Репетиторы" },
   { href: "/groups", title: "Группы" },
   { href: "/library", title: "Библиотека" },
+  { href: "/news", title: "Новости" },
 ];
 
-/** Шапка публичных страниц (поиск репетиторов, группы) — открыты без регистрации. */
-export function PublicShell({ children }: { children: React.ReactNode }) {
+/** Шапка публичных страниц (главная, репетиторы, группы, новости) — открыты без регистрации.
+ * wide — без ограничения ширины и отступов: у главной свои полноширинные разделы. */
+export function PublicShell({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   const { status } = useAuth();
   const pathname = usePathname();
   return (
@@ -21,28 +24,39 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
           <Logo compact />
-          {LINKS.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className={`font-medium hover:text-brand ${pathname.startsWith(l.href) ? "" : "text-fg-soft"}`}
-            >
-              {l.title}
-            </Link>
-          ))}
+          <nav className="flex min-w-0 gap-4 overflow-x-auto">
+            {LINKS.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`shrink-0 font-medium hover:text-brand ${pathname.startsWith(l.href) ? "" : "text-fg-soft"}`}
+              >
+                {l.title}
+              </Link>
+            ))}
+          </nav>
           <div className="flex-1" />
+          <ThemeToggle />
           {status === "authenticated" ? (
             <Link href="/dashboard" className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong">
               В кабинет
             </Link>
           ) : (
-            <Link href="/login" className="rounded-xl px-4 py-2 text-sm font-medium text-fg-soft hover:bg-muted hover:text-fg">
-              Войти
-            </Link>
+            <>
+              <Link href="/login" className="shrink-0 rounded-xl px-3 py-2 text-sm font-medium text-fg-soft hover:bg-muted hover:text-fg">
+                Войти
+              </Link>
+              <Link
+                href="/register"
+                className="hidden shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong sm:block"
+              >
+                Регистрация
+              </Link>
+            </>
           )}
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">{children}</main>
+      {wide ? <main className="flex-1">{children}</main> : <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">{children}</main>}
     </div>
   );
 }
