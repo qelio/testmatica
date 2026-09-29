@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Alert, Badge, Select, Spinner } from "@/components/ui";
-import { assessment, type Exam, type ExamBoardRow, type ExamLabel, type ExamProgress } from "@/lib/api";
+import { assessment, type Exam, type ExamBoardRow, type ExamLabel, type ExamProgress, type ExamStage } from "@/lib/api";
 import { fmtDateTime } from "@/lib/dates";
 import { TASK_TYPE_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
@@ -127,6 +127,12 @@ function ProgressBar({ p }: { p: ExamProgress }) {
   );
 }
 
+const STAGES: { key: ExamStage; label: string; hint: string; on: string }[] = [
+  { key: "theory", label: "Материал", hint: "Выдали теорию: рассказали, как решать", on: "border-brand/40 bg-brand/10 text-brand" },
+  { key: "practice", label: "Практика", hint: "Решали самостоятельно, не на оценку", on: "border-tutor/40 bg-tutor/10 text-tutor" },
+  { key: "control", label: "Контроль", hint: "Проверили знания", on: "border-ok/40 bg-ok/10 text-ok" },
+];
+
 const STORE_KEY = "exam-board";
 
 function rememberedExam(key: string, exams: Exam[]): string {
@@ -156,6 +162,7 @@ function Board({ exams, targetType, targetId }: { exams: Exam[]; targetType: "st
 
   const rows = board.data?.rows ?? [];
   const done = rows.filter((r) => r.done).length;
+  const staged = STAGES.map((st) => ({ ...st, count: rows.filter((r) => r[st.key]).length }));
   const total = rows.reduce(
     (acc, r) => ({ solved: acc.solved + r.progress.solved, attempted: acc.attempted + r.progress.attempted }),
     { solved: 0, attempted: 0 },
@@ -185,6 +192,13 @@ function Board({ exams, targetType, targetId }: { exams: Exam[]; targetType: "st
             Пройдено заданий: <b className="text-fg">{done}</b> из {rows.length} · решено задач:{" "}
             <b className="text-fg">{total.solved}</b> из {total.attempted}
             {total.attempted > 0 && ` (${Math.round((total.solved / total.attempted) * 100)}%)`}
+            <br />
+            {staged.map((st, i) => (
+              <span key={st.key} title={st.hint}>
+                {i > 0 && " · "}
+                {st.label.toLowerCase()}: <b className="text-fg">{st.count}</b>
+              </span>
+            ))}
           </p>
         )}
       </div>
@@ -207,8 +221,9 @@ function Board({ exams, targetType, targetId }: { exams: Exam[]; targetType: "st
       )}
       {board.data?.can_edit && (
         <p className="text-xs text-fg-soft">
+          Этапы: «материал» — рассказали теорию, как решать; «практика» — решали сами, не на оценку; «контроль» — проверили знания.
           Прогресс считается по всем решениям ученика: задачи из курсов, домашних заданий и тестов, отнесённые к заданию экзамена.
-          Отметка «пройдено» и примечания видны только вам; ученик видит отметки без примечаний.
+          Примечания видны только вам; ученик видит отметки без примечаний.
         </p>
       )}
     </div>
@@ -228,26 +243,31 @@ function BoardRowView({
   targetId: string;
   students: { id: string; full_name: string }[];
 }) {
-  const [done, setDone] = useState(row.done);
+  const [marks, setMarks] = useState({ theory: row.theory, practice: row.practice, control: row.control, done: row.done });
   const [note, setNote] = useState(row.note ?? "");
   const [saved, setSaved] = useState(row.note ?? "");
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
+  const done = marks.done;
 
-  async function save(nextDone: boolean, nextNote: string) {
+  // Отправляем только изменённое поле — соседние галочки не затираются.
+  async function save(patch: Partial<typeof marks> & { note?: string }) {
     setError(undefined);
+    const before = marks;
+    const { note: nextNote, ...flags } = patch;
+    setMarks((m) => ({ ...m, ...flags }));
     try {
-      await assessment.setExamMark({ target_type: targetType, target_id: targetId, item_id: row.item_id, done: nextDone, note: nextNote });
-      setSaved(nextNote);
+      await assessment.setExamMark({ target_type: targetType, target_id: targetId, item_id: row.item_id, ...patch });
+      if (nextNote !== undefined) setSaved(nextNote);
     } catch (e) {
       setError(errorText(e));
-      setDone(row.done);
+      setMarks(before);
     }
   }
 
   return (
     <li className={`px-4 py-3 ${done ? "bg-ok/5" : ""}`}>
-      <div className="grid items-center gap-x-4 gap-y-2 sm:grid-cols-[2.5rem_minmax(0,1fr)_12rem_auto]">
+      <div className="grid items-center gap-x-4 gap-y-2 sm:grid-cols-[2.5rem_minmax(0,1fr)_12rem] xl:grid-cols-[2.5rem_minmax(0,1fr)_12rem_auto]">
         <span className="text-lg font-semibold text-fg-soft tabular-nums">{row.number}</span>
         <button onClick={() => setOpen((o) => !o)} className="min-w-0 text-left" aria-expanded={open}>
           <span className="font-medium hover:underline">{row.title}</span>
@@ -257,26 +277,43 @@ function BoardRowView({
           </span>
         </button>
         <ProgressBar p={row.progress} />
-        <label className={`flex items-center gap-2 text-sm ${canEdit ? "cursor-pointer" : ""}`}>
-          <input
-            type="checkbox"
-            checked={done}
-            disabled={!canEdit}
-            onChange={(e) => {
-              setDone(e.target.checked);
-              save(e.target.checked, note);
-            }}
-            className="h-5 w-5 accent-ok"
-          />
-          <span className={done ? "text-ok" : "text-fg-soft"}>пройдено</span>
-        </label>
+        <div className="flex flex-wrap items-center gap-1.5 sm:col-start-2 sm:col-end-4 xl:col-auto">
+          {STAGES.map((st) => (
+            <label
+              key={st.key}
+              title={st.hint}
+              className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-sm select-none ${
+                marks[st.key] ? st.on : "border-line text-fg-soft"
+              } ${canEdit ? "cursor-pointer hover:border-fg-soft/50" : ""}`}
+            >
+              <input
+                type="checkbox"
+                checked={marks[st.key]}
+                disabled={!canEdit}
+                onChange={(e) => save({ [st.key]: e.target.checked })}
+                className="h-4 w-4 accent-current"
+              />
+              {st.label}
+            </label>
+          ))}
+          <label className={`ml-1 flex items-center gap-2 text-sm ${canEdit ? "cursor-pointer" : ""}`}>
+            <input
+              type="checkbox"
+              checked={done}
+              disabled={!canEdit}
+              onChange={(e) => save({ done: e.target.checked })}
+              className="h-5 w-5 accent-ok"
+            />
+            <span className={done ? "text-ok" : "text-fg-soft"}>пройдено</span>
+          </label>
+        </div>
       </div>
       {canEdit && (
         <input
           value={note}
           maxLength={2000}
           onChange={(e) => setNote(e.target.value)}
-          onBlur={() => note !== saved && save(done, note)}
+          onBlur={() => note !== saved && save({ note })}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           placeholder="Примечание: что повторить, на чём ошибается…"
           aria-label={`Примечание к заданию №${row.number}`}

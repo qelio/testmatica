@@ -3,6 +3,7 @@
 from redis.asyncio import Redis
 from testmatica_common.auth import Auth, TokenVerifier
 from testmatica_common.db import Database
+from testmatica_common.internal import InternalClient
 from testmatica_common.messaging import Outbox
 
 from .config import settings
@@ -18,3 +19,4 @@ issuer = TokenIssuer(signing_key, settings)
 auth = Auth(
     TokenVerifier(settings.jwt_issuer, settings.jwt_audience, static_jwks=signing_key.jwks)
 )
+media = InternalClient(settings.media_url, settings.internal_token)

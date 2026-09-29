@@ -12,7 +12,7 @@ from testmatica_common.errors import ApiError
 
 from .. import profiles
 from ..config import settings
-from ..deps import auth, db, media, outbox
+from ..deps import auth, db, identity, media, outbox
 from ..models import APPROVED, PENDING, EducationDoc, Person, TutorProfile
 from ..schemas import EducationIn, EducationOut, MyProfile, ProfileIn, SearchPage, TutorPublic
 
@@ -24,7 +24,9 @@ async def _profile(session: AsyncSession, user_id: UUID, lock: bool = False) -> 
     """Профиль педагога; создаётся пустым (не в поиске) при первом обращении."""
     p = await session.get(TutorProfile, user_id, with_for_update=lock)
     if p is None:
-        p = TutorProfile(user_id=user_id, subjects=[], subject_ids=[], levels=[], formats=[])
+        person = await session.get(Person, user_id)
+        p = TutorProfile(user_id=user_id, subjects=[], subject_ids=[], levels=[], formats=[],
+                         photo_file_id=person.avatar_file_id if person else None)  # фото — из личного кабинета
         session.add(p)
         await session.flush()
     return p
@@ -80,10 +82,9 @@ async def update_profile(body: ProfileIn, principal: Principal = Depends(teacher
     unknown = [s for s in body.subject_ids if str(s) not in known]
     if unknown:
         raise ApiError(422, "unknown_subject", "Такого предмета нет в справочнике")
-    if body.photo_file_id and body.photo_file_id != p.photo_file_id:
-        await media.post("/internal/files/claim", json={
-            "owner_id": str(principal.user_id), "purpose": "avatar", "file_ids": [str(body.photo_file_id)], "claimed_by": "marketplace",
-        })
+    if body.photo_file_id != p.photo_file_id:
+        # Фото одно на пользователя и хранится в identity; остальным сервисам оно придёт событием.
+        await identity.post(f"/internal/users/{principal.user_id}/avatar", json={"file_id": str(body.photo_file_id) if body.photo_file_id else None})
     p.headline, p.about, p.photo_file_id = body.headline, body.about.strip(), body.photo_file_id
     ids = list(dict.fromkeys(body.subject_ids))
     p.subject_ids, p.subjects = ids, [{"id": str(i), "name": known[str(i)]} for i in ids]

@@ -9,6 +9,10 @@ export type UserInfo = {
   roles: string[];
   two_factor_method: string | null;
   timezone: string;
+  email_verified?: boolean;
+  managed?: boolean;
+  two_factor_required?: boolean;
+  avatar_url?: string | null;
 };
 
 export type Authenticated = {
@@ -155,6 +159,16 @@ import type { Landing, LandingOut, NewsFull, NewsSummary } from "@/lib/server-ap
 const ID = "/api/identity";
 
 export const identity = {
+  me: () => api<UserInfo>(`${ID}/me`),
+  updateMe: (data: { full_name?: string; timezone?: string }) => api<UserInfo>(`${ID}/me`, { method: "PATCH", body: data }),
+  setAvatar: (fileId: string | null) => api<UserInfo>(`${ID}/me/avatar`, { method: "PUT", body: { file_id: fileId } }),
+  changeEmail: (email: string, password: string) =>
+    api<{ challenge_id: string; destination: string }>(`${ID}/me/email`, { method: "POST", body: { email, password } }),
+  confirmEmail: (challenge_id: string, code: string) =>
+    api<UserInfo>(`${ID}/me/email/confirm`, { method: "POST", body: { challenge_id, code } }),
+  changePassword: (current_password: string, new_password: string) =>
+    api<void>(`${ID}/me/password`, { method: "POST", body: { current_password, new_password } }),
+  setTwoFactor: (enabled: boolean, password: string) => api<UserInfo>(`${ID}/me/2fa`, { method: "PUT", body: { enabled, password } }),
   register: (data: {
     email: string;
     password: string;
@@ -883,10 +897,15 @@ export type Exam = { id: string; kind: ExamKind; subject_id: string; subject_nam
 export type ExamLabel = { id: string; label: string; title: string };
 
 export type ExamProgress = { attempted: number; solved: number; attempts: number; correct_attempts: number; last_at: string | null };
+/** Этапы работы с заданием: материал (теория), практика (сами, не на оценку), контроль (проверка знаний). */
+export type ExamStage = "theory" | "practice" | "control";
 export type ExamBoardRow = {
   item_id: string;
   number: number;
   title: string;
+  theory: boolean;
+  practice: boolean;
+  control: boolean;
   done: boolean;
   done_at: string | null;
   note: string | null;
@@ -1097,7 +1116,12 @@ export const assessment = {
   deleteExamItem: (id: string) => api<void>(`${AS}/exam-items/${id}`, { method: "DELETE" }),
   examBoard: (examId: string, targetType: "student" | "group", targetId: string) =>
     api<ExamBoard>(`${AS}/exam-board?exam_id=${examId}&target_type=${targetType}&target_id=${targetId}`),
-  setExamMark: (data: { target_type: "student" | "group"; target_id: string; item_id: string; done: boolean; note: string }) =>
+  /** Меняются только переданные поля. */
+  setExamMark: (
+    data: { target_type: "student" | "group"; target_id: string; item_id: string } & Partial<
+      Record<ExamStage | "done", boolean> & { note: string }
+    >,
+  ) =>
     api<void>(`${AS}/exam-marks`, { method: "PUT", body: data }),
   examItemTasks: (studentId: string, itemId: string) =>
     api<ItemTaskProgress[]>(`${AS}/exam-board/tasks?student_id=${studentId}&item_id=${itemId}`),

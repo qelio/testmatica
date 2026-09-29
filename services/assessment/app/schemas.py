@@ -281,6 +281,9 @@ class BoardRow(BaseModel):
     item_id: UUID
     number: int
     title: str
+    theory: bool = Field(description="Материал: выдали теорию, как решать")
+    practice: bool = Field(description="Практика: ученики решали сами, не на оценку")
+    control: bool = Field(description="Контроль: проверили знания")
     done: bool
     done_at: datetime | None
     note: str | None = Field(description="Примечание педагога — ученику не показывается")
@@ -307,8 +310,12 @@ class MarkIn(BaseModel):
     target_type: Literal["student", "group"]
     target_id: UUID
     item_id: UUID
-    done: bool = False
-    note: str = Field("", max_length=2000)
+    # Не переданное поле не меняется: разные галочки сохраняются независимо.
+    theory: bool | None = None
+    practice: bool | None = None
+    control: bool | None = None
+    done: bool | None = None
+    note: str | None = Field(None, max_length=2000)
 
 
 class ItemTaskProgress(BaseModel):

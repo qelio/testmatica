@@ -34,6 +34,7 @@ class Fakes:
         self.seen: dict[str, str] = {}
         self.links: set[tuple[str, str]] = set()  # (педагог, ученик)
         self.group_limited: set[str] = set()  # педагоги, упёршиеся в лимит групп
+        self.avatars: dict[str, str | None] = {}  # фото, переданные в identity
 
     def link(self, teacher: UUID, student: UUID) -> None:
         self.links.add((str(teacher), str(student)))
@@ -61,6 +62,12 @@ class Fakes:
         body = json.loads(request.content) if request.content else {}
         if path == "/internal/users/presence":
             return httpx.Response(200, json={u: self.seen.get(u) for u in body["user_ids"]})
+        if path.startswith("/internal/users/") and path.endswith("/avatar"):  # identity: фото профиля
+            f = self.files.get(body["file_id"] or "")
+            if body["file_id"] and (f is None or f["owner"] != path.split("/")[3]):
+                return httpx.Response(422, json={"error": {"code": "invalid_attachment", "message": "Файл не найден"}})
+            self.avatars[path.split("/")[3]] = body["file_id"]
+            return httpx.Response(204)
         if path == "/internal/files/claim":
             out = []
             for fid in body["file_ids"]:

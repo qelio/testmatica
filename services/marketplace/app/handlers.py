@@ -30,7 +30,28 @@ async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
         update = {"full_name": d["full_name"]}
         if d.get("roles") is not None:
             values["roles"] = update["roles"] = d["roles"]
+        if "avatar_file_id" in d:
+            values["avatar_file_id"] = update["avatar_file_id"] = _uuid(d["avatar_file_id"])
         await session.execute(insert(Person).values(**values).on_conflict_do_update(index_elements=["user_id"], set_=update))
+        if "avatar_file_id" in d:
+            await _sync_photo(session, UUID(d["user_id"]), _uuid(d["avatar_file_id"]))
+    elif envelope.type == "identity.user.avatar_changed":
+        user_id, file_id = UUID(envelope.data["user_id"]), _uuid(envelope.data.get("file_id"))
+        person = await session.get(Person, user_id, with_for_update=True)
+        if person is not None:
+            person.avatar_file_id = file_id
+        await _sync_photo(session, user_id, file_id)
+
+
+def _uuid(value: str | None) -> UUID | None:
+    return UUID(value) if value else None
+
+
+async def _sync_photo(session: AsyncSession, user_id: UUID, file_id: UUID | None) -> None:
+    """Фото в анкете репетитора — то же, что в личном кабинете (хранит identity)."""
+    profile = await session.get(TutorProfile, user_id, with_for_update=True)
+    if profile is not None:
+        profile.photo_file_id = file_id
 
 
 async def on_moderation_decision(envelope: Envelope, session: AsyncSession) -> None:

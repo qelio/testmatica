@@ -67,9 +67,13 @@ class UserOut(BaseModel):
     roles: list[str]
     two_factor_method: str | None
     timezone: str
+    email_verified: bool = False
+    managed: bool = Field(False, description="Аккаунт создал педагог — логин и пароль он же и выдаёт")
+    two_factor_required: bool = Field(False, description="2FA нельзя выключить (модераторы и администраторы)")
+    avatar_url: str | None = None
 
     @classmethod
-    def of(cls, user) -> "UserOut":
+    def of(cls, user, avatar_url: str | None = None) -> "UserOut":
         return cls(
             id=user.id,
             email=user.email,
@@ -78,6 +82,10 @@ class UserOut(BaseModel):
             roles=user.role_names,
             two_factor_method=user.two_factor_method,
             timezone=user.timezone,
+            email_verified=user.email_verified_at is not None,
+            managed=user.managed_by_teacher_id is not None,
+            two_factor_required=bool({"moderator", "admin"} & set(user.role_names)),
+            avatar_url=avatar_url,
         )
 
 

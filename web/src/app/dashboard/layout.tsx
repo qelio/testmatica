@@ -179,11 +179,16 @@ function UserMenu() {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand/15 text-sm font-semibold text-brand"
+        className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-sm font-semibold text-brand"
         aria-label="Профиль"
         aria-expanded={open}
       >
-        {initials}
+        {user.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
+        ) : (
+          initials
+        )}
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-64 rounded-xl border border-line bg-surface p-2 shadow-lg">
@@ -192,6 +197,13 @@ function UserMenu() {
             <p className="truncate text-sm text-fg-soft">{user.email ?? user.login}</p>
             <p className="mt-1 text-xs text-fg-soft">{user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ")}</p>
           </div>
+          <Link
+            href="/dashboard/account"
+            onClick={() => setOpen(false)}
+            className="block rounded-lg px-3 py-2 text-sm hover:bg-muted"
+          >
+            Личный кабинет
+          </Link>
           <button
             onClick={signOut}
             className="w-full rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-muted"

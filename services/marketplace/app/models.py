@@ -36,13 +36,14 @@ outbox, inbox = messaging_tables(Base.metadata)
 
 
 class Person(Base):
-    """Реплика пользователей из identity: имя и роли."""
+    """Реплика пользователей из identity: имя, роли и фото профиля."""
 
     __tablename__ = "people"
 
     user_id: Mapped[UUID] = mapped_column(primary_key=True)
     full_name: Mapped[str] = mapped_column(String(200))
     roles: Mapped[list[str]] = mapped_column(ARRAY(String(20)), default=list)
+    avatar_file_id: Mapped[UUID | None]
 
 
 class TutorProfile(Base):

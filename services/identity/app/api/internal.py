@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 from testmatica_common.internal import internal_guard
 
-from .. import sessions
+from .. import avatars, sessions
 from ..config import settings
 from ..deps import db, outbox
 from ..models import STATUS_ACTIVE, User
@@ -166,3 +166,17 @@ async def presence(body: PresenceIn, session: AsyncSession = Depends(db.session)
         return {}
     rows = await session.execute(select(User.id, User.last_seen_at).where(User.id.in_(body.user_ids)))
     return {str(uid): seen.isoformat() if seen else None for uid, seen in rows}
+
+
+class AvatarIn(BaseModel):
+    file_id: UUID | None
+
+
+@router.post("/users/{user_id}/avatar", status_code=204)
+async def set_avatar(user_id: UUID, body: AvatarIn, session: AsyncSession = Depends(db.session)) -> None:
+    """Фото профиля из анкеты репетитора (marketplace): оно же — фото в кабинете."""
+    user = await session.get(User, user_id, with_for_update=True)
+    if user is None or user.status != STATUS_ACTIVE:
+        raise ApiError(404, "user_not_found", "Пользователь не найден")
+    await avatars.set_avatar(session, user, body.file_id)
+    await session.commit()

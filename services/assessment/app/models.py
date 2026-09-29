@@ -100,7 +100,8 @@ class ExamItem(Base):
 
 
 class ExamMark(Base):
-    """Отметки педагога по заданиям экзамена для ученика или группы: «пройдено» и примечание."""
+    """Отметки педагога по заданиям экзамена для ученика или группы: этапы (материал, практика, контроль),
+    «пройдено» и примечание."""
 
     __tablename__ = "exam_marks"
     __table_args__ = (
@@ -113,6 +114,9 @@ class ExamMark(Base):
     target_type: Mapped[str] = mapped_column(String(10))
     target_id: Mapped[UUID]
     item_id: Mapped[UUID] = mapped_column(ForeignKey("exam_items.id", ondelete="CASCADE"))
+    theory: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # выдали теорию: как решать
+    practice: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # решали сами, не на оценку
+    control: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # проверили знания
     done: Mapped[bool] = mapped_column(Boolean, default=False)
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     note: Mapped[str] = mapped_column(Text, default="")

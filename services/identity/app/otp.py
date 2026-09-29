@@ -16,15 +16,18 @@ from .security import codes_equal, generate_code, hash_code
 PURPOSE_EMAIL_VERIFICATION = "email_verification"
 PURPOSE_LOGIN = "login"
 PURPOSE_PASSWORD_RESET = "password_reset"
+PURPOSE_EMAIL_CHANGE = "email_change"  # код уходит на новый адрес
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
 
 
-async def issue(session: AsyncSession, user: User, purpose: str) -> OtpChallenge:
-    """Создать новый код. Предыдущие неиспользованные коды того же назначения гасятся."""
-    assert user.email, "коды отправляются только на email"
+async def issue(session: AsyncSession, user: User, purpose: str, destination: str | None = None) -> OtpChallenge:
+    """Создать новый код. Предыдущие неиспользованные коды того же назначения гасятся.
+    destination — другой адрес (смена email: код на новый адрес); по умолчанию — email пользователя."""
+    destination = destination or user.email
+    assert destination, "коды отправляются только на email"
     now = _now()
     await session.execute(
         update(OtpChallenge)
@@ -40,7 +43,7 @@ async def issue(session: AsyncSession, user: User, purpose: str) -> OtpChallenge
         user_id=user.id,
         purpose=purpose,
         code_hash=hash_code(code),
-        destination=user.email,
+        destination=destination,
         expires_at=now + timedelta(seconds=settings.otp_ttl_seconds),
         last_sent_at=now,
         attempts=0,

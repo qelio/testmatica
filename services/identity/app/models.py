@@ -54,6 +54,7 @@ class User(TimestampMixin, Base):
     managed_by_teacher_id: Mapped[UUID | None]
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    avatar_file_id: Mapped[UUID | None]  # фото в media (purpose avatar)
     # Блокировка и удаление администратором. Удалённый аккаунт 30 дней можно восстановить, затем он обезличивается (решение №9).
     status_reason: Mapped[str | None] = mapped_column(String(500))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
