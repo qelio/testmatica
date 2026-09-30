@@ -25,7 +25,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
-      - run: npx tsc --noEmit && npm run lint
+      # PageProps / LayoutProps генерирует Next (next typegen) — на чистой машине их ещё нет.
+      - run: npx next typegen && npx tsc --noEmit && npm run lint
         working-directory: web
 
   images:
