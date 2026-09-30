@@ -34,6 +34,8 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      # assessment подключён и к изолированной сети sandbox — Traefik должен ходить к сервисам только через общую.
+      - --providers.docker.network=testmatica_default
       - --entrypoints.web.address=:80
       - --api.dashboard=true
       - --api.insecure=true
