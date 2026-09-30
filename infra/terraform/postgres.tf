@@ -57,7 +57,7 @@ resource "yandex_mdb_postgresql_user" "svc" {
   cluster_id = yandex_mdb_postgresql_cluster.main.id
   name       = each.key
   password   = random_password.pg[each.key].result
-  conn_limit = 40
+  conn_limit = 20
 }
 
 resource "yandex_mdb_postgresql_database" "svc" {

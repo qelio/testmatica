@@ -49,6 +49,12 @@ export default function RegisterPage() {
         consent_pdn: form.consent,
         accept_terms: form.terms,
       });
+      if ("access_token" in res) {
+        // Почты пока нет — подтверждать нечего, сразу в кабинет.
+        signIn(res);
+        router.replace(nextPath());
+        return;
+      }
       setChallenge({ id: res.challenge_id, destination: res.destination });
     } catch (e) {
       if (e instanceof ApiError) {

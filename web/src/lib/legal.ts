@@ -9,11 +9,11 @@ export const OPERATOR = {
   short: "Самохвалов В. Д.",
   status: "плательщик налога на профессиональный доход (самозанятый)",
   inn: "743003719146",
-  email: "info@tmatica.ru",
+  email: "info@testmatica.ru",
 };
 
 /** Адрес сайта в документах — его же указывают в согласии на распространение ПД (приказ РКН № 18). */
-export const SITE = { name: "ТестМатика", url: "https://tmatica.ru", host: "tmatica.ru" };
+export const SITE = { name: "ТестМатика", url: "https://testmatica.ru", host: "testmatica.ru" };
 
 export type LegalSlug = "terms" | "privacy" | "consent" | "public-profile" | "offer";
 

@@ -15,6 +15,8 @@ export type UserInfo = {
   avatar_url?: string | null;
   /** Нужно принять соглашение и дать согласие на обработку ПД (текущие редакции) — окно при входе. */
   consent_required?: boolean;
+  /** false — почтового сервера пока нет: вход с кодом, смена email и сброс пароля «скоро». */
+  email_codes?: boolean;
 };
 
 export type Authenticated = {
@@ -161,6 +163,7 @@ import type { Landing, LandingOut, NewsFull, NewsSummary } from "@/lib/server-ap
 const ID = "/api/identity";
 
 export const identity = {
+  features: () => api<{ email_codes: boolean }>(`${ID}/auth/features`, { auth: false }),
   me: () => api<UserInfo>(`${ID}/me`),
   updateMe: (data: { full_name?: string; timezone?: string }) => api<UserInfo>(`${ID}/me`, { method: "PATCH", body: data }),
   setAvatar: (fileId: string | null) => api<UserInfo>(`${ID}/me/avatar`, { method: "PUT", body: { file_id: fileId } }),
@@ -181,7 +184,8 @@ export const identity = {
     consent_pdn: boolean;
     accept_terms: boolean;
   }) =>
-    api<{ user_id: string; challenge_id: string; destination: string }>(`${ID}/auth/register`, {
+    // Без почтового сервера (решение №29) регистрация сразу открывает сессию.
+    api<{ user_id: string; challenge_id: string; destination: string } | Authenticated>(`${ID}/auth/register`, {
       method: "POST",
       body: data,
       auth: false,

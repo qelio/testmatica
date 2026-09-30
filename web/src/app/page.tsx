@@ -336,7 +336,7 @@ function HeroArt({ imageUrl }: { imageUrl: string | null }) {
   );
 }
 
-const IDEAS_EMAIL = "info@tmatica.ru";
+const IDEAS_EMAIL = "info@testmatica.ru";
 
 function Footer({ contacts }: { contacts?: LandingOut["contacts"] }) {
   const items: { icon: LucideIcon; text: string; href?: string }[] = [];

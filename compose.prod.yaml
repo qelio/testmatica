@@ -107,6 +107,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${IDENTITY_SECRET_KEY:?}
       REFRESH_COOKIE_SECURE: "true"
+      EMAIL_CODES: ${EMAIL_ENABLED:-false}
       WEB_BASE_URL: https://${DOMAIN:?}
     volumes:
       - identity-keys:/keys
@@ -130,8 +131,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://notification:${PG_PASSWORD_NOTIFICATION:?}@${PG_HOST:?}:6432/notification?ssl=require
       SMTP_HOST: ${SMTP_HOST:-postbox.cloud.yandex.net}
       SMTP_PORT: "${SMTP_PORT:-587}"
-      SMTP_USERNAME: ${SMTP_USERNAME:?}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:?}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
       SMTP_USE_TLS: "true"
       MAIL_FROM: "ТестМатика <no-reply@${DOMAIN:?}>"
     labels:

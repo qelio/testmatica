@@ -11,6 +11,7 @@ from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
 
 from .. import avatars, legal_consents, otp, sessions
+from ..config import settings
 from ..deps import auth, db, media, outbox
 from ..models import STATUS_ACTIVE, User
 from ..schemas import ConsentsIn, UserOut, _check_password
@@ -125,10 +126,13 @@ async def set_avatar(body: AvatarIn, principal: Principal = Depends(auth.princip
 @router.post("/email", response_model=EmailChallenge)
 async def change_email(body: EmailIn, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> EmailChallenge:
     """Сменить или добавить email: пароль, затем код на новый адрес."""
+    if not settings.email_codes:
+        raise ApiError(503, "email_unavailable", "Смена email скоро появится — для неё нужны письма с кодом")
     user = await _load(session, principal)
     _check_password_or_fail(user, body.password)
     email = normalize(body.email)
-    if email == user.email:
+    # Тот же адрес — только чтобы подтвердить его (регистрировались, пока почты не было, решение №29).
+    if email == user.email and user.email_verified_at is not None:
         raise ApiError(409, "same_email", "Это ваш текущий email")
     other = await find_by_identifier(session, email)
     if other is not None and other.id != user.id:
@@ -178,6 +182,8 @@ async def set_two_factor(body: TwoFactorIn, principal: Principal = Depends(auth.
     user = await _load(session, principal, lock=True)
     _check_password_or_fail(user, body.password)
     if body.enabled:
+        if not settings.email_codes:
+            raise ApiError(503, "email_unavailable", "Вход с кодом из письма скоро появится")
         if not user.email or user.email_verified_at is None:
             raise ApiError(409, "email_required", "Сначала добавьте и подтвердите email — на него будут приходить коды")
         user.two_factor_method = "email"
