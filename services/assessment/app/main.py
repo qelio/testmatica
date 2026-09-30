@@ -18,6 +18,7 @@ runtime.consumer("assessment.subjects", [(EVENTS_EXCHANGE, "content.subject.upda
 runtime.consumer("assessment.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
 runtime.consumer("assessment.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
 runtime.consumer("assessment.content", [(EVENTS_EXCHANGE, "content.course.*")], handlers.on_content_event)
+runtime.consumer("assessment.video", [(EVENTS_EXCHANGE, "video.proctor.screen")], handlers.on_video_event)
 runtime.consumer("assessment.moderation", [(EVENTS_EXCHANGE, "moderation.decision.made")], handlers.on_moderation_decision)
 # Проверка кода — по одной за раз на экземпляр: песочница выполняет запуски последовательно.
 runtime.consumer("assessment.code", [(COMMANDS_EXCHANGE, "assessment.code")], runner.on_code_check, prefetch=1)

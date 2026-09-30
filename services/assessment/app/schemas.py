@@ -430,6 +430,8 @@ class AttemptBrief(BaseModel):
     started_at: datetime
     submitted_at: datetime | None
     auto_submitted: bool
+    finished_by_teacher: bool = False
+    screen_sharing: bool = Field(False, description="Прокторинг: показывает экран (по данным сервера видеосвязи)")
     answered: int = Field(description="Сколько заданий с ответом (для прогресса на уроке)")
     total: int
     score: float | None
@@ -512,7 +514,17 @@ class AttemptOut(BaseModel):
     checked: bool
     server_time: datetime = Field(description="Для точного таймера на клиенте")
     proctoring: bool = False
+    finished_by_teacher: bool = False
+    screen_ok: bool = Field(True, description="Прокторинг: сервер видит показ экрана — ответы принимаются")
     tasks: list[AttemptTask]
+
+
+class AttemptStatusOut(BaseModel):
+    """Лёгкий статус попытки — опрашивает страница теста с прокторингом."""
+
+    status: str
+    screen_ok: bool
+    finished_by_teacher: bool
 
 
 class DraftIn(BaseModel):

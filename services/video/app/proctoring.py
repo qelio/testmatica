@@ -11,7 +11,7 @@ from . import storage
 from .config import settings
 from testmatica_common.errors import ApiError
 
-from .deps import assessment, livekit
+from .deps import assessment, livekit, outbox
 from .lk import LiveKitError, WebhookEvent
 from .models import EXPIRED, FAILED, READY, RECORDING, ProctorRecording
 
@@ -24,11 +24,30 @@ def room_name(assignment_id: UUID) -> str:
     return f"{PREFIX}{assignment_id}"
 
 
+async def _screen(session: AsyncSession, ev: WebhookEvent, sharing: bool) -> None:
+    """Показ экрана начался или прекратился — сообщаем assessment: без показа ответы в тесте не принимаются.
+    Источник — сервер видеосвязи, а не страница ученика (её можно подправить)."""
+    try:
+        student_id = UUID(ev.identity or "")
+    except ValueError:
+        return  # служебный участник (запись)
+    await outbox.event(session, "video.proctor.screen", {
+        "assignment_id": ev.room.removeprefix(PREFIX), "student_id": str(student_id), "sharing": sharing,
+        "at": datetime.now(UTC).isoformat(),
+    })
+
+
 async def on_webhook(session: AsyncSession, ev: WebhookEvent) -> None:
     """Ученик начал показывать экран — пишем эту дорожку в отдельный файл.
     В событиях о дорожках LiveKit передаёт об участнике только идентификатор (без метаданных пропуска),
     поэтому роль и попытку уточняем у assessment."""
-    if ev.event != "track_published" or not ev.room or not ev.identity:
+    if not ev.room or not ev.identity:
+        return
+    # Показ прекратился: остановил дорожку или вышел из комнаты (закрыл вкладку, пропала сеть).
+    if (ev.event == "track_unpublished" and ev.track_source == "SCREEN_SHARE") or ev.event == "participant_left":
+        await _screen(session, ev, sharing=False)
+        return
+    if ev.event != "track_published":
         return
     if ev.track_source != "SCREEN_SHARE" or not ev.track_sid:
         log.info("proctor track skipped", extra={"room": ev.room, "source": ev.track_source})
@@ -41,6 +60,7 @@ async def on_webhook(session: AsyncSession, ev: WebhookEvent) -> None:
         return
     if access["role"] != "student":
         return
+    await _screen(session, ev, sharing=True)
     student_id = UUID(ev.identity)
     key = f"proctoring/{assignment_id}/{student_id}/{datetime.now(UTC):%Y%m%d-%H%M%S}-{ev.track_sid}"
     try:

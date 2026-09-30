@@ -58,7 +58,7 @@ runtime.consumer("notification.content", [(EVENTS_EXCHANGE, "content.course.*")]
 runtime.consumer(
     "notification.assessment",
     [(EVENTS_EXCHANGE, "assessment.task.*"), (EVENTS_EXCHANGE, "assessment.submission.reviewed"),
-     (EVENTS_EXCHANGE, "assessment.assignment.*"), (EVENTS_EXCHANGE, "assessment.attempt.graded")],
+     (EVENTS_EXCHANGE, "assessment.assignment.*"), (EVENTS_EXCHANGE, "assessment.attempt.graded"), (EVENTS_EXCHANGE, "assessment.attempt.submitted")],
     handlers.on_assessment_event,
 )
 runtime.consumer(

@@ -10,6 +10,16 @@ export type RealtimeEvent =
   | { type: "deleted"; conversation_id: string; message_id: string }
   | { type: "pinned"; conversation_id: string; message: null }
   | { type: "refresh"; conversation_id: string }
+  // Тесты: ученик начал или сдал работу (by_teacher — завершил педагог), сервер видеосвязи увидел или потерял показ экрана.
+  | {
+      type: "assignment";
+      kind: "started" | "submitted" | "screen";
+      assignment_id: string;
+      attempt_id: string;
+      student_id: string;
+      by_teacher: boolean;
+      sharing: boolean | null;
+    }
   | { type: "reconnected" };
 
 type Listener = (e: RealtimeEvent) => void;

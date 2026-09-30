@@ -7,7 +7,7 @@ from app import rooms
 from app.deps import db
 from app.models import ProctorRecording
 
-from .conftest import bearer, webhook
+from .conftest import bearer, outbox, webhook
 
 T = ("teacher",)
 
@@ -35,6 +35,12 @@ async def test_proctoring_join_and_screen_recording(client, lk, proctored, s3):
     await webhook("track_published", room, identity=str(pupil), track_sid="TR_screen", track_source="SCREEN_SHARE")
     [(egress_id, path)] = lk.egress.items()
     assert path.startswith(f"proctoring/{assignment}/{pupil}/") and path.endswith("TR_screen")
+    # Показ экрана — сигнал для assessment (ответы без показа не принимаются); у педагога — нет.
+    await webhook("track_unpublished", room, identity=str(pupil), track_sid="TR_screen", track_source="SCREEN_SHARE")
+    await webhook("participant_left", room, identity="EG_recorder")  # служебный участник — без сигнала
+    screen = [e["data"] for e in await outbox("video.proctor.screen")]
+    assert [(e["student_id"], e["sharing"]) for e in screen] == [(str(pupil), True), (str(pupil), False)]
+    assert screen[0]["assignment_id"] == str(assignment)
     await webhook("egress_ended", room, egress_id=egress_id, egress_status="EGRESS_COMPLETE", file_size=5000, file_duration_s=900,
                   file_name=f"{path}.webm")
 
