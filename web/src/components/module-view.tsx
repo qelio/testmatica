@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { UploadChips, useUploads } from "@/components/files";
-import { TaskPicker } from "@/components/task-picker";
-import { Markdown } from "@/components/markdown";
 import { KIND_LABELS, MaterialView } from "@/components/material-view";
+import { RichEditor } from "@/components/rich-editor";
+import { TaskPicker } from "@/components/task-picker";
 import { Alert, Button, Field, Select, Spinner } from "@/components/ui";
 import { content, type Material, type MaterialKind } from "@/lib/api";
 import { errorText, useLoad } from "@/lib/hooks";
@@ -112,31 +112,7 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
 }
 
 function MarkdownEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [preview, setPreview] = useState(false);
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-sm font-medium">Текст</span>
-        <button type="button" onClick={() => setPreview((p) => !p)} className="text-sm text-brand hover:underline">
-          {preview ? "Редактировать" : "Предпросмотр"}
-        </button>
-      </div>
-      {preview ? (
-        <div className="min-h-40 rounded-xl border border-line p-4">
-          <Markdown text={value || "_Пусто_"} />
-        </div>
-      ) : (
-        <textarea
-          rows={10}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={"## Заголовок\n\nТекст, **жирный**, *курсив*, списки, таблицы.\nФормулы: $x^2 + y^2 = r^2$ или отдельной строкой $$\\frac{a}{b}$$"}
-          className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 font-mono text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-        />
-      )}
-      <p className="mt-1 text-xs text-fg-soft">Markdown: # заголовки, **жирный**, списки, таблицы, ссылки. Формулы — в формате LaTeX между $…$.</p>
-    </div>
-  );
+  return <RichEditor label="Текст" value={value} onChange={onChange} placeholder="Объясните тему: текст, формулы, таблицы, картинки, файлы" minHeight="14rem" />;
 }
 
 function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => void }) {
