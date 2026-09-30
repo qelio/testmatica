@@ -80,6 +80,7 @@ jobs:
     needs: images
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: SSH-ключ
@@ -91,6 +92,8 @@ jobs:
           printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+          # Сеть GitHub рвёт соединения, молчащие несколько минут (скачивание образов) — держим его живым.
+          printf 'Host *\n  ServerAliveInterval 30\n  ServerAliveCountMax 6\n' > ~/.ssh/config
       - name: Файлы и перезапуск
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
