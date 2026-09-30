@@ -87,6 +87,8 @@ services:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       retries: 30
+      # Первый запуск на ВМ с долей vCPU 50% дольше 2,5 минут — не считаем это сбоем.
+      start_period: 180s
 
   redis:
     image: redis:7-alpine
