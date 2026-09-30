@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 class Database:
     def __init__(self, url: str) -> None:
-        self.engine = create_async_engine(url, pool_pre_ping=True)
+        # Не больше 10 соединений на сервис: в облаке у пользователя БД лимит 12 (infra/terraform/postgres.tf).
+        self.engine = create_async_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=5)
         self.sessionmaker = async_sessionmaker(self.engine, expire_on_commit=False)
 
     async def session(self) -> AsyncIterator[AsyncSession]:
