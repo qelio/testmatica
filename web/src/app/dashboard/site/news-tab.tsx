@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { ImagePicker } from "@/components/image-picker";
-import { Markdown } from "@/components/markdown";
+import { RichEditor } from "@/components/rich-editor";
 import { Alert, Badge, Button, Field, Spinner } from "@/components/ui";
 import { type NewsInput, site } from "@/lib/api";
 import { fmtDateTime } from "@/lib/dates";
@@ -85,7 +85,6 @@ function NewsEditor({ initial, onClose }: { initial: NewsFull | null; onClose: (
     status: initial?.status ?? "draft",
   }));
   const [coverUrl, setCoverUrl] = useState(initial?.cover_url ?? null);
-  const [preview, setPreview] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof NewsInput>(k: K, v: NewsInput[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -137,21 +136,7 @@ function NewsEditor({ initial, onClose }: { initial: NewsFull | null; onClose: (
           setCoverUrl(null);
         }}
       />
-      <div>
-        <div className="mb-1.5 flex items-center justify-between">
-          <span className="text-sm font-medium">Текст (Markdown: **жирный**, списки, ссылки, формулы $…$)</span>
-          <button type="button" className="text-sm text-brand hover:underline" onClick={() => setPreview(!preview)}>
-            {preview ? "Редактировать" : "Предпросмотр"}
-          </button>
-        </div>
-        {preview ? (
-          <div className="min-h-40 rounded-xl border border-line p-4">
-            <Markdown text={form.body || "_Пусто_"} />
-          </div>
-        ) : (
-          <textarea rows={14} className={`${TEXTAREA} font-mono text-sm`} value={form.body} onChange={(e) => set("body", e.target.value)} />
-        )}
-      </div>
+      <RichEditor label="Текст" value={form.body} onChange={(v) => set("body", v)} placeholder="Текст новости" minHeight="18rem" />
       <div className="flex flex-wrap gap-2 border-t border-line pt-4">
         <Button loading={busy} disabled={!form.title.trim()} onClick={() => save("published")}>
           {initial?.status === "published" ? "Сохранить" : "Опубликовать"}

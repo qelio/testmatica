@@ -114,6 +114,7 @@ body {
 .prose-tm ul { list-style: disc; padding-left: 1.4em; }
 .prose-tm ol { list-style: decimal; padding-left: 1.4em; }
 .prose-tm a { color: var(--brand); text-decoration: underline; }
+.prose-tm a.tm-file { color: var(--fg); text-decoration: none; }
 .prose-tm code { background: var(--muted); padding: 0.1em 0.35em; border-radius: 6px; font-size: 0.92em; }
 .prose-tm pre { background: var(--muted); padding: 0.9em 1em; border-radius: 12px; overflow-x: auto; }
 .prose-tm pre code { background: none; padding: 0; }
@@ -138,3 +139,27 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .tm-float, .tm-pop { animation: none; }
 }
+
+/* Редактор текста (components/rich-editor.tsx) — поверх оформления .prose-tm. */
+.tm-editor { outline: none; }
+.tm-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--fg-soft);
+  opacity: 0.7;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.tm-editor table { width: 100%; table-layout: fixed; }
+.tm-editor th { background: var(--muted); font-weight: 600; }
+.tm-editor .selectedCell { background: color-mix(in srgb, var(--brand) 12%, transparent); }
+.tm-editor img { cursor: default; }
+.tm-editor img.ProseMirror-selectednode { outline: 3px solid var(--brand); }
+.tm-editor [data-type="inline-math"], .tm-editor [data-type="block-math"] {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0 2px;
+}
+.tm-editor [data-type="inline-math"]:hover, .tm-editor [data-type="block-math"]:hover { background: var(--muted); }
+.tm-editor [data-type="block-math"] { display: block; text-align: center; padding: 0.4em; }
+
