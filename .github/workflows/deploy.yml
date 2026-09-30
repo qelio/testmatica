@@ -66,6 +66,9 @@ jobs:
           file: ${{ matrix.file }}
           build-args: SERVICE=${{ matrix.name }}
           push: true
+          # Yandex Container Registry не принимает манифесты с аттестациями сборки (buildx добавляет их по умолчанию).
+          provenance: false
+          sbom: false
           tags: |
             ${{ vars.REGISTRY }}/${{ matrix.name }}:${{ github.sha }}
             ${{ vars.REGISTRY }}/${{ matrix.name }}:latest
