@@ -292,6 +292,11 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
         session.add(Notification(user_id=UUID(d["student_id"]), kind="assignment_reassigned",
                                  title=f"Педагог разрешил пройти ещё раз: «{d['title']}»",
                                  payload={"assignment_id": d["assignment_id"], "deadline": d.get("deadline")}))
+    elif t == "assessment.attempt.submitted" and d.get("by_teacher"):
+        session.add(Notification(user_id=UUID(d["student_id"]), kind="attempt_finished_by_teacher",
+                                 title=f"Педагог завершил работу «{d['title']}»",
+                                 body="Сохранённые ответы отправлены на проверку.",
+                                 payload={"assignment_id": d["assignment_id"], "attempt_id": d["attempt_id"]}))
     elif t == "assessment.attempt.graded" and not d.get("to_journal"):
         # Если оценка уходит в журнал, ученик получит уведомление об оценке от academic.
         session.add(Notification(user_id=UUID(d["student_id"]), kind="attempt_graded",

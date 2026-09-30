@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { FinishButton } from "@/components/finish-attempt";
 import { Markdown } from "@/components/markdown";
 import { Alert, Badge, Button, Field, Modal, Spinner } from "@/components/ui";
 import { type Assignment, assessment } from "@/lib/api";
 import { attemptsText, bestAttempt, fmtLimit, KIND_LABELS, lastAttempt, studentStatus, summary } from "@/lib/assignments";
+import { useAuth } from "@/lib/auth";
 import { fmtDateTime, fromInputs } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
-import { useAuth } from "@/lib/auth";
+import { useRealtime } from "@/lib/realtime";
 
 export default function AssignmentPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,11 +20,15 @@ export default function AssignmentPage() {
   const a = useLoad(() => assessment.assignment(id), [id]);
   const isTeacher = !!a.data && a.data.teacher_id === user?.id;
 
-  // Тест на уроке и работы «в процессе» — обновляем раз в несколько секунд.
+  // Начал, сдал, завершил педагог — сразу, через WebSocket.
+  useRealtime((e) => {
+    if ((e.type === "assignment" && e.assignment_id === id) || e.type === "reconnected") a.reload();
+  });
+  // Запасной вариант, если WebSocket оборвался: тест на уроке и работы «в процессе» — раз в несколько секунд.
   const active = !!a.data && isTeacher && !a.data.closed && (a.data.kind === "live" || summary(a.data).inProgress > 0);
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(a.reload, 3000);
+    const t = setInterval(a.reload, 5000);
     return () => clearInterval(t);
   }, [active, a.reload]);
 
@@ -176,6 +182,10 @@ function StudentRow({
             {row.attempts.length > 1 ? `попытка ${t.number}` : "открыть"}
           </Link>
         ))}
+        {last?.finished_by_teacher && <span className="text-xs text-fg-soft">завершили вы</span>}
+        {last?.status === "in_progress" && (
+          <FinishButton attemptId={last.id} name={row.full_name} onDone={onChanged} onError={onError} />
+        )}
         {canReassign && !reassigning && (
           <button className="text-sm text-fg-soft hover:text-fg" onClick={() => setReassigning(true)}>
             Переназначить

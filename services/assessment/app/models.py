@@ -370,6 +370,11 @@ class Attempt(Base):
     grade: Mapped[int | None] = mapped_column(SmallInteger)
     checked: Mapped[bool] = mapped_column(Boolean, default=False)  # все ответы проверены (код, развёрнутые)
     proctor_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # согласие на мониторинг
+    # Прокторинг: показывает ли ученик экран — по данным сервера видеосвязи (событие video.proctor.screen).
+    # Без показа ответы не принимаются; screen_changed_at — чтобы запоздавшее событие не перетёрло свежее.
+    screen_sharing: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    screen_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_by_teacher: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())  # педагог завершил досрочно
 
 
 class AttemptAnswer(Base):
@@ -386,7 +391,7 @@ class AttemptAnswer(Base):
 
 PROCTOR_KINDS = (
     "consent", "screen_share_started", "screen_share_stopped", "tab_hidden", "tab_visible", "focus_lost", "focus_back",
-    "camera_requested", "camera_on", "camera_off",
+    "camera_requested", "camera_on", "camera_off", "finished_by_teacher",
 )
 # Что считается нарушением — педагог видит их число у ученика.
 PROCTOR_ALERTS = ("screen_share_stopped", "tab_hidden", "focus_lost")
