@@ -36,6 +36,7 @@ from ..schemas import (
     AssignmentStudentOut,
     AttemptBrief,
     AttemptOut,
+    AttemptStatusOut,
     AttemptTask,
     DraftIn,
     FileRef,
@@ -117,7 +118,8 @@ async def _answered(session: AsyncSession, attempt_ids: list[UUID]) -> dict[UUID
 def _brief(t: Attempt, answered: int) -> AttemptBrief:
     return AttemptBrief(
         id=t.id, number=t.number, status=t.status, started_at=t.started_at, submitted_at=t.submitted_at,
-        auto_submitted=t.auto_submitted, answered=answered, total=len(t.task_order), score=t.score, max_score=t.max_score,
+        auto_submitted=t.auto_submitted, finished_by_teacher=t.finished_by_teacher, screen_sharing=t.screen_sharing,
+        answered=answered, total=len(t.task_order), score=t.score, max_score=t.max_score,
         percent=t.percent, grade=t.grade, checked=t.checked,
     )
 
@@ -394,7 +396,8 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
         settings=a.settings, started_at=t.started_at, ends_at=t.ends_at, current_index=t.current_index,
         current_ends_at=attempts.current_ends_at(t, a) if not submitted else None, submitted_at=t.submitted_at,
         auto_submitted=t.auto_submitted, score=t.score if t.checked or teacher_view else None, max_score=t.max_score,
-        percent=t.percent, grade=t.grade, checked=t.checked, server_time=datetime.now(UTC), proctoring=a.proctoring, tasks=out,
+        percent=t.percent, grade=t.grade, checked=t.checked, server_time=datetime.now(UTC), proctoring=a.proctoring,
+        finished_by_teacher=t.finished_by_teacher, screen_ok=_screen_ok(t, a), tasks=out,
     )
 
 
@@ -403,6 +406,20 @@ class _Files:
 
     def __init__(self, files: list[dict]) -> None:
         self.files = files
+
+
+def _screen_ok(t: Attempt, a: Assignment) -> bool:
+    """Прокторинг: пока ученик не показывает экран (по данным сервера видеосвязи), ответы не принимаются."""
+    return not a.proctoring or t.status != IN_PROGRESS or t.screen_sharing
+
+
+def _closed(t: Attempt) -> ApiError:
+    if t.finished_by_teacher:
+        return ApiError(409, "finished_by_teacher", "Педагог завершил работу — ответы сохранены и отправлены")
+    return ApiError(409, "time_over", "Время вышло — работа сдана автоматически")
+
+
+SCREEN_REQUIRED = ApiError(409, "screen_required", "Покажите экран, чтобы продолжить — это тест с прокторингом")
 
 
 async def _synced(session: AsyncSession, t: Attempt, a: Assignment) -> bool:
@@ -435,7 +452,9 @@ async def save_answer(
         raise ApiError(403, "forbidden", "Отвечает ученик")
     if not await _synced(session, t, a):
         await session.commit()
-        raise ApiError(409, "time_over", "Время вышло — работа сдана автоматически")
+        raise _closed(t)
+    if not _screen_ok(t, a):
+        raise SCREEN_REQUIRED
     if str(task_id) not in t.task_order:
         raise ApiError(404, "task_not_found", "Такого задания нет в работе")
     if a.settings.get("time_mode") == "per_task" and t.task_order.index(str(task_id)) != t.current_index:
@@ -468,12 +487,37 @@ async def next_task(attempt_id: UUID, principal: Principal = Depends(auth.princi
     if is_teacher or a.settings.get("time_mode") != "per_task":
         raise ApiError(409, "not_sequential", "В этой работе задания открыты все сразу")
     if await _synced(session, t, a):
+        if not _screen_ok(t, a):
+            raise SCREEN_REQUIRED
         t.current_index += 1
         t.current_started_at = datetime.now(UTC)
         if t.current_index >= len(t.task_order):
             await attempts.finalize(session, t, a, auto=False)
     await session.commit()
     return await attempt_out(session, t, a, principal, teacher_view=False)
+
+
+@router.get("/attempts/{attempt_id}/status", response_model=AttemptStatusOut)
+async def attempt_status(attempt_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> AttemptStatusOut:
+    t, a, _ = await _attempt(session, attempt_id, principal, lock=True)
+    await _synced(session, t, a)
+    await session.commit()
+    return AttemptStatusOut(status=t.status, screen_ok=_screen_ok(t, a), finished_by_teacher=t.finished_by_teacher)
+
+
+@router.post("/attempts/{attempt_id}/finish", response_model=AttemptOut)
+async def finish_by_teacher(attempt_id: UUID, principal: Principal = Depends(auth.principal),
+                            session: AsyncSession = Depends(db.session)) -> AttemptOut:
+    """Педагог завершает попытку ученика досрочно: сохранённые ответы отправляются на проверку, как при сдаче."""
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    if not is_teacher:
+        raise ApiError(403, "forbidden", "Завершить чужую работу может только педагог")
+    if await _synced(session, t, a):
+        if a.proctoring:
+            session.add(ProctorEvent(attempt_id=t.id, assignment_id=a.id, student_id=t.student_id, kind="finished_by_teacher"))
+        await attempts.finalize(session, t, a, auto=False, by_teacher=principal.user_id)
+    await session.commit()
+    return await attempt_out(session, t, a, principal, teacher_view=True)
 
 
 @router.post("/attempts/{attempt_id}/submit", response_model=AttemptOut)

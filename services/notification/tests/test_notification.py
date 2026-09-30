@@ -231,6 +231,17 @@ async def test_task_and_review_notifications(client):
     assert (await client.get("/notifications", headers=bearer(pupil))).json()["items"][0]["title"] == "Педагог проверил решение: «Доказательство» — 80%"
 
 
+async def test_attempt_finished_by_teacher(client):
+    pupil = uuid4()
+    c = consumer("notification.assessment", handlers.on_assessment_event)
+    base = {"attempt_id": str(uuid4()), "assignment_id": str(uuid4()), "student_id": str(pupil), "teacher_id": str(uuid4()),
+            "title": "Контрольная", "auto": False}
+    await c.process(make_envelope("assessment.attempt.submitted", base | {"by_teacher": False}))  # сдал сам — без уведомления
+    await c.process(make_envelope("assessment.attempt.submitted", base | {"attempt_id": str(uuid4()), "by_teacher": True}))
+    items = (await client.get("/notifications", headers=bearer(pupil))).json()["items"]
+    assert [i["title"] for i in items] == ["Педагог завершил работу «Контрольная»"]
+
+
 async def test_assignment_notifications(client):
     a, b = uuid4(), uuid4()
     c = consumer("notification.assessment", handlers.on_assessment_event)

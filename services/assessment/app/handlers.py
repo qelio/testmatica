@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
 
 from .deps import outbox
-from .models import PENDING, PRIVATE, PUBLISHED, REJECTED, CourseTask, Person, RelLink, Task
+from .models import IN_PROGRESS, PENDING, PRIVATE, PUBLISHED, REJECTED, Assignment, Attempt, CourseTask, Person, RelLink, Task
 
 
 async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
@@ -81,3 +81,27 @@ async def on_moderation_decision(envelope: Envelope, session: AsyncSession) -> N
         return
     await _publish(session, task, d["decision"] == "approve", d.get("comment"),
                    UUID(d["moderator_id"]) if d.get("moderator_id") else None)
+
+
+async def on_video_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Сервер видеосвязи: ученик начал или прекратил показывать экран в тесте с прокторингом.
+    Без показа ответы не принимаются (api/assignments.py, _screen_ok)."""
+    if envelope.type != "video.proctor.screen":
+        return
+    d = envelope.data
+    at = datetime.fromisoformat(d["at"])
+    attempt = await session.scalar(
+        select(Attempt).where(Attempt.assignment_id == UUID(d["assignment_id"]), Attempt.student_id == UUID(d["student_id"]),
+                              Attempt.status == IN_PROGRESS).with_for_update()
+    )
+    if attempt is None or (attempt.screen_changed_at and attempt.screen_changed_at > at):
+        return  # попытка уже сдана или событие запоздало
+    changed = attempt.screen_sharing != bool(d["sharing"])
+    attempt.screen_sharing, attempt.screen_changed_at = bool(d["sharing"]), at
+    if changed:
+        a = await session.get(Assignment, attempt.assignment_id)
+        # Уже записано — страница ученика (шторка) и наблюдение педагога обновятся сразу (chat → WebSocket).
+        await outbox.event(session, "assessment.attempt.screen", {
+            "attempt_id": str(attempt.id), "assignment_id": str(attempt.assignment_id), "student_id": str(attempt.student_id),
+            "teacher_id": str(a.teacher_id), "sharing": attempt.screen_sharing,
+        })

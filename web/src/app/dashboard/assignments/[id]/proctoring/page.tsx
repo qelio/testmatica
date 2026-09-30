@@ -6,12 +6,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { FinishButton } from "@/components/finish-attempt";
 import { Alert, Badge, Button, Spinner } from "@/components/ui";
 import { assessment, type Assignment, type ProctorJoin, video } from "@/lib/api";
 import { lastAttempt } from "@/lib/assignments";
 import { fmtDateTime, fmtTime } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 import { decode, encode, EVENT_LABELS, PROCTOR_TOPIC, type ProctorState } from "@/lib/proctoring";
+import { useRealtime } from "@/lib/realtime";
 
 type Signal = { id: number; student: string; kind: string; at: string };
 
@@ -26,7 +28,10 @@ export default function ProctoringPage() {
   useEffect(() => {
     video.proctorJoin(id).then(setJoin, (e) => setError(errorText(e)));
   }, [id]);
-  // Статусы учеников (решает / сдал, число нарушений) — обновляем.
+  // Статусы учеников (решает / сдал, число нарушений): сразу по событию и раз в 5 секунд — на случай обрыва WebSocket.
+  useRealtime((e) => {
+    if ((e.type === "assignment" && e.assignment_id === id) || e.type === "reconnected") reload();
+  });
   useEffect(() => {
     const t = setInterval(reload, 5000);
     return () => clearInterval(t);
@@ -43,7 +48,7 @@ export default function ProctoringPage() {
         !error && <Spinner />
       ) : (
         <LiveKitRoom serverUrl={join.url} token={join.token} connect audio={false} video={false}>
-          <Observer assignment={assignment.data} />
+          <Observer assignment={assignment.data} reload={reload} onError={setError} />
         </LiveKitRoom>
       )}
       <Recordings assignmentId={id} />
@@ -51,7 +56,7 @@ export default function ProctoringPage() {
   );
 }
 
-function Observer({ assignment }: { assignment: Assignment }) {
+function Observer({ assignment, reload, onError }: { assignment: Assignment; reload: () => void; onError: (e: string) => void }) {
   const tracks = useTracks([Track.Source.ScreenShare, Track.Source.Camera], { onlySubscribed: true });
   const [states, setStates] = useState<Record<string, ProctorState>>({});
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -89,43 +94,58 @@ function Observer({ assignment }: { assignment: Assignment }) {
   const screenOf = (sid: string) => tracks.find((t) => t.participant.identity === sid && t.source === Track.Source.ScreenShare);
   const cameraOf = (sid: string) => tracks.find((t) => t.participant.identity === sid && t.source === Track.Source.Camera);
   const rows = assignment.students.map((row) => ({ row, last: lastAttempt(row) }));
-  const solving = rows.filter((r) => r.last?.status === "in_progress");
+  const shows = (sid: string) => {
+    const screen = screenOf(sid);
+    return !!screen && "publication" in screen && !!screen.publication;
+  };
   const focused = focus ? rows.find((r) => r.row.student_id === focus) : null;
+  // Порядок: показывают экран → решают, но экран выключен → не решают (не начали или сдали).
+  const rest = rows.filter((r) => r.row.student_id !== focus);
+  const solving = rest.filter((r) => r.last?.status === "in_progress");
+  const groups = [
+    { key: "shows", title: "Показывают экран", items: solving.filter((r) => shows(r.row.student_id)) },
+    { key: "off", title: "Решают, экран выключен", items: solving.filter((r) => !shows(r.row.student_id)) },
+    { key: "idle", title: "Не решают", items: rest.filter((r) => r.last?.status !== "in_progress") },
+  ];
+
+  const tile = ({ row, last }: (typeof rows)[number], big = false) => (
+    <Tile
+      key={row.student_id}
+      big={big}
+      name={row.full_name}
+      screen={screenOf(row.student_id)}
+      cam={cameraOf(row.student_id)}
+      state={states[row.student_id]}
+      status={last?.status}
+      alerts={row.proctor_alerts}
+      onCamera={(on) => camera(row.student_id, on)}
+      onClick={() => setFocus(big ? null : row.student_id)}
+      finish={
+        last?.status === "in_progress" ? (
+          <FinishButton attemptId={last.id} name={row.full_name} onDone={reload} onError={onError} className="h-8 rounded-lg px-2 text-xs font-medium text-danger hover:bg-danger/10" />
+        ) : null
+      }
+    />
+  );
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-      <div className="space-y-4">
-        {focused && (
-          <Tile
-            big
-            name={focused.row.full_name}
-            screen={screenOf(focused.row.student_id)}
-            cam={cameraOf(focused.row.student_id)}
-            state={states[focused.row.student_id]}
-            status={focused.last?.status}
-            alerts={focused.row.proctor_alerts}
-            onCamera={(on) => camera(focused.row.student_id, on)}
-            onClick={() => setFocus(null)}
-          />
+      <div className="space-y-5">
+        {focused && tile(focused, true)}
+        {rows.every((r) => r.last?.status !== "in_progress") && (
+          <p className="text-sm text-fg-soft">Сейчас никто не решает тест. Экраны появятся, когда ученики начнут.</p>
         )}
-        {solving.length === 0 && <p className="text-sm text-fg-soft">Сейчас никто не решает тест. Экраны появятся, когда ученики начнут.</p>}
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {rows
-            .filter((r) => r.row.student_id !== focus)
-            .map(({ row, last }) => (
-              <Tile
-                key={row.student_id}
-                name={row.full_name}
-                screen={screenOf(row.student_id)}
-                cam={cameraOf(row.student_id)}
-                state={states[row.student_id]}
-                status={last?.status}
-                alerts={row.proctor_alerts}
-                onCamera={(on) => camera(row.student_id, on)}
-                onClick={() => setFocus(row.student_id)}
-              />
-            ))}
-        </div>
+        {groups.map(
+          (g) =>
+            g.items.length > 0 && (
+              <section key={g.key} className="space-y-2">
+                <h2 className={`text-sm font-semibold ${g.key === "off" ? "text-danger" : "text-fg-soft"}`}>
+                  {g.title} · {g.items.length}
+                </h2>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{g.items.map((r) => tile(r))}</div>
+              </section>
+            ),
+        )}
       </div>
       <aside className="space-y-2 rounded-2xl border border-line bg-surface p-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
         <h2 className="font-semibold">Сигналы</h2>
@@ -152,6 +172,7 @@ function Tile({
   big,
   onCamera,
   onClick,
+  finish,
 }: {
   name: string;
   screen?: TrackReferenceOrPlaceholder;
@@ -162,11 +183,15 @@ function Tile({
   big?: boolean;
   onCamera: (on: boolean) => void;
   onClick: () => void;
+  finish?: React.ReactNode;
 }) {
   const away = state?.hidden || state?.blurred;
+  const noScreen = status === "in_progress" && !(screen && "publication" in screen && screen.publication);
   const placeholder = status === "submitted" ? "Работа сдана" : status === "in_progress" ? "Экран не показывается" : "Ещё не начал";
   return (
-    <div className={`overflow-hidden rounded-2xl border bg-surface ${away ? "border-danger ring-2 ring-danger/40" : "border-line"}`}>
+    <div
+      className={`overflow-hidden rounded-2xl border bg-surface ${away || noScreen ? "border-danger ring-2 ring-danger/40" : "border-line"} ${status !== "in_progress" && !big ? "opacity-70" : ""}`}
+    >
       <button type="button" onClick={onClick} className="relative block w-full bg-black" title={big ? "Вернуться к сетке" : "Смотреть крупно"}>
         <div className={big ? "aspect-video max-h-[70dvh]" : "aspect-video"}>
           {screen && "publication" in screen && screen.publication ? (
@@ -191,6 +216,7 @@ function Tile({
             {state?.camera ? "Выключить камеру" : "Камера"}
           </Button>
         )}
+        {finish}
       </div>
     </div>
   );
