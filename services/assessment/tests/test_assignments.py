@@ -3,11 +3,11 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import update
 
-from app import attempts
+from app import attempts, handlers
 from app.deps import db
 from app.models import Assignment, Attempt
 
-from .conftest import CHOICE, CODE, LONG, SHORT, bearer, link, outbox, run_code_checks, student
+from .conftest import CHOICE, CODE, LONG, SHORT, apply, bearer, link, outbox, run_code_checks, student
 
 
 async def make_tasks(client, teacher):
@@ -323,6 +323,40 @@ async def test_proctoring(client, fakes):
     assert boss["role"] == "teacher" and boss["students"][0]["attempt_id"] == t["id"]
     stranger = await client.get(f"/internal/proctoring/{a['id']}", params={"user_id": str(other)}, headers=INTERNAL)
     assert stranger.status_code == 404
+
+    # Ответы — только пока сервер видеосвязи видит показ экрана (событие от video, а не от страницы ученика).
+    task = t["tasks"][0]["task"]
+    answer = {"answer": {"option_ids": [task["options"][0]["id"]]}}
+    blocked = await client.put(f"/attempts/{t['id']}/answers/{task['id']}", json=answer, headers=student(pupil))
+    assert blocked.json()["error"]["code"] == "screen_required"
+    assert (await client.get(f"/attempts/{t['id']}/status", headers=student(pupil))).json() == {
+        "status": "in_progress", "screen_ok": False, "finished_by_teacher": False}
+    now = datetime.now(UTC)
+
+    async def screen(sharing: bool, at: datetime) -> None:
+        await apply(handlers.on_video_event, "video.proctor.screen", assignment_id=a["id"], student_id=pupil, sharing=sharing,
+                    at=at.isoformat())
+
+    await screen(True, now)
+    assert (await client.put(f"/attempts/{t['id']}/answers/{task['id']}", json=answer, headers=student(pupil))).status_code == 200
+    await screen(False, now + timedelta(seconds=5))
+    await screen(True, now + timedelta(seconds=2))  # запоздавшее событие не перетирает свежее
+    blocked = await client.put(f"/attempts/{t['id']}/answers/{task['id']}", json=answer, headers=student(pupil))
+    assert blocked.json()["error"]["code"] == "screen_required"
+    view = (await client.get(f"/assignments/{a['id']}", headers=bearer(teacher))).json()
+    assert view["students"][0]["attempts"][0]["screen_sharing"] is False
+    assert [e["data"]["sharing"] for e in await outbox("assessment.attempt.screen")] == [True, False]  # только изменения
+
+    # Педагог завершает работу досрочно: сохранённые ответы уходят на проверку, ученик больше не отвечает.
+    assert (await client.post(f"/attempts/{t['id']}/finish", headers=student(pupil))).status_code == 403
+    done = (await client.post(f"/attempts/{t['id']}/finish", headers=bearer(teacher))).json()
+    assert done["status"] == "submitted" and done["finished_by_teacher"] and done["auto_submitted"] is False
+    late = await client.put(f"/attempts/{t['id']}/answers/{task['id']}", json=answer, headers=student(pupil))
+    assert late.json()["error"]["code"] == "finished_by_teacher"
+    ev = (await outbox("assessment.attempt.submitted"))[-1]
+    assert ev["data"]["by_teacher"] is True and ev["actor_id"] == str(teacher)
+    kinds = [e["kind"] for e in (await client.get(f"/attempts/{t['id']}/proctor-events", headers=bearer(teacher))).json()]
+    assert kinds[-1] == "finished_by_teacher"
 
 
 async def test_admin_removes_task_but_issued_tests_keep_working(client, fakes):

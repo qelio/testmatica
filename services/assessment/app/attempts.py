@@ -121,8 +121,9 @@ def build_submission(task: Task, answer: dict, files: list[dict], student_id: UU
     return sub
 
 
-async def finalize(session: AsyncSession, attempt: Attempt, a: Assignment, auto: bool) -> None:
-    """Сдать попытку: черновики → отправки на проверку. Повторно сдать нельзя (ТЗ)."""
+async def finalize(session: AsyncSession, attempt: Attempt, a: Assignment, auto: bool, by_teacher: UUID | None = None) -> None:
+    """Сдать попытку: черновики → отправки на проверку. Повторно сдать нельзя (ТЗ).
+    by_teacher — педагог завершил досрочно (кто именно — в событии для аудита)."""
     if attempt.status != IN_PROGRESS:
         return
     now = datetime.now(UTC)
@@ -143,11 +144,12 @@ async def finalize(session: AsyncSession, attempt: Attempt, a: Assignment, auto:
         await outbox.command(session, queue="assessment.code", type="assessment.code.check",
                              data={"submission_id": str(sub.id)}, actor_id=attempt.student_id)
     attempt.status, attempt.submitted_at, attempt.auto_submitted = SUBMITTED, now, auto
+    attempt.finished_by_teacher = by_teacher is not None
     await outbox.event(
         session, "assessment.attempt.submitted",
         {"attempt_id": str(attempt.id), "assignment_id": str(a.id), "student_id": str(attempt.student_id),
-         "teacher_id": str(a.teacher_id), "title": a.title, "auto": auto},
-        actor_id=None if auto else attempt.student_id,
+         "teacher_id": str(a.teacher_id), "title": a.title, "auto": auto, "by_teacher": by_teacher is not None},
+        actor_id=by_teacher or (None if auto else attempt.student_id),
     )
     await recompute(session, attempt, a)
 

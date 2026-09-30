@@ -8,11 +8,13 @@ import { assessment, type ProctorEventKind, video } from "@/lib/api";
 import { fmtTime } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 import { decode, encode, EVENT_LABELS, PROCTOR_TOPIC, type ProctorState } from "@/lib/proctoring";
+import { useRealtime } from "@/lib/realtime";
 
 /**
  * Прокторинг на стороне ученика: пока идёт тест, экран показывается педагогу (весь экран),
  * уход со вкладки и из окна сразу сообщается педагогу и пишется в журнал, камера включается по запросу педагога.
- * Без показа экрана тест закрыт шторкой — ответы и таймер при этом сохраняются.
+ * Без показа экрана тест закрыт шторкой — ответы и таймер при этом сохраняются. Шторка снимается, только когда
+ * показ видит сервер видеосвязи (он же не даёт сохранять ответы без показа), а поля под ней недоступны (inert).
  */
 export function ProctorGuard({ attemptId, assignmentId, children }: { attemptId: string; assignmentId: string; children: React.ReactNode }) {
   const roomRef = useRef<Room | null>(null);
@@ -22,6 +24,25 @@ export function ProctorGuard({ attemptId, assignmentId, children }: { attemptId:
   const [error, setError] = useState<string>();
   const [warning, setWarning] = useState<string>();
   const [busy, setBusy] = useState(false);
+  // Видит ли показ сервер: без этого ответы не принимаются (assessment, событие от video).
+  const [serverOk, setServerOk] = useState(false);
+
+  const refreshServer = useCallback(() => {
+    assessment
+      .attemptStatus(attemptId)
+      .then((s) => setServerOk(s.screen_ok))
+      .catch(() => {});
+  }, [attemptId]);
+  useEffect(() => {
+    refreshServer();
+    // Запасной опрос — если WebSocket оборвался; обычно состояние приходит событием сразу.
+    const t = setInterval(refreshServer, 4000);
+    return () => clearInterval(t);
+  }, [refreshServer]);
+  useRealtime((e) => {
+    if (e.type === "assignment" && e.attempt_id === attemptId && e.kind === "screen") setServerOk(!!e.sharing);
+    if (e.type === "reconnected") refreshServer();
+  });
 
   const update = useCallback((patch: Partial<ProctorState>) => {
     stateRef.current = { ...stateRef.current, ...patch };
@@ -160,7 +181,16 @@ export function ProctorGuard({ attemptId, assignmentId, children }: { attemptId:
         </span>
       </div>
       {warning && <div className="mb-4"><Alert>{warning}</Alert></div>}
-      {children}
+      <div inert={!state.sharing || !serverOk}>{children}</div>
+      {state.sharing && !serverOk && (
+        <div className="fixed inset-0 z-30 grid place-items-center bg-bg/85 p-4 backdrop-blur-sm">
+          <div className="max-w-md space-y-4 rounded-2xl border border-line bg-surface p-6 text-center shadow-lg">
+            <h2 className="text-lg font-semibold">Подключаем показ экрана…</h2>
+            <p className="text-sm text-fg-soft">Ещё пара секунд — как только педагог начнёт видеть ваш экран, тест откроется.</p>
+            <Spinner />
+          </div>
+        </div>
+      )}
       {!state.sharing && (
         <div className="fixed inset-0 z-30 grid place-items-center bg-bg/85 p-4 backdrop-blur-sm">
           <div className="max-w-md space-y-4 rounded-2xl border border-line bg-surface p-6 text-center shadow-lg">

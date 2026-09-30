@@ -38,4 +38,5 @@ export const EVENT_LABELS: Record<string, { text: string; alert: boolean }> = {
   camera_requested: { text: "педагог запросил камеру", alert: false },
   camera_on: { text: "включил камеру", alert: false },
   camera_off: { text: "камера выключена", alert: false },
+  finished_by_teacher: { text: "педагог завершил работу", alert: false },
 };

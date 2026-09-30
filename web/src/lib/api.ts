@@ -1018,6 +1018,9 @@ export type AttemptBrief = {
   started_at: string;
   submitted_at: string | null;
   auto_submitted: boolean;
+  finished_by_teacher?: boolean;
+  /** Прокторинг: сервер видеосвязи видит показ экрана. */
+  screen_sharing?: boolean;
   answered: number;
   total: number;
   score: number | null;
@@ -1102,6 +1105,9 @@ export type Attempt = {
   checked: boolean;
   server_time: string;
   proctoring: boolean;
+  finished_by_teacher?: boolean;
+  /** Прокторинг: сервер видит показ экрана — ответы принимаются. */
+  screen_ok?: boolean;
   tasks: AttemptTask[];
 };
 
@@ -1206,6 +1212,10 @@ export const assessment = {
     api<void>(`${AS}/attempts/${attemptId}/proctor-events`, { method: "POST", body: { kind } }),
   proctorEvents: (attemptId: string) => api<{ kind: string; at: string }[]>(`${AS}/attempts/${attemptId}/proctor-events`),
   attempt: (id: string) => api<Attempt>(`${AS}/attempts/${id}`),
+  attemptStatus: (id: string) =>
+    api<{ status: "in_progress" | "submitted"; screen_ok: boolean; finished_by_teacher: boolean }>(`${AS}/attempts/${id}/status`),
+  /** Педагог завершает работу ученика досрочно. */
+  finishAttempt: (id: string) => api<Attempt>(`${AS}/attempts/${id}/finish`, { method: "POST" }),
   saveAnswer: (attemptId: string, taskId: string, answer: Submission["answer"], fileIds: string[] = []) =>
     api<Attempt>(`${AS}/attempts/${attemptId}/answers/${taskId}`, { method: "PUT", body: { answer, file_ids: fileIds } }),
   nextTask: (attemptId: string) => api<Attempt>(`${AS}/attempts/${attemptId}/next`, { method: "POST" }),
