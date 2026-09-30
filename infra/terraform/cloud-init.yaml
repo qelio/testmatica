@@ -22,6 +22,9 @@ write_files:
       {"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "5"}}
 
 runcmd:
+  # Подкачка 2 ГБ: запас памяти на пиках (запись занятия запускает Chrome).
+  - fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  - echo '/swapfile none swap sw 0 0' >> /etc/fstab
   - systemctl enable --now docker
   - usermod -aG docker ${user}
   - mkdir -p /opt/testmatica

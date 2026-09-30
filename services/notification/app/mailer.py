@@ -1,11 +1,18 @@
+import logging
 from email.message import EmailMessage
 
 import aiosmtplib
 
 from .config import settings
 
+log = logging.getLogger(__name__)
+
 
 async def send_email(to: str, subject: str, text: str, html: str) -> None:
+    if not settings.email_enabled:
+        # Адрес и тема — без текста письма: в нём могут быть коды.
+        log.info("почта выключена, письмо не отправлено: %s — %s", to, subject.split(" — ")[0])
+        return
     message = EmailMessage()
     message["From"] = settings.mail_from
     message["To"] = to

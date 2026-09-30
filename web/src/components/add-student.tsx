@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Alert, Button, Field, Modal } from "@/components/ui";
 import { classroom, saveFile, type Student, type StudentCredentials } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { errorText } from "@/lib/hooks";
 
 type Method = "existing" | "invite" | "request" | "manual" | "bulk";
@@ -52,8 +53,10 @@ export function AddStudentModal({
   groupId?: string;
   candidates?: Student[];
 }) {
-  const methods = groupId ? METHODS : METHODS.filter((m) => m.value !== "existing");
-  const [method, setMethod] = useState<Method>(groupId && candidates.length ? "existing" : "invite");
+  // Почты пока нет (решение №29) — приглашение письмом «скоро».
+  const emailReady = useAuth().user?.email_codes !== false;
+  const methods = (groupId ? METHODS : METHODS.filter((m) => m.value !== "existing")).filter((m) => emailReady || m.value !== "invite");
+  const [method, setMethod] = useState<Method>(groupId && candidates.length ? "existing" : emailReady ? "invite" : "manual");
   const [credentials, setCredentials] = useState<StudentCredentials | null>(null);
   const [bulk, setBulk] = useState<BulkResult | null>(null);
 
@@ -85,6 +88,7 @@ export function AddStudentModal({
             ))}
           </div>
           <p className="text-sm text-fg-soft">{methods.find((m) => m.value === method)?.hint}</p>
+          {!emailReady && <p className="text-xs text-fg-soft">Приглашение по email — скоро.</p>}
           {method === "existing" && groupId && (
             <ExistingForm groupId={groupId} candidates={candidates} onDone={onDone} />
           )}

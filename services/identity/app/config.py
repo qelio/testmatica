@@ -26,6 +26,9 @@ class Settings(CommonSettings):
     ip_max_login_failures: int = 50
 
     web_base_url: str = "http://localhost:8080"
+    # Письма с кодами (подтверждение email, вход с кодом, сброс пароля, смена email). false — почтового
+    # сервера пока нет (решение №29): регистрация без подтверждения, вход без кода, остальное — «скоро».
+    email_codes: bool = True
 
 
 settings = Settings()

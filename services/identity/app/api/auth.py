@@ -7,6 +7,7 @@ from testmatica_common.errors import ApiError
 from testmatica_common.ids import uuid7
 
 from .. import legal_consents, otp, ratelimit, sessions
+from ..config import settings
 from ..deps import db, outbox
 from ..models import STATUS_ACTIVE, STATUS_BANNED, STATUS_PENDING, User
 from ..schemas import (
@@ -29,10 +30,19 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 INVALID_CREDENTIALS = ApiError(401, "invalid_credentials", "Неверный логин или пароль")
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=RegisterResponse)
+EMAIL_UNAVAILABLE = ApiError(503, "email_unavailable", "Письма с кодами скоро появятся. Пока восстановить пароль поможет администратор: info@testmatica.ru")
+
+
+@router.get("/features")
+async def features() -> dict[str, bool]:
+    """Что сейчас доступно: письма с кодами (подтверждение email, вход с кодом, сброс пароля)."""
+    return {"email_codes": settings.email_codes}
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=RegisterResponse | Authenticated)
 async def register(
-    body: RegisterRequest, request: Request, session: AsyncSession = Depends(db.session)
-) -> RegisterResponse:
+    body: RegisterRequest, request: Request, response: Response, session: AsyncSession = Depends(db.session)
+) -> RegisterResponse | Authenticated:
     if await find_by_email(session, body.email):
         raise ApiError(409, "email_taken", "Пользователь с таким email уже зарегистрирован")
     user = await create_user(
@@ -41,9 +51,17 @@ async def register(
         password_hash=hash_password(body.password),
         full_name=body.full_name,
         roles=[body.role],
-        status=STATUS_PENDING,
+        status=STATUS_PENDING if settings.email_codes else STATUS_ACTIVE,
     )
     await legal_consents.record(session, user.id, request, source="registration")
+    if not settings.email_codes:
+        # Почты пока нет: сразу в кабинет, email остаётся неподтверждённым (подтвердят, когда появится почта).
+        try:
+            result = await sessions.start_session(session, user, request, response)
+            await session.commit()
+        except IntegrityError:
+            raise ApiError(409, "email_taken", "Пользователь с таким email уже зарегистрирован") from None
+        return result
     challenge = await otp.issue(session, user, otp.PURPOSE_EMAIL_VERIFICATION)
     try:
         await session.commit()
@@ -109,6 +127,8 @@ async def login(
         raise INVALID_CREDENTIALS
     await ratelimit.reset_login_failures(identifier)
 
+    if user.status == STATUS_PENDING and not settings.email_codes:
+        user.status = STATUS_ACTIVE  # зарегистрировался, пока почта была, но код не ввёл
     if user.status == STATUS_PENDING:
         challenge = await otp.issue(session, user, otp.PURPOSE_EMAIL_VERIFICATION)
         await session.commit()
@@ -119,8 +139,8 @@ async def login(
             {"challenge_id": str(challenge.id), "destination": mask_email(challenge.destination)},
         )
 
-    if user.two_factor_method is None:
-        # Ученик, созданный педагогом без email и телефона (decisions.md, п. 6).
+    if user.two_factor_method is None or not settings.email_codes:
+        # Ученик, созданный педагогом без email и телефона (decisions.md, п. 6), или почты пока нет (№29).
         result = await sessions.start_session(session, user, request, response)
         await session.commit()
         return result
@@ -165,6 +185,8 @@ async def logout(request: Request, response: Response, session: AsyncSession = D
 async def forgot_password(
     body: ForgotPasswordRequest, session: AsyncSession = Depends(db.session)
 ) -> ChallengeResponse:
+    if not settings.email_codes:
+        raise EMAIL_UNAVAILABLE
     user = await find_by_email(session, body.email)
     if user is None or user.status not in (STATUS_ACTIVE, STATUS_PENDING):
         # Ответ не отличается от успешного: нельзя проверить, зарегистрирован ли email.

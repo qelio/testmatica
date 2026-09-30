@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { Alert, Button, CodeStep, Field } from "@/components/ui";
 import { ApiError, identity } from "@/lib/api";
+import { useLoad } from "@/lib/hooks";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -14,6 +15,7 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string>();
   const [passwordError, setPasswordError] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const features = useLoad(() => identity.features(), []);
 
   async function requestCode(e: React.FormEvent) {
     e.preventDefault();
@@ -45,6 +47,26 @@ export default function ForgotPasswordPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (features.data?.email_codes === false) {
+    // Почтового сервера пока нет (решение №29): код не отправить.
+    return (
+      <div className="space-y-5">
+        <h1 className="text-2xl font-semibold tracking-tight">Восстановление пароля — скоро</h1>
+        <p className="text-fg-soft">
+          Письма с кодами пока не отправляются. Напишите на{" "}
+          <a href="mailto:info@testmatica.ru" className="text-brand underline">
+            info@testmatica.ru
+          </a>{" "}
+          с адреса, указанного при регистрации, — администратор выдаст временный пароль. Ученику, которого добавил педагог, новый пароль
+          выдаёт педагог.
+        </p>
+        <Link href="/login" className="text-brand hover:underline">
+          ← Ко входу
+        </Link>
+      </div>
+    );
   }
 
   if (done) {

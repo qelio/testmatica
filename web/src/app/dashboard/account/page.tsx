@@ -194,7 +194,21 @@ function EmailBlock({ user, onChanged }: { user: UserInfo; onChanged: (u: UserIn
       <p className="flex flex-wrap items-center gap-2">
         {user.email ? <b>{user.email}</b> : <span className="text-fg-soft">не указан</span>}
         {user.email && (user.email_verified ? <Badge tone="ok">подтверждён</Badge> : <Badge>не подтверждён</Badge>)}
-        {!editing && !challenge && (
+        {user.email_codes === false && <Badge>смена email — скоро</Badge>}
+        {!editing && !challenge && user.email_codes !== false && user.email && !user.email_verified && (
+          // Зарегистрировался, пока почты не было, — подтвердить тот же адрес кодом.
+          <Button
+            variant="ghost"
+            className="h-8"
+            onClick={() => {
+              setEmail(user.email ?? "");
+              setEditing(true);
+            }}
+          >
+            Подтвердить
+          </Button>
+        )}
+        {!editing && !challenge && user.email_codes !== false && (
           <Button variant="ghost" className="h-8" onClick={() => setEditing(true)}>
             {user.email ? "Изменить" : "Добавить email"}
           </Button>
@@ -329,10 +343,17 @@ function TwoFactorBlock({ user, onChanged }: { user: UserInfo; onChanged: (u: Us
       hint="При входе, кроме пароля, нужен код из письма — так аккаунт не украдут, даже если узнают пароль."
     >
       {feedback}
+      {user.email_codes === false ? (
+        // Почтового сервера пока нет (решение №29): коды не отправляются, вход — по паролю.
+        <p className="flex flex-wrap items-center gap-2 text-sm text-fg-soft">
+          <Badge tone="brand">скоро</Badge> Вход с кодом из письма появится, когда заработает почта. Пока вход — по паролю.
+        </p>
+      ) : (
       <p className="flex flex-wrap items-center gap-2">
         Сейчас: {enabled ? <Badge tone="ok">включён</Badge> : <Badge tone="warn">выключен</Badge>}
       </p>
-      {locked ? (
+      )}
+      {user.email_codes === false ? null : locked ? (
         <p className="text-sm text-fg-soft">Модераторам и администраторам вход с кодом обязателен — выключить нельзя.</p>
       ) : !enabled && !canEnable ? (
         <p className="text-sm text-fg-soft">Чтобы включить, сначала добавьте и подтвердите email — на него будут приходить коды.</p>

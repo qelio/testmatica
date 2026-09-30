@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from .config import settings
 from .legal import CURRENT, PDN, TERMS
 
 
@@ -94,6 +95,7 @@ class UserOut(BaseModel):
     two_factor_required: bool = Field(False, description="2FA нельзя выключить (модераторы и администраторы)")
     avatar_url: str | None = None
     consent_required: bool = Field(False, description="Нужно принять соглашение и дать согласие на обработку ПД (текущие редакции)")
+    email_codes: bool = Field(True, description="Письма с кодами работают; false — вход с кодом, смена email и сброс пароля «скоро»")
 
     @classmethod
     def of(cls, user, avatar_url: str | None = None, consent_required: bool = False) -> "UserOut":
@@ -110,6 +112,7 @@ class UserOut(BaseModel):
             two_factor_required=bool({"moderator", "admin"} & set(user.role_names)),
             avatar_url=avatar_url,
             consent_required=consent_required,
+            email_codes=settings.email_codes,
         )
 
 

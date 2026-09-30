@@ -17,11 +17,11 @@ variable "zone" {
 variable "domain" {
   description = "Домен сайта"
   type        = string
-  default     = "tmatica.ru"
+  default     = "testmatica.ru"
 }
 
 variable "livekit_subdomain" {
-  description = "Поддомен видеосвязи (LiveKit): live → live.tmatica.ru"
+  description = "Поддомен видеосвязи (LiveKit): live → live.testmatica.ru"
   type        = string
   default     = "live"
 }
@@ -49,40 +49,49 @@ variable "vm_user" {
   default     = "deploy"
 }
 
+# Размеры — на старт (около 10 пользователей, не одновременно). Когда станет тесно — поднять здесь
+# и выполнить terraform apply: ВМ перезапустится с новыми ресурсами, данные сохранятся.
+
 variable "vm_cores" {
   type    = number
-  default = 4
+  default = 2
+}
+
+variable "vm_core_fraction" {
+  description = "Гарантированная доля vCPU, %: 50 — дешевле, для небольшой нагрузки; 100 — постоянная полная мощность"
+  type        = number
+  default     = 50
 }
 
 variable "vm_memory_gb" {
   type    = number
-  default = 8
+  default = 4
 }
 
 variable "vm_disk_gb" {
   type    = number
-  default = 60
+  default = 30
 }
 
 variable "pg_preset" {
-  description = "Класс хостов Managed PostgreSQL (s2.micro — 2 vCPU, 8 ГБ)"
+  description = "Класс хостов Managed PostgreSQL: b2.micro — 2 vCPU (20%), 2 ГБ; дальше b2.medium (50%, 4 ГБ), s2.micro (100%, 8 ГБ)"
   type        = string
-  default     = "s2.micro"
+  default     = "b2.micro"
 }
 
 variable "pg_disk_gb" {
   type    = number
-  default = 20
+  default = 10
 }
 
 variable "bucket_files" {
   description = "Бакет файлов (имена бакетов уникальны во всём Object Storage)"
   type        = string
-  default     = "tmatica-files"
+  default     = "testmatica-files"
 }
 
 variable "bucket_recordings" {
   description = "Бакет записей занятий и прокторинга"
   type        = string
-  default     = "tmatica-recordings"
+  default     = "testmatica-recordings"
 }
