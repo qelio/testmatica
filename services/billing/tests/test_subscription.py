@@ -112,3 +112,14 @@ async def test_renewal_reminder_and_expiry(client):
     # Снова оплатили — тариф вернулся.
     await buy(client, manual)
     assert (await client.get("/subscription", headers=bearer(manual))).json()["plan"] == "basic"
+
+
+async def test_payments_disabled_in_prod(client, monkeypatch):
+    """Прод до подключения ЮKassa: поддельной оплаты нет — ни платежа, ни тестовой страницы."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "payment_provider", "disabled")
+    maria = uuid4()
+    resp = await client.post("/subscription/checkout", json={"auto_renew": False, "accept_offer": True}, headers=bearer(maria))
+    assert resp.status_code == 503 and resp.json()["error"]["code"] == "payments_unavailable"
+    assert (await client.post(f"/fake-provider/payments/{uuid4()}", json={"card": "4242"}, headers=bearer(maria))).status_code in (404, 422)

@@ -23,5 +23,10 @@ class CommonSettings(BaseSettings):
     # Общий секрет для внутренних вызовов между сервисами (заголовок X-Internal-Token).
     internal_token: str = "dev-internal-token"
 
+    @property
+    def openapi_url(self) -> str | None:
+        """Swagger (/docs) — только не в проде: снаружи он раскрывал бы устройство внутреннего API."""
+        return None if self.environment == "prod" else "/openapi.json"
+
     # Outbox relay и consumers. В тестах выключаются.
     run_background: bool = True

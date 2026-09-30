@@ -1,0 +1,95 @@
+# Сборка образов и выкладка на сервер при пуше в main (решение №28).
+# Секреты репозитория: YC_CI_KEY_JSON (terraform output -raw ci_key_json), SSH_PRIVATE_KEY, SSH_HOST, SSH_USER.
+# Переменная репозитория: REGISTRY (terraform output -raw registry).
+name: Сборка и выкладка
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Проверка веба
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npx tsc --noEmit && npm run lint
+        working-directory: web
+
+  images:
+    name: Образ ${{ matrix.name }}
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { name: identity, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: notification, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: audit, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: classroom, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: schedule, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: academic, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: chat, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: media, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: content, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: moderation, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: assessment, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: marketplace, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: billing, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: video, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: code-runner, context: services/code-runner, file: services/code-runner/Dockerfile }
+          - { name: web, context: web, file: web/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Вход в Yandex Container Registry
+        env:
+          KEY: ${{ secrets.YC_CI_KEY_JSON }}
+        run: printf '%s' "$KEY" | docker login --username json_key --password-stdin cr.yandex
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          build-args: SERVICE=${{ matrix.name }}
+          push: true
+          tags: |
+            ${{ vars.REGISTRY }}/${{ matrix.name }}:${{ github.sha }}
+            ${{ vars.REGISTRY }}/${{ matrix.name }}:latest
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    name: Выкладка
+    needs: images
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH-ключ
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Файлы и перезапуск
+        env:
+          TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
+        run: |
+          scp compose.prod.yaml infra/prod/deploy.sh "$TARGET:/opt/testmatica/"
+          ssh "$TARGET" "sh /opt/testmatica/deploy.sh ${{ github.sha }}"
