@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, false, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from testmatica_common.ids import uuid7
 from testmatica_common.messaging import messaging_tables
@@ -129,7 +129,7 @@ class RefreshToken(Base):
 
 
 class Consent(Base):
-    """Согласия пользователя (152-ФЗ): тип, версия документа, время и IP."""
+    """Согласия пользователя (152-ФЗ): тип, версия документа, время, IP и браузер — чтобы подтвердить факт согласия."""
 
     __tablename__ = "consents"
 
@@ -138,4 +138,9 @@ class Consent(Base):
     type: Mapped[str] = mapped_column(String(32))
     version: Mapped[str] = mapped_column(String(20))
     ip: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String(400))
+    # registration — при регистрации; first_login — окно при входе (ученик, созданный педагогом, или новая редакция)
+    source: Mapped[str] = mapped_column(String(20), default="registration", server_default="registration")
+    # Кто подтвердил: сам пользователь 14+ или родитель (законный представитель) — для учеников.
+    by_representative: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

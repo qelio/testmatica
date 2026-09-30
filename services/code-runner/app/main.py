@@ -13,7 +13,7 @@ from . import sandbox
 TOKEN = os.environ.get("INTERNAL_TOKEN", "dev-internal-token")
 _lock = asyncio.Lock()
 
-app = FastAPI(title="Тестматика · code-runner", version="0.1.0")
+app = FastAPI(title="ТестМатика · code-runner", version="0.1.0")
 
 
 class Case(BaseModel):

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-CONSENT_PDN_VERSION = "1.0"
+from .legal import CURRENT, PDN, TERMS
 
 
 def _check_password(value: str) -> str:
@@ -18,8 +18,8 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=1, max_length=200)
     role: Literal["student", "teacher"]
-    consent_pdn: bool
-    consent_version: str = CONSENT_PDN_VERSION
+    consent_pdn: bool = Field(description="Согласие на обработку персональных данных — отдельной галочкой (152-ФЗ)")
+    accept_terms: bool = Field(description="Принимаю пользовательское соглашение")
 
     _password = field_validator("password")(_check_password)
 
@@ -36,6 +36,28 @@ class RegisterRequest(BaseModel):
     def _consent_required(cls, value: bool) -> bool:
         if not value:
             raise ValueError("Необходимо согласие на обработку персональных данных")
+        return value
+
+    @field_validator("accept_terms")
+    @classmethod
+    def _terms_required(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("Необходимо принять пользовательское соглашение")
+        return value
+
+
+class ConsentsIn(BaseModel):
+    """Окно согласия при входе: ученик, созданный педагогом, или новая редакция документов."""
+
+    accept_terms: bool
+    consent_pdn: bool
+    by_representative: bool = Field(False, description="Согласие даёт родитель (законный представитель) ученика младше 14 лет")
+
+    @field_validator("accept_terms", "consent_pdn")
+    @classmethod
+    def _required(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("Без согласия пользоваться платформой нельзя")
         return value
 
 
@@ -71,9 +93,10 @@ class UserOut(BaseModel):
     managed: bool = Field(False, description="Аккаунт создал педагог — логин и пароль он же и выдаёт")
     two_factor_required: bool = Field(False, description="2FA нельзя выключить (модераторы и администраторы)")
     avatar_url: str | None = None
+    consent_required: bool = Field(False, description="Нужно принять соглашение и дать согласие на обработку ПД (текущие редакции)")
 
     @classmethod
-    def of(cls, user, avatar_url: str | None = None) -> "UserOut":
+    def of(cls, user, avatar_url: str | None = None, consent_required: bool = False) -> "UserOut":
         return cls(
             id=user.id,
             email=user.email,
@@ -86,6 +109,7 @@ class UserOut(BaseModel):
             managed=user.managed_by_teacher_id is not None,
             two_factor_required=bool({"moderator", "admin"} & set(user.role_names)),
             avatar_url=avatar_url,
+            consent_required=consent_required,
         )
 
 

@@ -66,6 +66,7 @@ class Payment(Base):
     recurring: Mapped[bool] = mapped_column(Boolean, default=False)  # автопродление сохранённым способом
     save_method: Mapped[bool] = mapped_column(Boolean, default=False)  # включить автопродление после оплаты
     error: Mapped[str | None] = mapped_column(String(300))
+    offer_version: Mapped[str | None] = mapped_column(String(20))  # редакция оферты, принятой при оплате (автопродление — та же)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

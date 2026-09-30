@@ -7,7 +7,7 @@ from .conftest import INTERNAL, bearer, outbox, sql
 
 
 async def buy(client, user, card="4242", auto_renew=True):
-    pay = (await client.post("/subscription/checkout", json={"auto_renew": auto_renew}, headers=bearer(user))).json()
+    pay = (await client.post("/subscription/checkout", json={"auto_renew": auto_renew, "accept_offer": True}, headers=bearer(user))).json()
     result = await client.post(f"/fake-provider/payments/{pay['id']}", json={"outcome": "success", "card_last4": card},
                                headers=bearer(user))
     return pay, result.json()
@@ -22,11 +22,13 @@ async def test_checkout_with_fake_provider(client):
     maria, student = uuid4(), uuid4()
     state = (await client.get("/subscription", headers=bearer(maria))).json()
     assert state["plan"] == "free" and state["price_rub"] == 490 and state["pending_payment"] is None
-    assert (await client.post("/subscription/checkout", json={}, headers=bearer(student, ("student",)))).status_code == 403
+    assert (await client.post("/subscription/checkout", json={"accept_offer": True}, headers=bearer(student, ("student",)))).status_code == 403
 
-    pay = (await client.post("/subscription/checkout", json={"auto_renew": True}, headers=bearer(maria))).json()
+    no_offer = await client.post("/subscription/checkout", json={"auto_renew": True, "accept_offer": False}, headers=bearer(maria))
+    assert no_offer.status_code == 422
+    pay = (await client.post("/subscription/checkout", json={"auto_renew": True, "accept_offer": True}, headers=bearer(maria))).json()
     assert pay["amount_rub"] == 490 and pay["status"] == "pending" and pay["confirmation_url"].endswith(f"/dashboard/pay/{pay['id']}")
-    again = (await client.post("/subscription/checkout", json={"auto_renew": True}, headers=bearer(maria))).json()
+    again = (await client.post("/subscription/checkout", json={"auto_renew": True, "accept_offer": True}, headers=bearer(maria))).json()
     assert again["id"] == pay["id"]  # незавершённый платёж продолжается, а не дублируется
     assert (await client.get("/subscription", headers=bearer(maria))).json()["pending_payment"]["id"] == pay["id"]
     # Чужой платёж подтвердить нельзя.
@@ -61,7 +63,7 @@ async def test_declined_and_cancelled(client):
     maria = uuid4()
     _, declined = await buy(client, maria, card="0002")
     assert declined["status"] == "canceled" and declined["error"] == "Банк отклонил оплату"
-    pay = (await client.post("/subscription/checkout", json={"auto_renew": False}, headers=bearer(maria))).json()
+    pay = (await client.post("/subscription/checkout", json={"auto_renew": False, "accept_offer": True}, headers=bearer(maria))).json()
     cancelled = (await client.post(f"/fake-provider/payments/{pay['id']}", json={"outcome": "cancel"}, headers=bearer(maria))).json()
     assert cancelled["status"] == "canceled"
     assert (await client.get("/subscription", headers=bearer(maria))).json()["plan"] == "free"

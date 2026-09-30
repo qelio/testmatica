@@ -15,7 +15,7 @@ FULL = {
 
 
 async def publish(client, user, **extra):
-    resp = await client.put("/me/profile", json=FULL | {"published": True} | extra, headers=bearer(user))
+    resp = await client.put("/me/profile", json=FULL | {"published": True, "public_consent": True} | extra, headers=bearer(user))
     assert resp.status_code == 200, resp.text
     return resp.json()
 
@@ -26,7 +26,10 @@ async def test_profile_publish_rules(client, fakes):
     empty = (await client.get("/me/profile", headers=bearer(maria))).json()
     assert empty["profile"]["published"] is False and "Предметы" in empty["missing"]
 
-    incomplete = await client.put("/me/profile", json={"published": True, "headline": "Коротко"}, headers=bearer(maria))
+    # Показ в поиске — только с согласием на распространение ПД (ст. 10.1 152-ФЗ).
+    no_consent = await client.put("/me/profile", json=FULL | {"published": True}, headers=bearer(maria))
+    assert no_consent.json()["error"]["code"] == "public_consent_required"
+    incomplete = await client.put("/me/profile", json={"published": True, "headline": "Коротко", "public_consent": True}, headers=bearer(maria))
     assert incomplete.json()["error"]["code"] == "profile_incomplete"
     unknown = await client.put("/me/profile", json=FULL | {"subject_ids": [str(uuid4())]}, headers=bearer(maria))
     assert unknown.json()["error"]["code"] == "unknown_subject"
@@ -41,7 +44,9 @@ async def test_profile_publish_rules(client, fakes):
     photo = fakes.file(maria)
     done = await publish(client, maria, photo_file_id=photo)
     assert done["profile"]["photo_url"] == f"http://s3/{photo}" and done["profile"]["share_url"].endswith(f"/tutors/{maria}")
-    assert done["profile"]["subjects"] == [{"id": MATH, "name": "Математика"}]
+    assert done["profile"]["subjects"] == [{"id": MATH, "name": "Математика"}] and done["public_consent"]
+    # Согласие уже дано — при следующих сохранениях галочка не нужна.
+    assert (await client.put("/me/profile", json=FULL | {"published": True, "photo_file_id": photo}, headers=bearer(maria))).status_code == 200
     assert (await outbox("marketplace.profile.published"))[0]["data"]["user_id"] == str(maria)
     guest = (await client.get(f"/tutors/{maria}")).json()  # ссылка «Поделиться» — без входа
     assert guest["full_name"] == "Мария Иванова" and guest["about"].startswith("Готовлю")

@@ -22,8 +22,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { LegalBar } from "@/components/legal-bar";
 import { NewsCard } from "@/components/news-card";
 import { PublicShell } from "@/components/public-shell";
+import { StartLink } from "@/components/start-link";
 import { TutorCardView } from "@/components/tutor-card";
 import { featuredTutors, type LandingIcon, type LandingOut, serverGet } from "@/lib/server-api";
 
@@ -45,7 +47,7 @@ const ICONS: Record<LandingIcon, LucideIcon> = {
 // Если сервис недоступен — хотя бы первый экран.
 const FALLBACK_HERO: LandingOut["hero"] = {
   title: "Учите, учитесь и находите друг друга на одной платформе",
-  subtitle: "Тестматика объединяет инструменты школьного учителя, маркетплейс репетиторов и библиотеку знаний с заданиями.",
+  subtitle: "ТестМатика объединяет инструменты школьного учителя, маркетплейс репетиторов и библиотеку знаний с заданиями.",
   primary_text: "Начать бесплатно",
   primary_href: "/register",
   secondary_text: "Найти репетитора",
@@ -83,21 +85,20 @@ export default async function Home() {
         </div>
         <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] md:py-24">
           <div>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-grape/30 bg-surface/70 px-3 py-1 text-sm font-medium text-grape backdrop-blur">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-surface/70 px-3 py-1 text-sm font-medium text-brand backdrop-blur">
               <Sparkles size={15} aria-hidden /> Учителям, репетиторам и ученикам
             </span>
-            <h1 className="mt-5 bg-gradient-to-br from-fg via-brand to-grape bg-clip-text text-4xl font-bold tracking-tight text-balance text-transparent sm:text-5xl lg:text-6xl">
+            <h1 className="mt-5 bg-gradient-to-br from-fg via-brand to-school bg-clip-text text-4xl font-bold tracking-tight text-balance text-transparent sm:text-5xl lg:text-6xl">
               {hero.title}
             </h1>
             {hero.subtitle && <p className="mt-5 max-w-2xl text-lg text-fg-soft">{hero.subtitle}</p>}
             <div className="mt-8 flex flex-wrap gap-3">
               {hero.primary_text && hero.primary_href && (
-                <Link
+                <StartLink
                   href={hero.primary_href}
-                  className="rounded-2xl bg-gradient-to-r from-brand via-grape to-pink px-6 py-3.5 font-semibold text-white shadow-lg shadow-brand/30 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-grape/30"
-                >
-                  {hero.primary_text} →
-                </Link>
+                  text={hero.primary_text}
+                  className="rounded-2xl bg-gradient-to-r from-brand to-school px-6 py-3.5 font-semibold text-white shadow-lg shadow-brand/30 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand/30"
+                />
               )}
               {hero.secondary_text && hero.secondary_href && (
                 <Link
@@ -239,17 +240,16 @@ export default async function Home() {
 
       {hero.primary_text && hero.primary_href && (
         <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-          <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-brand via-grape to-pink px-6 py-12 text-center text-white shadow-xl shadow-grape/20 sm:px-12">
+          <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-brand via-school to-sky px-6 py-12 text-center text-white shadow-xl shadow-brand/20 sm:px-12">
             <div aria-hidden className="pointer-events-none absolute -top-10 -left-10 h-40 w-40 rounded-full bg-sun/40 blur-2xl" />
             <div aria-hidden className="pointer-events-none absolute -right-10 -bottom-10 h-48 w-48 rounded-full bg-sky/40 blur-2xl" />
             <h2 className="relative text-3xl font-bold tracking-tight sm:text-4xl">Готовы попробовать?</h2>
             <p className="relative mx-auto mt-3 max-w-xl text-white/85">Регистрация бесплатная, а первые задачи можно решить уже сегодня.</p>
-            <Link
+            <StartLink
               href={hero.primary_href}
+              text={hero.primary_text}
               className="relative mt-7 inline-block rounded-2xl bg-white px-7 py-3.5 font-semibold text-brand shadow-lg transition hover:-translate-y-0.5"
-            >
-              {hero.primary_text} →
-            </Link>
+            />
           </div>
         </section>
       )}
@@ -262,7 +262,7 @@ export default async function Home() {
 function SectionTitle({ kicker, children }: { kicker: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-sm font-semibold tracking-wide text-grape uppercase">{kicker}</p>
+      <p className="text-sm font-semibold tracking-wide text-brand uppercase">{kicker}</p>
       <h2 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{children}</h2>
     </div>
   );
@@ -336,6 +336,8 @@ function HeroArt({ imageUrl }: { imageUrl: string | null }) {
   );
 }
 
+const IDEAS_EMAIL = "info@tmatica.ru";
+
 function Footer({ contacts }: { contacts?: LandingOut["contacts"] }) {
   const items: { icon: LucideIcon; text: string; href?: string }[] = [];
   if (contacts?.email) items.push({ icon: Mail, text: contacts.email, href: `mailto:${contacts.email}` });
@@ -347,8 +349,17 @@ function Footer({ contacts }: { contacts?: LandingOut["contacts"] }) {
     <footer className="mt-8 border-t border-line bg-surface">
       <div className="mx-auto flex max-w-6xl flex-wrap items-start justify-between gap-6 px-4 py-10 sm:px-6">
         <div className="max-w-sm space-y-2">
-          <p className="font-semibold">Тестматика</p>
+          <p>
+            <span className="font-rounded font-black text-leaf">ТестМатика</span> — Образовательная платформа
+          </p>
           {contacts?.text && <p className="text-sm text-fg-soft">{contacts.text}</p>}
+          <p className="flex items-center gap-2 text-sm">
+            <Mail size={16} className="text-fg-soft" aria-hidden />
+            <span className="text-fg-soft">Предложения и идеи:</span>
+            <a href={`mailto:${IDEAS_EMAIL}`} className="font-medium text-brand hover:underline">
+              {IDEAS_EMAIL}
+            </a>
+          </p>
         </div>
         {items.length > 0 && (
           <ul className="space-y-2 text-sm">
@@ -379,8 +390,12 @@ function Footer({ contacts }: { contacts?: LandingOut["contacts"] }) {
           <Link href="/news" className="hover:text-fg">
             Новости
           </Link>
+          <Link href="/legal" className="hover:text-fg">
+            Документы
+          </Link>
         </nav>
       </div>
+      <LegalBar />
     </footer>
   );
 }

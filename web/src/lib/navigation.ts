@@ -37,12 +37,15 @@ import {
   Wallet,
 } from "lucide-react";
 
-export type NavItem = { title: string; href: string; icon: LucideIcon; ready: boolean; badge?: "chats" };
+export type NavItem = { title: string; href: string; icon: LucideIcon; ready: boolean; badge?: "chats" | "support" };
 
 const DASHBOARD: NavItem = { title: "Дашборд", href: "/dashboard", icon: LayoutDashboard, ready: true };
 const ACCOUNT: NavItem = { title: "Личный кабинет", href: "/dashboard/account", icon: CircleUserRound, ready: true };
 // В ТЗ чаты не перечислены среди разделов, но без пункта меню до них не добраться.
 const CHATS: NavItem = { title: "Сообщения", href: "/dashboard/chats", icon: MessageSquare, ready: true, badge: "chats" };
+// Пользователю — свои обращения (значок: есть непрочитанный ответ); поддержке — очередь (значок: ждут ответа).
+const SUPPORT: NavItem = { title: "Поддержка", href: "/dashboard/support", icon: LifeBuoy, ready: true, badge: "support" };
+const SUPPORT_QUEUE: NavItem = { title: "Обращения", href: "/dashboard/support", icon: LifeBuoy, ready: true, badge: "support" };
 const soon = (title: string, href: string, icon: LucideIcon): NavItem => ({ title, href, icon, ready: false });
 
 export const NAV = {
@@ -64,7 +67,7 @@ export const NAV = {
     { title: "Профиль репетитора", href: "/dashboard/profile", icon: UserRound, ready: true },
     { title: "Заявки учеников", href: "/dashboard/requests", icon: Inbox, ready: true },
     { title: "Наборы в группы", href: "/dashboard/offers", icon: UsersRound, ready: true },
-    soon("Поддержка", "/dashboard/support", LifeBuoy),
+    SUPPORT,
     ACCOUNT,
   ],
   student: [
@@ -77,16 +80,17 @@ export const NAV = {
     { title: "ЕГЭ и ОГЭ", href: "/dashboard/exams", icon: Target, ready: true },
     { title: "Библиотека", href: "/dashboard/library", icon: BookOpen, ready: true },
     { title: "Найти репетитора", href: "/dashboard/tutors", icon: Search, ready: true },
-    { title: "Группы", href: "/dashboard/groups", icon: UsersRound, ready: true },
+    { title: "Группы", href: "/dashboard/find-groups", icon: UsersRound, ready: true },
     { title: "Мои заявки", href: "/dashboard/requests", icon: FileText, ready: true },
     soon("Баланс", "/dashboard/balance", Wallet),
-    soon("Поддержка", "/dashboard/support", LifeBuoy),
+    SUPPORT,
     ACCOUNT,
   ],
   staff: [
     DASHBOARD,
     CHATS, // споры по отзывам — чаты поддержки
     { title: "Очередь модерации", href: "/dashboard/moderation", icon: ShieldCheck, ready: true },
+    SUPPORT_QUEUE,
     { title: "Банк задач", href: "/dashboard/tasks", icon: Boxes, ready: true },
     { title: "Библиотека", href: "/dashboard/library", icon: BookOpen, ready: true },
     { title: "Типы оценок", href: "/dashboard/grade-types", icon: Tags, ready: true },

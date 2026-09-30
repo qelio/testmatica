@@ -111,3 +111,30 @@ async def test_two_factor_toggle_and_managed_student(client, files):
     code = await sent_code("petya@example.com", "email_change")
     done = (await client.post("/me/email/confirm", json={"challenge_id": ch["challenge_id"], "code": code}, headers=pupil)).json()
     assert done["email"] == "petya@example.com" and done["two_factor_method"] == "email"
+
+
+async def test_consents_on_first_login(client, files):
+    # Зарегистрировался сам — согласия даны при регистрации (две отдельные галочки).
+    await register(client, "anna@example.com")
+    me = auth(await login(client, "anna@example.com"))
+    assert (await client.get("/me", headers=me)).json()["consent_required"] is False
+    no_terms = await client.post("/auth/register", json={"email": "b@example.com", "password": PASSWORD, "full_name": "Б",
+                                                         "role": "student", "consent_pdn": True, "accept_terms": False})
+    assert no_terms.status_code == 422
+
+    # Ученик, созданный педагогом, — окно согласия при первом входе; без галочек дальше нельзя.
+    creds = (await client.post("/internal/managed-students", json={"teacher_id": str(uuid4()), "full_name": "Петя"}, headers=H)).json()
+    pupil = auth((await client.post("/auth/login", json={"identifier": creds["login"], "password": creds["password"]})).json())
+    assert (await client.get("/me", headers=pupil)).json()["consent_required"] is True
+    bad = await client.post("/me/consents", json={"accept_terms": True, "consent_pdn": False}, headers=pupil)
+    assert bad.status_code == 422
+    ok = await client.post("/me/consents", json={"accept_terms": True, "consent_pdn": True, "by_representative": True},
+                           headers={**pupil, "User-Agent": "Test/1.0"})
+    assert ok.json()["consent_required"] is False
+    async with db.engine.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT type, source, by_representative, user_agent FROM consents c JOIN users u ON u.id = c.user_id WHERE u.login = :l"
+        ), {"l": creds["login"]})).all()
+    assert {r.type for r in rows} == {"terms", "pdn"} and all(r.source == "first_login" and r.by_representative for r in rows)
+    assert rows[0].user_agent == "Test/1.0"
+    assert (await events("identity.user.consented"))[-1]["data"]["source"] == "first_login"

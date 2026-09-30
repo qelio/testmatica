@@ -265,7 +265,8 @@ flowchart LR
 - Реальное время: WebSocket `/ws` (первое сообщение — access-токен), доставка через Redis pub/sub `chat:user:<id>`
 - Уведомления: команда `notification.inapp` с `coalesce_key` — одно непрочитанное уведомление на чат; в аудит — событие без текста
 - Вложения: до 10 файлов на сообщение (через media); свежая ссылка — `GET /conversations/{id}/attachments/{file_id}`
-- Позже: чат переговоров (этап 4), чат в занятии (этап 3), поддержка
+- Обращения в поддержку: `support_tickets` (id = id чата kind = support; requester_id, category, subject, status open / answered / closed, priority — подписчик «Базового», assignee_id). API `/support/tickets`, `/support/queue`; статус меняется при отправке сообщения. Участники чата — автор и все модераторы/админы (пришедший позже добавляется при открытии). События `chat.ticket.created|closed`
+- Позже: чат в занятии (этап 3)
 
 ### video
 Этап 3 — видеосвязь на LiveKit (прокторинг — позже):

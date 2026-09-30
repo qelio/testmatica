@@ -8,8 +8,9 @@
   --line: #dfe3ec;
   --fg: #151a2d;
   --fg-soft: #5d6479;
-  --brand: #4f46e5;
-  --brand-strong: #4338ca;
+  /* Акцент — зелёный логотипа; чуть глубже, чем у названия, чтобы белый текст на кнопках читался (4,5:1). */
+  --brand: #00875f;
+  --brand-strong: #006f4e;
   --danger: #d92d20;
   --ok: #12805c;
   --school: #0e9384;
@@ -20,6 +21,8 @@
   --sky: #0ea5e9;
   --grape: #8b5cf6;
   --mint: #10b981;
+  /* Зелёный логотипа — название в шапке. */
+  --leaf: #00a074;
 }
 
 /* Тёмная тема: по настройке системы, если пользователь не выбрал светлую, или по выбору пользователя (lib/theme.ts). */
@@ -32,8 +35,8 @@
     --line: #2b3243;
     --fg: #e8eaf0;
     --fg-soft: #9aa2b6;
-    --brand: #7c74ff;
-    --brand-strong: #948dff;
+    --brand: #1fae84;
+    --brand-strong: #34c795;
     --danger: #f97066;
     --ok: #32d583;
     --school: #2ed3b7;
@@ -43,6 +46,7 @@
   --sky: #38bdf8;
   --grape: #a78bfa;
   --mint: #34d399;
+  --leaf: #2ecf9c;
   }
 }
 
@@ -54,8 +58,8 @@
   --line: #2b3243;
   --fg: #e8eaf0;
   --fg-soft: #9aa2b6;
-  --brand: #7c74ff;
-  --brand-strong: #948dff;
+  --brand: #1fae84;
+  --brand-strong: #34c795;
   --danger: #f97066;
   --ok: #32d583;
   --school: #2ed3b7;
@@ -65,6 +69,7 @@
   --sky: #38bdf8;
   --grape: #a78bfa;
   --mint: #34d399;
+  --leaf: #2ecf9c;
 }
 
 @theme inline {
@@ -85,7 +90,9 @@
   --color-sky: var(--sky);
   --color-grape: var(--grape);
   --color-mint: var(--mint);
+  --color-leaf: var(--leaf);
   --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-rounded: var(--font-nunito), var(--font-inter), system-ui, sans-serif;
 }
 
 body {

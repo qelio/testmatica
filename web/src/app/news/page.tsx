@@ -4,7 +4,7 @@ import { NewsCard } from "@/components/news-card";
 import type { NewsSummary } from "@/lib/server-api";
 import { serverGet } from "@/lib/server-api";
 
-export const metadata: Metadata = { title: "Новости — Тестматика" };
+export const metadata: Metadata = { title: "Новости — ТестМатика" };
 
 /** Лента новостей (ведёт администратор). */
 export default async function NewsPage() {

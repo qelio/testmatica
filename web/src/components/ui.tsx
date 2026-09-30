@@ -4,14 +4,17 @@ import Link from "next/link";
 import { forwardRef, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
+import { LogoMark } from "@/components/logo-mark";
+
 export function Logo({ className = "", compact = false }: { className?: string; compact?: boolean }) {
   return (
-    <Link href="/" className={`inline-flex items-center gap-2 font-semibold tracking-tight ${className}`}>
-      <span className="grid h-8 w-8 shrink-0 -rotate-6 place-items-center rounded-lg bg-gradient-to-br from-brand via-grape to-pink text-sm font-bold text-white shadow-sm shadow-brand/30">
-        Т
-      </span>
+    <Link
+      href="/"
+      className={`inline-flex items-center gap-2 ${className}`}
+    >
+      <LogoMark className="h-8 w-auto shrink-0" />
       {/* compact: на узких экранах остаётся только значок */}
-      <span className={`text-lg ${compact ? "hidden sm:inline" : ""}`}>Тестматика</span>
+      <span className={`pr-1 font-rounded text-xl font-black tracking-tight text-leaf ${compact ? "hidden sm:inline" : ""}`}>ТестМатика</span>
     </Link>
   );
 }

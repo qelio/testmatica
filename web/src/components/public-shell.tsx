@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { LegalBar } from "@/components/legal-bar";
 import { Logo } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 import { ThemeToggle } from "@/lib/theme";
@@ -24,7 +25,8 @@ export function PublicShell({ children, wide = false }: { children: React.ReactN
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
           <Logo compact />
-          <nav className="flex min-w-0 gap-4 overflow-x-auto">
+          {/* Разделы — по центру между логотипом и переключателем темы; на узком экране прокручиваются. */}
+          <nav className="flex min-w-0 flex-1 justify-start gap-5 overflow-x-auto sm:justify-center sm:gap-8">
             {LINKS.map((l) => (
               <Link
                 key={l.href}
@@ -35,7 +37,6 @@ export function PublicShell({ children, wide = false }: { children: React.ReactN
               </Link>
             ))}
           </nav>
-          <div className="flex-1" />
           <ThemeToggle />
           {status === "authenticated" ? (
             <Link href="/dashboard" className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong">
@@ -56,7 +57,14 @@ export function PublicShell({ children, wide = false }: { children: React.ReactN
           )}
         </div>
       </header>
-      {wide ? <main className="flex-1">{children}</main> : <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">{children}</main>}
+      {wide ? (
+        <main className="flex-1">{children}</main>
+      ) : (
+        <>
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">{children}</main>
+          <LegalBar />
+        </>
+      )}
     </div>
   );
 }

@@ -75,7 +75,7 @@ async def register(client: httpx.AsyncClient, email: str, role: str = "student",
             "password": PASSWORD,
             "full_name": "Иван Петров",
             "role": role,
-            "consent_pdn": True,
+            "consent_pdn": True, "accept_terms": True,
         },
     )
     assert resp.status_code == 201, resp.text

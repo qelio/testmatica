@@ -10,10 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
 
-from .. import avatars, otp, sessions
+from .. import avatars, legal_consents, otp, sessions
 from ..deps import auth, db, media, outbox
 from ..models import STATUS_ACTIVE, User
-from ..schemas import UserOut, _check_password
+from ..schemas import ConsentsIn, UserOut, _check_password
 from ..security import hash_password, mask_email, verify_password
 from ..users import find_by_identifier, normalize, person_data
 
@@ -76,7 +76,7 @@ async def _load(session: AsyncSession, principal: Principal, lock: bool = False)
     return user
 
 
-async def _out(user: User) -> UserOut:
+async def _out(session: AsyncSession, user: User) -> UserOut:
     url = None
     if user.avatar_file_id:
         try:
@@ -84,7 +84,7 @@ async def _out(user: User) -> UserOut:
             url = (found.get(str(user.avatar_file_id)) or {}).get("url")
         except ApiError:
             url = None  # media недоступен — страница откроется без фото
-    return UserOut.of(user, avatar_url=url)
+    return UserOut.of(user, avatar_url=url, consent_required=await legal_consents.required(session, user.id))
 
 
 def _check_password_or_fail(user: User, password: str) -> None:
@@ -94,7 +94,7 @@ def _check_password_or_fail(user: User, password: str) -> None:
 
 @router.get("", response_model=UserOut)
 async def me(principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> UserOut:
-    return await _out(await _load(session, principal))
+    return await _out(session, await _load(session, principal))
 
 
 @router.patch("", response_model=UserOut)
@@ -109,7 +109,7 @@ async def update_me(body: ProfileIn, principal: Principal = Depends(auth.princip
     if changed:
         await outbox.event(session, "identity.user.updated", person_data(user), actor_id=user.id)
         await session.commit()
-    return await _out(user)
+    return await _out(session, user)
 
 
 @router.put("/avatar", response_model=UserOut)
@@ -119,7 +119,7 @@ async def set_avatar(body: AvatarIn, principal: Principal = Depends(auth.princip
     user = await _load(session, principal, lock=True)
     await avatars.set_avatar(session, user, body.file_id)
     await session.commit()
-    return await _out(user)
+    return await _out(session, user)
 
 
 @router.post("/email", response_model=EmailChallenge)
@@ -154,7 +154,7 @@ async def confirm_email(body: CodeIn, principal: Principal = Depends(auth.princi
         user.two_factor_method = "email"
     await outbox.event(session, "identity.user.email_changed", {"user_id": str(user.id)}, actor_id=user.id)
     await session.commit()
-    return await _out(user)
+    return await _out(session, user)
 
 
 @router.post("/password", status_code=204)
@@ -187,4 +187,15 @@ async def set_two_factor(body: TwoFactorIn, principal: Principal = Depends(auth.
         user.two_factor_method = None
     await outbox.event(session, "identity.user.two_factor_changed", {"user_id": str(user.id), "enabled": body.enabled}, actor_id=user.id)
     await session.commit()
-    return await _out(user)
+    return await _out(session, user)
+
+
+@router.post("/consents", response_model=UserOut)
+async def give_consents(body: ConsentsIn, request: Request, principal: Principal = Depends(auth.principal),
+                        session: AsyncSession = Depends(db.session)) -> UserOut:
+    """Окно согласия при входе: соглашение и обработка ПД (текущие редакции). Для ученика младше 14 лет — родитель."""
+    user = await _load(session, principal)
+    if await legal_consents.required(session, user.id):
+        await legal_consents.record(session, user.id, request, source="first_login", by_representative=body.by_representative)
+        await session.commit()
+    return await _out(session, user)

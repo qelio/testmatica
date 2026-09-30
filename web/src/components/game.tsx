@@ -103,7 +103,7 @@ function LevelCard({ game, name }: { game: Game; name: string }) {
   const pct = Math.min(100, ((xp - level.xp_from) / (level.xp_to - level.xp_from)) * 100);
   const left = level.xp_to - xp;
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand via-grape to-pink p-6 text-white shadow-lg shadow-grape/20">
+    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand via-school to-sky p-6 text-white shadow-lg shadow-brand/20">
       <div aria-hidden className="pointer-events-none absolute -top-12 -right-12 h-44 w-44 rounded-full bg-sun/40 blur-2xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-16 left-10 h-40 w-40 rounded-full bg-sky/40 blur-2xl" />
       <div className="relative flex items-center gap-5">

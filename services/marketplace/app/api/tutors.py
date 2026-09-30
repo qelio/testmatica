@@ -17,6 +17,8 @@ from ..models import APPROVED, PENDING, EducationDoc, Person, TutorProfile
 from ..schemas import EducationIn, EducationOut, MyProfile, ProfileIn, SearchPage, TutorPublic
 
 router = APIRouter(tags=["tutors"])
+# Редакция согласия на распространение ПД (web/src/lib/legal.ts, «public-profile»).
+PUBLIC_CONSENT_VERSION = "2026-09-30"
 teacher = auth.require(ROLE_TEACHER)
 
 
@@ -64,6 +66,7 @@ async def _my(session: AsyncSession, p: TutorProfile, principal: Principal) -> M
         blocked_reason=p.blocked_reason,
         profile=await _public(session, p, principal), photo_file_id=p.photo_file_id, missing=profiles.missing_fields(p),
         education=[_own_doc(d) for d in docs],
+        public_consent=p.public_consent_version == PUBLIC_CONSENT_VERSION,
     )
 
 
@@ -92,6 +95,14 @@ async def update_profile(body: ProfileIn, principal: Principal = Depends(teacher
     p.price, p.experience_years = body.price, body.experience_years
     if body.published and p.blocked_reason:
         raise ApiError(403, "profile_blocked", f"Профиль скрыт администратором: {p.blocked_reason}")
+    consented = p.public_consent_version == PUBLIC_CONSENT_VERSION
+    if body.published and not consented:
+        if not body.public_consent:
+            raise ApiError(422, "public_consent_required",
+                           "Чтобы анкету видели все, нужно согласие на распространение персональных данных")
+        p.public_consent_version, p.public_consent_at = PUBLIC_CONSENT_VERSION, datetime.now(UTC)
+        await outbox.event(session, "marketplace.profile.public_consent",
+                           {"user_id": str(p.user_id), "version": PUBLIC_CONSENT_VERSION}, actor_id=principal.user_id)
     if body.published and (missing := profiles.missing_fields(p)):
         raise ApiError(422, "profile_incomplete", "Чтобы появиться в поиске, заполните: " + ", ".join(missing).lower(),
                        {"missing": missing})

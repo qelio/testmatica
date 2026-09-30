@@ -10,7 +10,7 @@ from testmatica_common.messaging import messaging_tables
 KIND_DIRECT = "direct"
 KIND_GROUP = "group"
 KIND_DEAL = "deal"  # чат переговоров по заявке (id = id отклика в marketplace)
-KIND_SUPPORT = "support"  # обращение к модераторам: спор по отзыву (id = id спора в marketplace)
+KIND_SUPPORT = "support"  # поддержка: спор по отзыву (id = id спора в marketplace) или обращение (support_tickets)
 
 
 class Base(DeclarativeBase):
@@ -114,3 +114,36 @@ class Message(Base):
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- обращения в поддержку ----------
+
+TICKET_OPEN = "open"  # ждёт ответа поддержки
+TICKET_ANSWERED = "answered"  # поддержка ответила, ждём пользователя
+TICKET_CLOSED = "closed"
+TICKET_CATEGORIES = ("account", "lessons", "tests", "tutors", "payments", "bug", "idea", "other")
+
+
+class SupportTicket(Base):
+    """Обращение в поддержку. Переписка — обычный чат (kind = support, тот же id): вложения, реальное время, уведомления."""
+
+    __tablename__ = "support_tickets"
+    __table_args__ = (
+        CheckConstraint("status IN ('open', 'answered', 'closed')", name="status_valid"),
+        CheckConstraint(
+            "category IN ('account', 'lessons', 'tests', 'tutors', 'payments', 'bug', 'idea', 'other')", name="category_valid"
+        ),
+        Index("ix_support_tickets_requester", "requester_id", "updated_at"),
+        Index("ix_support_tickets_queue", "status", "priority", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), primary_key=True)
+    requester_id: Mapped[UUID]
+    category: Mapped[str] = mapped_column(String(12))
+    subject: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(10), default=TICKET_OPEN)
+    priority: Mapped[bool] = mapped_column(Boolean, default=False)  # подписчик «Базового» — в очереди первым
+    assignee_id: Mapped[UUID | None]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

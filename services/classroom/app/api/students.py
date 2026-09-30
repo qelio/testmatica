@@ -131,7 +131,7 @@ async def credential_cards(body: CardsIn, principal: Principal = Depends(teacher
     pdf = cards.render(
         [cards.Card(full_name=s.full_name, login=s.login, password=s.password) for s in body.students],
         login_url=f"{settings.web_base_url}/login",
-        title=body.title or "Тестматика — логины и пароли учеников",
+        title=body.title or "ТестМатика — логины и пароли учеников",
     )
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": "attachment; filename*=UTF-8''%D0%9A%D0%B0%D1%80%D1%82%D0%BE%D1%87%D0%BA%D0%B8.pdf"})

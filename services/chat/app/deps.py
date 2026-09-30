@@ -3,6 +3,7 @@ from testmatica_common.auth import Auth, TokenVerifier
 from testmatica_common.db import Database
 from testmatica_common.internal import InternalClient
 from testmatica_common.messaging import Outbox
+from testmatica_common.plans import Plans
 
 from .config import settings
 
@@ -12,3 +13,5 @@ verifier = TokenVerifier(settings.jwt_issuer, settings.jwt_audience, jwks_url=se
 auth = Auth(verifier)
 outbox = Outbox(producer=settings.service_name)
 media = InternalClient(settings.media_url, settings.internal_token)
+billing = InternalClient(settings.billing_url, settings.internal_token)
+plans = Plans(billing)

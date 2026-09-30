@@ -9,7 +9,7 @@ import { content, type GroupOffer, marketplace, type OfferInput, planning, type 
 import { toDateInput } from "@/lib/dates";
 import { fmtOfferSchedule, fmtRub, LEVEL_LABELS, OFFER_STATUS, pluralWord } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
-import { useMarketBase } from "@/lib/market-base";
+import { useMarketLinks } from "@/lib/market-base";
 
 const TEXTAREA =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
@@ -26,9 +26,9 @@ export function seatsText(o: GroupOffer): string {
 /** Карточка набора в каталоге и в профиле репетитора. */
 export function OfferCard({ offer, showTutor = true }: { offer: GroupOffer; showTutor?: boolean }) {
   const st = OFFER_STATUS[offer.status];
-  const base = useMarketBase();
+  const links = useMarketLinks();
   return (
-    <Link href={`${base}/groups/${offer.id}`} className="block space-y-2 rounded-2xl border border-line bg-surface p-5 hover:border-brand/50">
+    <Link href={links.offer(offer.id)} className="block space-y-2 rounded-2xl border border-line bg-surface p-5 hover:border-brand/50">
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 text-lg font-semibold">{offer.title}</span>
         {offer.enrolled && <Badge tone="ok">вы записаны</Badge>}
