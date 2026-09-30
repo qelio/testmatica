@@ -682,7 +682,16 @@ export const support = {
 
 // ---- media ----
 
-export type FilePurpose = "chat_attachment" | "answer" | "material" | "avatar" | "document" | "site";
+export type FilePurpose = "chat_attachment" | "answer" | "material" | "avatar" | "document" | "site" | "content";
+
+/** Постоянная ссылка на картинку или файл внутри текста (назначение «content»): media каждый раз выдаёт свежую. */
+export function contentFileUrl(fileId: string): string {
+  return `/api/media/files/${fileId}/content`;
+}
+
+export function isContentFileUrl(href: string | undefined): boolean {
+  return !!href && /^\/api\/media\/files\/[0-9a-f-]+\/content$/.test(href);
+}
 
 export type UploadedFile = { id: string; filename: string; mime: string; size: number; purpose: FilePurpose; url: string | null };
 

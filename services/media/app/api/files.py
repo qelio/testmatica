@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
@@ -75,6 +76,19 @@ async def _own(session: AsyncSession, file_id: UUID, principal: Principal) -> St
     if stored is None or stored.owner_id != principal.user_id or stored.status != "ready":
         raise ApiError(404, "file_not_found", "Файл не найден")
     return stored
+
+
+@router.get("/{file_id}/content", response_class=RedirectResponse, status_code=302)
+async def content(file_id: UUID, session: AsyncSession = Depends(db.session)) -> RedirectResponse:
+    """Постоянная ссылка на картинку или файл внутри текста: каждый раз — свежая временная ссылка в хранилище.
+    Без входа — тексты бывают публичными (библиотека, новости). Только файлы с назначением «content»;
+    отдаются с домена хранилища, так что HTML внутри файла не выполнится на нашем сайте."""
+    stored = await session.get(StoredFile, file_id)
+    if stored is None or stored.purpose != "content" or stored.status != "ready":
+        raise ApiError(404, "file_not_found", "Файл не найден")
+    url = await storage.presigned_url(stored.key, stored.filename, stored.mime)
+    # Браузер может переиспользовать переадресацию несколько минут — временная ссылка живёт дольше.
+    return RedirectResponse(url, status_code=302, headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.get("/{file_id}", response_model=FileOut)

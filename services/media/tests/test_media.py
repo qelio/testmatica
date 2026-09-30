@@ -88,3 +88,25 @@ async def test_urls_and_delete_unclaimed(client):
     assert (await client.delete(f"/files/{b['id']}", headers=bearer(user))).status_code == 204
     urls = (await client.post("/internal/files/urls", json={"file_ids": [a["id"], b["id"]]}, headers=INTERNAL)).json()
     assert set(urls) == {a["id"]}
+
+
+async def test_content_files_by_permanent_link(client):
+    """Картинки и файлы в тексте: постоянная ссылка без входа ведёт на свежую ссылку в хранилище."""
+    user = uuid4()
+    img = (await upload(client, user, "график.png", b"\x89PNG fake", purpose="content")).json()
+    doc = (await upload(client, user, "условие.docx", b"PK..docx", purpose="content")).json()
+    heic = await upload(client, user, "фото.heic", b"heic", purpose="content")
+    assert heic.status_code == 422  # браузеры не показывают
+
+    resp = await client.get(f"/files/{img['id']}/content", follow_redirects=False)
+    assert resp.status_code == 302 and resp.headers["location"].startswith(settings.s3_public_endpoint)
+    assert "inline" in unquote(resp.headers["location"])
+    async with httpx.AsyncClient() as s3:
+        assert (await s3.get(internal_s3(resp.headers["location"]))).content == b"\x89PNG fake"
+    loc = (await client.get(f"/files/{doc['id']}/content", follow_redirects=False)).headers["location"]
+    assert "attachment" in unquote(loc)  # документ — только скачивание
+
+    # Файлы с другими назначениями (ответы, документы об образовании) так не отдаются.
+    private = (await upload(client, user, "диплом.pdf", b"%PDF", purpose="document")).json()
+    assert (await client.get(f"/files/{private['id']}/content", follow_redirects=False)).status_code == 404
+    assert (await client.get(f"/files/{uuid4()}/content", follow_redirects=False)).status_code == 404
