@@ -1,0 +1,4 @@
+# Скопируйте в terraform.tfvars (в git не попадает) и заполните.
+cloud_id       = "b1g..."
+folder_id      = "b1g..."
+ssh_public_key = "ssh-ed25519 AAAA... deploy@testmatica"

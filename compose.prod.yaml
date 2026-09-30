@@ -1,0 +1,456 @@
+# Боевое окружение ТестМатики: одна ВМ в Яндекс Облаке, те же образы, что локально (решение №28).
+# База — Managed PostgreSQL, файлы и записи — Object Storage, почта — Yandex Cloud Postbox.
+#
+#   Запуск на сервере (переменные — в .env рядом, образец: infra/prod/env.example):
+#     docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up -d
+#
+# Снаружи открыты только 80/443 (Traefik, HTTPS от Let's Encrypt) и порты LiveKit
+# (7881/tcp, 7882/udp, 3478/udp и 30000–30100/udp — медиа видеосвязи и TURN). RabbitMQ, Redis и сервисы — только внутри сети Docker.
+
+name: testmatica
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
+x-python-env: &python-env
+  ENVIRONMENT: prod
+  LOG_LEVEL: INFO
+  RABBITMQ_URL: amqp://${RABBITMQ_USER:-testmatica}:${RABBITMQ_PASSWORD:?}@rabbitmq:5672/
+  JWKS_URL: http://identity:8000/.well-known/jwks.json
+  MEDIA_URL: http://media:8000
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:?}
+
+x-python-depends: &python-depends
+  rabbitmq:
+    condition: service_healthy
+
+x-python-service: &python-service
+  restart: unless-stopped
+  logging: *logging
+  depends_on:
+    <<: *python-depends
+
+services:
+  # ---------- Шлюз: HTTPS, маршруты /api/<сервис>, лимит запросов ----------
+
+  traefik:
+    image: traefik:v3
+    restart: unless-stopped
+    logging: *logging
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.certresolver=le
+      - --entrypoints.websecure.http.tls.domains[0].main=${DOMAIN:?}
+      - --entrypoints.websecure.http.tls.domains[0].sans=www.${DOMAIN:?},${LIVEKIT_DOMAIN:?}
+      # Внутренний вход без TLS — сервер Next (главная, новости) ходит в API внутри сети Docker.
+      - --entrypoints.internal.address=:8080
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL:?}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - --accesslog=false
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.api-ratelimit.ratelimit.average=30
+      - traefik.http.middlewares.api-ratelimit.ratelimit.burst=60
+      # www.<домен> → <домен>
+      - traefik.http.routers.www.rule=Host(`www.${DOMAIN:?}`)
+      - traefik.http.routers.www.middlewares=to-apex
+      - traefik.http.routers.www.service=noop@internal
+      - traefik.http.middlewares.to-apex.redirectregex.regex=^https?://www\.(.*)
+      - traefik.http.middlewares.to-apex.redirectregex.replacement=https://$${1}
+      - traefik.http.middlewares.to-apex.redirectregex.permanent=true
+
+  # ---------- Очереди и кэш — только внутри сети ----------
+
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-testmatica}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - redis-data:/data
+
+  # ---------- Сервисы ----------
+
+  identity:
+    <<: *python-service
+    image: ${REGISTRY:?}/identity:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/identity
+      DATABASE_URL: postgresql+asyncpg://identity:${PG_PASSWORD_IDENTITY:?}@${PG_HOST:?}:6432/identity?ssl=require
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${IDENTITY_SECRET_KEY:?}
+      REFRESH_COOKIE_SECURE: "true"
+      WEB_BASE_URL: https://${DOMAIN:?}
+    volumes:
+      - identity-keys:/keys
+    depends_on:
+      <<: *python-depends
+      redis:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.identity.rule=PathPrefix(`/api/identity`) && !PathPrefix(`/api/identity/internal`)
+      - traefik.http.routers.identity.middlewares=identity-strip,api-ratelimit@docker
+      - traefik.http.middlewares.identity-strip.stripprefix.prefixes=/api/identity
+      - traefik.http.services.identity.loadbalancer.server.port=8000
+
+  notification:
+    <<: *python-service
+    image: ${REGISTRY:?}/notification:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/notification
+      DATABASE_URL: postgresql+asyncpg://notification:${PG_PASSWORD_NOTIFICATION:?}@${PG_HOST:?}:6432/notification?ssl=require
+      SMTP_HOST: ${SMTP_HOST:-postbox.cloud.yandex.net}
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USERNAME: ${SMTP_USERNAME:?}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?}
+      SMTP_USE_TLS: "true"
+      MAIL_FROM: "ТестМатика <no-reply@${DOMAIN:?}>"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.notification.rule=PathPrefix(`/api/notification`) && !PathPrefix(`/api/notification/internal`)
+      - traefik.http.routers.notification.middlewares=notification-strip,api-ratelimit@docker
+      - traefik.http.middlewares.notification-strip.stripprefix.prefixes=/api/notification
+      - traefik.http.services.notification.loadbalancer.server.port=8000
+
+  audit:
+    <<: *python-service
+    image: ${REGISTRY:?}/audit:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/audit
+      DATABASE_URL: postgresql+asyncpg://audit:${PG_PASSWORD_AUDIT:?}@${PG_HOST:?}:6432/audit?ssl=require
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.audit.rule=PathPrefix(`/api/audit`) && !PathPrefix(`/api/audit/internal`)
+      - traefik.http.routers.audit.middlewares=audit-strip,api-ratelimit@docker
+      - traefik.http.middlewares.audit-strip.stripprefix.prefixes=/api/audit
+      - traefik.http.services.audit.loadbalancer.server.port=8000
+
+  classroom:
+    <<: *python-service
+    image: ${REGISTRY:?}/classroom:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/classroom
+      DATABASE_URL: postgresql+asyncpg://classroom:${PG_PASSWORD_CLASSROOM:?}@${PG_HOST:?}:6432/classroom?ssl=require
+      WEB_BASE_URL: https://${DOMAIN:?}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.classroom.rule=PathPrefix(`/api/classroom`) && !PathPrefix(`/api/classroom/internal`)
+      - traefik.http.routers.classroom.middlewares=classroom-strip,api-ratelimit@docker
+      - traefik.http.middlewares.classroom-strip.stripprefix.prefixes=/api/classroom
+      - traefik.http.services.classroom.loadbalancer.server.port=8000
+
+  schedule:
+    <<: *python-service
+    image: ${REGISTRY:?}/schedule:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/schedule
+      DATABASE_URL: postgresql+asyncpg://schedule:${PG_PASSWORD_SCHEDULE:?}@${PG_HOST:?}:6432/schedule?ssl=require
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.schedule.rule=PathPrefix(`/api/schedule`) && !PathPrefix(`/api/schedule/internal`)
+      - traefik.http.routers.schedule.middlewares=schedule-strip,api-ratelimit@docker
+      - traefik.http.middlewares.schedule-strip.stripprefix.prefixes=/api/schedule
+      - traefik.http.services.schedule.loadbalancer.server.port=8000
+
+  academic:
+    <<: *python-service
+    image: ${REGISTRY:?}/academic:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/academic
+      DATABASE_URL: postgresql+asyncpg://academic:${PG_PASSWORD_ACADEMIC:?}@${PG_HOST:?}:6432/academic?ssl=require
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.academic.rule=PathPrefix(`/api/academic`) && !PathPrefix(`/api/academic/internal`)
+      - traefik.http.routers.academic.middlewares=academic-strip,api-ratelimit@docker
+      - traefik.http.middlewares.academic-strip.stripprefix.prefixes=/api/academic
+      - traefik.http.services.academic.loadbalancer.server.port=8000
+
+  chat:
+    <<: *python-service
+    image: ${REGISTRY:?}/chat:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/chat
+      DATABASE_URL: postgresql+asyncpg://chat:${PG_PASSWORD_CHAT:?}@${PG_HOST:?}:6432/chat?ssl=require
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      <<: *python-depends
+      redis:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.chat.rule=PathPrefix(`/api/chat`) && !PathPrefix(`/api/chat/internal`)
+      - traefik.http.routers.chat.middlewares=chat-strip,api-ratelimit@docker
+      - traefik.http.middlewares.chat-strip.stripprefix.prefixes=/api/chat
+      - traefik.http.services.chat.loadbalancer.server.port=8000
+
+  media:
+    <<: *python-service
+    image: ${REGISTRY:?}/media:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/media
+      DATABASE_URL: postgresql+asyncpg://media:${PG_PASSWORD_MEDIA:?}@${PG_HOST:?}:6432/media?ssl=require
+      S3_ENDPOINT: https://storage.yandexcloud.net
+      S3_PUBLIC_ENDPOINT: https://storage.yandexcloud.net
+      S3_BUCKET: ${S3_BUCKET_FILES:?}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.media.rule=PathPrefix(`/api/media`) && !PathPrefix(`/api/media/internal`)
+      - traefik.http.routers.media.middlewares=media-strip,api-ratelimit@docker
+      - traefik.http.middlewares.media-strip.stripprefix.prefixes=/api/media
+      - traefik.http.services.media.loadbalancer.server.port=8000
+
+  content:
+    <<: *python-service
+    image: ${REGISTRY:?}/content:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/content
+      DATABASE_URL: postgresql+asyncpg://content:${PG_PASSWORD_CONTENT:?}@${PG_HOST:?}:6432/content?ssl=require
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.content.rule=PathPrefix(`/api/content`) && !PathPrefix(`/api/content/internal`)
+      - traefik.http.routers.content.middlewares=content-strip,api-ratelimit@docker
+      - traefik.http.middlewares.content-strip.stripprefix.prefixes=/api/content
+      - traefik.http.services.content.loadbalancer.server.port=8000
+
+  moderation:
+    <<: *python-service
+    image: ${REGISTRY:?}/moderation:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/moderation
+      DATABASE_URL: postgresql+asyncpg://moderation:${PG_PASSWORD_MODERATION:?}@${PG_HOST:?}:6432/moderation?ssl=require
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.moderation.rule=PathPrefix(`/api/moderation`) && !PathPrefix(`/api/moderation/internal`)
+      - traefik.http.routers.moderation.middlewares=moderation-strip,api-ratelimit@docker
+      - traefik.http.middlewares.moderation-strip.stripprefix.prefixes=/api/moderation
+      - traefik.http.services.moderation.loadbalancer.server.port=8000
+
+  assessment:
+    <<: *python-service
+    image: ${REGISTRY:?}/assessment:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/assessment
+      DATABASE_URL: postgresql+asyncpg://assessment:${PG_PASSWORD_ASSESSMENT:?}@${PG_HOST:?}:6432/assessment?ssl=require
+    networks: [default, sandbox]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.assessment.rule=PathPrefix(`/api/assessment`) && !PathPrefix(`/api/assessment/internal`)
+      - traefik.http.routers.assessment.middlewares=assessment-strip,api-ratelimit@docker
+      - traefik.http.middlewares.assessment-strip.stripprefix.prefixes=/api/assessment
+      - traefik.http.services.assessment.loadbalancer.server.port=8000
+
+  marketplace:
+    <<: *python-service
+    image: ${REGISTRY:?}/marketplace:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/marketplace
+      DATABASE_URL: postgresql+asyncpg://marketplace:${PG_PASSWORD_MARKETPLACE:?}@${PG_HOST:?}:6432/marketplace?ssl=require
+      WEB_BASE_URL: https://${DOMAIN:?}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.marketplace.rule=PathPrefix(`/api/marketplace`) && !PathPrefix(`/api/marketplace/internal`)
+      - traefik.http.routers.marketplace.middlewares=marketplace-strip,api-ratelimit@docker
+      - traefik.http.middlewares.marketplace-strip.stripprefix.prefixes=/api/marketplace
+      - traefik.http.services.marketplace.loadbalancer.server.port=8000
+
+  billing:
+    <<: *python-service
+    image: ${REGISTRY:?}/billing:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/billing
+      DATABASE_URL: postgresql+asyncpg://billing:${PG_PASSWORD_BILLING:?}@${PG_HOST:?}:6432/billing?ssl=require
+      WEB_BASE_URL: https://${DOMAIN:?}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-disabled}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.billing.rule=PathPrefix(`/api/billing`) && !PathPrefix(`/api/billing/internal`)
+      - traefik.http.routers.billing.middlewares=billing-strip,api-ratelimit@docker
+      - traefik.http.middlewares.billing-strip.stripprefix.prefixes=/api/billing
+      - traefik.http.services.billing.loadbalancer.server.port=8000
+
+  video:
+    <<: *python-service
+    image: ${REGISTRY:?}/video:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/video
+      DATABASE_URL: postgresql+asyncpg://video:${PG_PASSWORD_VIDEO:?}@${PG_HOST:?}:6432/video?ssl=require
+      LIVEKIT_URL: http://livekit:7880
+      LIVEKIT_PUBLIC_URL: wss://${LIVEKIT_DOMAIN:?}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?}
+      S3_ENDPOINT: https://storage.yandexcloud.net
+      S3_PUBLIC_ENDPOINT: https://storage.yandexcloud.net
+      S3_BUCKET: ${S3_BUCKET_RECORDINGS:?}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+    depends_on:
+      <<: *python-depends
+      livekit:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.video.rule=PathPrefix(`/api/video`) && !PathPrefix(`/api/video/internal`)
+      - traefik.http.routers.video.middlewares=video-strip,api-ratelimit@docker
+      - traefik.http.middlewares.video-strip.stripprefix.prefixes=/api/video
+      - traefik.http.services.video.loadbalancer.server.port=8000
+
+  # Песочница для кода учеников: внутренняя сеть без выхода наружу, только чтение, без привилегий.
+  code-runner:
+    image: ${REGISTRY:?}/code-runner:${TAG:-latest}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?}
+    networks: [sandbox]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+
+  # ---------- Видеосвязь ----------
+
+  # LiveKit: сигнализация — wss://<LIVEKIT_DOMAIN> через Traefik; медиа — напрямую:
+  # 7882/udp (все участники на одном порту), 7881/tcp (если UDP закрыт), 3478/udp — TURN для строгих NAT
+  # (ретрансляция — 30000–30100/udp).
+  livekit:
+    image: livekit/livekit-server:v1.9
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: true
+        turn:
+          enabled: true
+          domain: ${LIVEKIT_DOMAIN:?}
+          udp_port: 3478
+          relay_range_start: 30000
+          relay_range_end: 30100
+        redis:
+          address: redis:6379
+        keys:
+          ${LIVEKIT_API_KEY:?}: ${LIVEKIT_API_SECRET:?}
+        room:
+          auto_create: false
+          empty_timeout: 300
+          departure_timeout: 20
+        webhook:
+          api_key: ${LIVEKIT_API_KEY:?}
+          urls:
+            - http://video:8000/internal/webhooks/livekit
+        logging:
+          level: info
+    ports:
+      - "7881:7881"
+      - "7882:7882/udp"
+      - "3478:3478/udp"
+      - "30000-30100:30000-30100/udp"  # ретрансляция TURN
+    depends_on:
+      redis:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.livekit.rule=Host(`${LIVEKIT_DOMAIN:?}`)
+      - traefik.http.services.livekit.loadbalancer.server.port=7880
+
+  # Запись занятий: headless Chrome собирает «сетку» комнаты в MP4 и кладёт в Object Storage.
+  egress:
+    image: livekit/egress:v1.10
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      EGRESS_CONFIG_BODY: |
+        api_key: ${LIVEKIT_API_KEY:?}
+        api_secret: ${LIVEKIT_API_SECRET:?}
+        ws_url: ws://livekit:7880
+        redis:
+          address: redis:6379
+        health_port: 8080
+        log_level: info
+        storage:
+          s3:
+            access_key: ${S3_ACCESS_KEY:?}
+            secret: ${S3_SECRET_KEY:?}
+            region: ru-central1
+            endpoint: https://storage.yandexcloud.net
+            bucket: ${S3_BUCKET_RECORDINGS:?}
+            force_path_style: true
+    cap_add: [SYS_ADMIN]  # песочница Chrome
+    depends_on:
+      livekit:
+        condition: service_started
+
+  # ---------- Веб ----------
+
+  web:
+    image: ${REGISTRY:?}/web:${TAG:-latest}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      INTERNAL_API_ORIGIN: http://traefik:8080
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=PathPrefix(`/`)
+      - traefik.http.routers.web.priority=1
+      - traefik.http.services.web.loadbalancer.server.port=3000
+
+networks:
+  default: {}
+  sandbox:
+    internal: true
+
+volumes:
+  letsencrypt:
+  rabbitmq-data:
+  redis-data:
+  identity-keys:

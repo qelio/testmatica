@@ -1,0 +1,9 @@
+# Контекст сборки Python-сервисов — корень репозитория; в образ копируются только libs/ и services/<сервис>.
+.git
+web
+docs
+infra/terraform
+.env
+.env.*
+**/__pycache__
+**/.pytest_cache

@@ -4,6 +4,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from testmatica_common.errors import ApiError
+
 from .config import settings
 from .models import Payment
 
@@ -50,4 +52,7 @@ class FakeProvider:
 def get_provider() -> PaymentProvider:
     if settings.payment_provider == "fake":
         return FakeProvider()
+    if settings.payment_provider == "disabled":
+        # Прод до подключения ЮKassa: поддельная оплата там недопустима, тариф выдаёт администратор.
+        raise ApiError(503, "payments_unavailable", "Оплата тарифа скоро появится. Пока подключить «Базовый» можно через поддержку.")
     raise RuntimeError(f"Неизвестный платёжный провайдер: {settings.payment_provider}")

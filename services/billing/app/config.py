@@ -7,7 +7,7 @@ class Settings(CommonSettings):
     web_base_url: str = "http://localhost:8080"
 
     # Платёжный провайдер: пока только поддельный (fake) — оплата подтверждается на тестовой странице.
-    payment_provider: str = "fake"
+    payment_provider: str = "fake"  # fake — тестовая страница оплаты (только локально); disabled — прод до ЮKassa
     # Автопродление пробуем за сутки до конца периода; напоминание без автопродления — за 3 дня.
     renew_before_hours: int = 24
     remind_before_days: int = 3
