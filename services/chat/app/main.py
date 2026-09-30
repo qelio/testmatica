@@ -7,7 +7,7 @@ from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import deals, realtime, relations, support
-from .api import conversations
+from .api import conversations, support as support_api
 from .config import settings
 from .deps import db, redis
 
@@ -44,8 +44,9 @@ async def lifespan(_: FastAPI):
     await redis.aclose()
 
 
-app = FastAPI(title="Тестматика · chat", version="0.1.0", lifespan=lifespan, root_path=settings.root_path)
+app = FastAPI(title="ТестМатика · chat", version="0.1.0", lifespan=lifespan, root_path=settings.root_path)
 install_error_handlers(app)
 app.include_router(health_router(db))
 app.include_router(conversations.router)
+app.include_router(support_api.router)
 app.include_router(realtime.router)

@@ -9,7 +9,7 @@ class Settings(CommonSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_use_tls: bool = False
-    mail_from: str = "Тестматика <no-reply@testmatica.local>"
+    mail_from: str = "ТестМатика <no-reply@testmatica.local>"
 
 
 settings = Settings()

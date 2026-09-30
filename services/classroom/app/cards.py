@@ -235,7 +235,7 @@ def render(cards: list[Card], login_url: str, title: str) -> bytes:
     buf = io.BytesIO()
     c = Canvas(buf, pagesize=A4)
     c.setTitle(title)
-    c.setAuthor("Тестматика")
+    c.setAuthor("ТестМатика")
     for start in range(0, len(cards), per_page):
         chunk = cards[start : start + per_page]
         c.setFillColor(SOFT)

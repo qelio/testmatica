@@ -28,7 +28,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title="Тестматика · academic", version="0.1.0", lifespan=lifespan, root_path=settings.root_path
+    title="ТестМатика · academic", version="0.1.0", lifespan=lifespan, root_path=settings.root_path
 )
 install_error_handlers(app)
 app.include_router(health_router(db))

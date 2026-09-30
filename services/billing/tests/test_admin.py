@@ -22,7 +22,7 @@ async def test_settings_change_price_and_limits(client):
     # Новая цена — сразу в тарифе и платежах; лимиты — сервисам через /internal/settings.
     teacher = uuid4()
     assert (await client.get("/subscription", headers=bearer(teacher))).json()["price_rub"] == 590
-    pay = (await client.post("/subscription/checkout", json={}, headers=bearer(teacher))).json()
+    pay = (await client.post("/subscription/checkout", json={"accept_offer": True}, headers=bearer(teacher))).json()
     assert pay["amount_rub"] == 590
     assert (await client.get("/internal/settings", headers=INTERNAL)).json()["free_max_groups"] == 5
 

@@ -51,7 +51,9 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
   const [info, setInfo] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
-  const set = <K extends keyof TutorProfileInput>(k: K, v: TutorProfileInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+  // Согласие на распространение ПД (ст. 10.1 152-ФЗ) — один раз, до включения показа в поиске.
+  const [publicConsent, setPublicConsent] = useState(false);
+  const set =<K extends keyof TutorProfileInput>(k: K, v: TutorProfileInput[K]) => setForm((f) => ({ ...f, [k]: v }));
   const photoUrl = photo.items[0]?.file?.url ?? saved.profile.photo_url;
 
   async function save(published = form.published) {
@@ -59,7 +61,12 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
     setError(undefined);
     setInfo(undefined);
     try {
-      const next = await marketplace.saveProfile({ ...form, published, photo_file_id: photo.ids[0] ?? form.photo_file_id });
+      const next = await marketplace.saveProfile({
+        ...form,
+        published,
+        photo_file_id: photo.ids[0] ?? form.photo_file_id,
+        public_consent: saved.public_consent || publicConsent,
+      });
       setSaved(next);
       setForm(toInput(next));
       // Фото одно на аккаунт — обновляем и аватар в шапке.
@@ -110,7 +117,7 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
           <input
             type="checkbox"
             checked={form.published}
-            disabled={busy || !!saved.blocked_reason}
+            disabled={busy || !!saved.blocked_reason || (!form.published && !saved.public_consent && !publicConsent)}
             onChange={(e) => {
               set("published", e.target.checked);
               void save(e.target.checked);
@@ -124,6 +131,24 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
             </span>
           </span>
         </label>
+        {!saved.public_consent && (
+          <label className="mt-3 flex items-start gap-3 border-t border-line pt-3 text-sm">
+            <input
+              type="checkbox"
+              checked={publicConsent}
+              onChange={(e) => setPublicConsent(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-brand"
+            />
+            <span className="text-fg-soft">
+              Даю{" "}
+              <Link href="/legal/public-profile" target="_blank" className="text-brand underline">
+                согласие на распространение персональных данных
+              </Link>{" "}
+              из анкеты: имя, фото, предметы, опыт, цена, образование, отзывы. Без этого анкету нельзя показать в поиске.
+              {saved.profile.published && " Анкета уже показывается — отметьте галочку и сохраните профиль."}
+            </span>
+          </label>
+        )}
         {saved.missing.length > 0 && (
           <p className="mt-3 text-sm text-tutor">Чтобы появиться в поиске, заполните: {saved.missing.join(", ").toLowerCase()}.</p>
         )}

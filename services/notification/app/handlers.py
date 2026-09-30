@@ -33,7 +33,7 @@ async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
             Notification(
                 user_id=UUID(envelope.data["user_id"]),
                 kind="welcome",
-                title="Добро пожаловать в Тестматику!",
+                title="Добро пожаловать в ТестМатику!",
                 body="Ваш email подтверждён. Здесь будут появляться уведомления о занятиях, заданиях и сообщениях.",
             )
         )

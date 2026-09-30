@@ -12,12 +12,12 @@ import { marketplace } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { fmtOfferSchedule, LEVEL_LABELS, OFFER_STATUS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
-import { useMarketBase } from "@/lib/market-base";
+import { useMarketLinks } from "@/lib/market-base";
 
 /** Страница группы — по ссылке открывается и закрытая группа. */
 /** Страница набора в группу — на сайте и в кабинете. */
 export function GroupOfferPage() {
-  const base = useMarketBase();
+  const links = useMarketLinks();
   const { id } = useParams<{ id: string }>();
   const { status, user } = useAuth();
   const authed = status === "authenticated";
@@ -57,7 +57,7 @@ export function GroupOfferPage() {
         <p className="text-fg-soft">{[o.subject.name, o.levels.map((l) => LEVEL_LABELS[l]).join(", ")].filter(Boolean).join(" · ")}</p>
       </div>
 
-      <Link href={`${base}/tutors/${o.tutor.id}`} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 hover:border-brand/50">
+      <Link href={links.tutor(o.tutor.id)} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 hover:border-brand/50">
         <Avatar url={o.tutor.photo_url} name={o.tutor.full_name} size={48} />
         <span className="min-w-0 flex-1">
           <span className="block font-medium">{o.tutor.full_name}</span>

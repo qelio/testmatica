@@ -54,6 +54,10 @@ async def my_subscription(principal: Principal = Depends(teacher), session: Asyn
     return await _state(session, principal.user_id)
 
 
+# Редакция оферты (web/src/lib/legal.ts, «offer»).
+OFFER_VERSION = "2026-09-30"
+
+
 @router.post("/subscription/checkout", response_model=PaymentOut, status_code=201)
 async def checkout(body: CheckoutIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> PaymentOut:
     """Оплатить месяц «Базового» (или продлить досрочно): платёж у провайдера и ссылка на страницу оплаты."""
@@ -63,6 +67,7 @@ async def checkout(body: CheckoutIn, principal: Principal = Depends(teacher), se
     if pending is not None:  # передумали насчёт автопродления — старый платёж отменяем
         pending.status, pending.error = "canceled", "Заменён новым платежом"
     payment = await subscriptions.new_payment(session, principal.user_id, recurring=False, save_method=body.auto_renew)
+    payment.offer_version = OFFER_VERSION
     session.add(payment)
     await session.flush()
     created = await get_provider().create(payment)

@@ -47,7 +47,7 @@ async def test_access_token_is_verifiable_by_other_services(client):
 
 
 async def test_register_validation(client):
-    base = {"email": "a@example.com", "password": PASSWORD, "full_name": "А", "role": "student", "consent_pdn": True}
+    base = {"email": "a@example.com", "password": PASSWORD, "full_name": "А", "role": "student", "consent_pdn": True, "accept_terms": True}
 
     no_consent = await client.post("/auth/register", json={**base, "consent_pdn": False})
     assert no_consent.status_code == 422

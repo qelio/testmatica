@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PaymentOut(BaseModel):
@@ -29,6 +29,14 @@ class SubscriptionOut(BaseModel):
 
 class CheckoutIn(BaseModel):
     auto_renew: bool = Field(True, description="Сохранить способ оплаты и продлевать автоматически")
+    accept_offer: bool = Field(description="Принимаю условия публичной оферты (акцепт — оплата с этой галочкой)")
+
+    @field_validator("accept_offer")
+    @classmethod
+    def _offer(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("Чтобы оплатить, примите условия оферты")
+        return value
 
 
 class AutoRenewIn(BaseModel):

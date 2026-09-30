@@ -27,6 +27,7 @@ class ProfileIn(BaseModel):
     formats: list[Format] = Field(default_factory=list)
     price: int | None = Field(None, ge=100, le=100_000, description="Ориентир за 60 минут, ₽")
     experience_years: int | None = Field(None, ge=0, le=70)
+    public_consent: bool = Field(False, description="Согласие на распространение ПД в анкете (нужно, чтобы включить показ)")
 
     _headline = field_validator("headline")(_clean)
 
@@ -77,6 +78,7 @@ class MyProfile(BaseModel):
     photo_file_id: UUID | None
     missing: list[str] = Field(description="Чего не хватает, чтобы профиль появился в поиске")
     education: list[EducationOut]
+    public_consent: bool = Field(False, description="Согласие на распространение ПД (текущая редакция) уже дано")
 
 
 class EducationIn(BaseModel):

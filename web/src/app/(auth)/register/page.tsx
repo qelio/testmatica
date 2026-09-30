@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Alert, Button, CodeStep, Field } from "@/components/ui";
 import { ApiError, identity } from "@/lib/api";
@@ -18,12 +18,17 @@ const ROLE_OPTIONS: { value: Role; title: string; text: string }[] = [
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { signIn } = useAuth();
-  const [form, setForm] = useState({ full_name: "", email: "", password: "", role: "student" as Role, consent: false });
+  const { status, signIn } = useAuth();
+  const [form, setForm] = useState({ full_name: "", email: "", password: "", role: "student" as Role, consent: false, terms: false });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [challenge, setChallenge] = useState<{ id: string; destination: string } | null>(null);
+
+  // Уже вошли (например, по кнопке на главной) — сразу в кабинет.
+  useEffect(() => {
+    if (status === "authenticated") router.replace(nextPath());
+  }, [status, router]);
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -42,6 +47,7 @@ export default function RegisterPage() {
         password: form.password,
         role: form.role,
         consent_pdn: form.consent,
+        accept_terms: form.terms,
       });
       setChallenge({ id: res.challenge_id, destination: res.destination });
     } catch (e) {
@@ -151,19 +157,44 @@ export default function RegisterPage() {
         onChange={(e) => update("password", e.target.value)}
       />
 
-      <label className="flex items-start gap-3 text-sm">
-        <input
-          type="checkbox"
-          checked={form.consent}
-          onChange={(e) => update("consent", e.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-brand"
-        />
-        <span className={fieldErrors.consent_pdn ? "text-danger" : "text-fg-soft"}>
-          Даю согласие на обработку персональных данных в соответствии с 152-ФЗ
-        </span>
-      </label>
+      {/* Две отдельные галочки: согласие на обработку ПД не может быть частью другого документа (152-ФЗ). */}
+      <div className="space-y-2.5">
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={form.terms}
+            onChange={(e) => update("terms", e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-brand"
+          />
+          <span className={fieldErrors.accept_terms ? "text-danger" : "text-fg-soft"}>
+            Принимаю{" "}
+            <Link href="/legal/terms" target="_blank" className="text-brand underline">
+              пользовательское соглашение
+            </Link>
+          </span>
+        </label>
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={form.consent}
+            onChange={(e) => update("consent", e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-brand"
+          />
+          <span className={fieldErrors.consent_pdn ? "text-danger" : "text-fg-soft"}>
+            Даю{" "}
+            <Link href="/legal/consent" target="_blank" className="text-brand underline">
+              согласие на обработку персональных данных
+            </Link>{" "}
+            на условиях{" "}
+            <Link href="/legal/privacy" target="_blank" className="text-brand underline">
+              политики
+            </Link>
+          </span>
+        </label>
+        <p className="pl-7 text-xs text-fg-soft">Если вам меньше 14 лет, регистрацию и согласие оформляет родитель или законный представитель.</p>
+      </div>
 
-      <Button type="submit" className="w-full" loading={loading} disabled={!form.consent}>
+      <Button type="submit" className="w-full" loading={loading} disabled={!form.consent || !form.terms}>
         Зарегистрироваться
       </Button>
     </form>

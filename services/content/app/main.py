@@ -28,7 +28,7 @@ async def lifespan(_: FastAPI):
     await runtime.stop()
 
 
-app = FastAPI(title="Тестматика · content", version="0.1.0", lifespan=lifespan, root_path=settings.root_path)
+app = FastAPI(title="ТестМатика · content", version="0.1.0", lifespan=lifespan, root_path=settings.root_path)
 install_error_handlers(app)
 app.include_router(health_router(db))
 app.include_router(subjects.router)

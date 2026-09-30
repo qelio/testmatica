@@ -154,7 +154,7 @@ def _doc(story, title: str, landscape_mode: bool = False) -> bytes:
     buf = io.BytesIO()
     size = landscape(A4) if landscape_mode else A4
     doc = SimpleDocTemplate(buf, pagesize=size, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm,
-                            title=title, author="Тестматика")
+                            title=title, author="ТестМатика")
     doc.build(story)
     return buf.getvalue()
 

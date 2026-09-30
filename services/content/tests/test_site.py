@@ -13,7 +13,7 @@ async def test_landing_defaults_and_admin_edit(client, fakes):
 
     image = fakes.file(boss, "hero.png", "image/png")
     data = (await client.get("/admin/site/landing", headers=bearer(boss, ADMIN))).json()
-    data["hero"] |= {"title": "Тестматика — школа онлайн", "image_file_id": image}
+    data["hero"] |= {"title": "ТестМатика — школа онлайн", "image_file_id": image}
     teacher = str(uuid4())
     data["teachers"]["items"] = [{"user_id": teacher, "note": "Лучший по ЕГЭ"}]
     data["sections"]["faq"] = False
@@ -22,7 +22,7 @@ async def test_landing_defaults_and_admin_edit(client, fakes):
     assert saved.status_code == 200, saved.text
     assert saved.json()["hero_image_url"] == f"http://s3/{image}"
     public = (await client.get("/site/landing")).json()
-    assert public["hero"]["title"] == "Тестматика — школа онлайн" and public["teachers"]["items"][0]["note"] == "Лучший по ЕГЭ"
+    assert public["hero"]["title"] == "ТестМатика — школа онлайн" and public["teachers"]["items"][0]["note"] == "Лучший по ЕГЭ"
     assert public["sections"]["faq"] is False and len(public["features"]) == 2
     assert (await outbox("content.site.updated"))[0]["data"]["section"] == "landing"
 

@@ -8,11 +8,11 @@ import { content, marketplace, type TutorCard, type TutorSearch } from "@/lib/ap
 import { useAuth } from "@/lib/auth";
 import { FORMAT_LABELS, LEVEL_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
-import { useMarketBase } from "@/lib/market-base";
+import { useMarketLinks } from "@/lib/market-base";
 
 /** Поиск репетиторов — на сайте (/tutors) и в кабинете ученика (/dashboard/tutors). */
 export function TutorSearch() {
-  const base = useMarketBase();
+  const base = useMarketLinks().tutorsBase;
   const { status } = useAuth();
   const subjects = useLoad(() => content.subjects(), []);
   const [filters, setFilters] = useState<TutorSearch>({ sort: "rating" });

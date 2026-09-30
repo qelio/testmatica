@@ -91,7 +91,7 @@ def test_invitation_template():
     subject, text, _ = render(
         "invitation", {"teacher_name": "Мария Ивановна", "group_text": " в классе «7А»", "url": "http://x/invite/t", "ttl_days": 14}
     )
-    assert subject == "Мария Ивановна приглашает вас в Тестматику"
+    assert subject == "Мария Ивановна приглашает вас в ТестМатику"
     assert "заниматься в классе «7А»" in text and "http://x/invite/t" in text
 
 

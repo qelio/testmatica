@@ -5,8 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { ConsentGate } from "@/components/consent-gate";
 import { Logo } from "@/components/ui";
-import { chat } from "@/lib/api";
+import { chat, support, type UserInfo } from "@/lib/api";
 import { ROLE_LABELS, useAuth } from "@/lib/auth";
 import { navFor } from "@/lib/navigation";
 import { useRealtime } from "@/lib/realtime";
@@ -20,6 +21,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
   // Свёрнутое меню (только иконки) — на широком экране; запоминается в браузере.
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const unreadChats = useUnreadChats(auth.status === "authenticated", pathname);
+  const supportBadge = useSupportBadge(auth.status === "authenticated" ? auth.user : null, pathname);
 
   useEffect(() => {
     if (auth.status === "anonymous") router.replace("/login");
@@ -35,7 +37,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
 
   const { user } = auth;
   const nav = navFor(user.roles);
-  const badges = { chats: unreadChats };
+  const badges = { chats: unreadChats, support: supportBadge };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -117,6 +119,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           </nav>
         </aside>
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <ConsentGate />
       </div>
     </div>
   );
@@ -166,6 +169,26 @@ function useUnreadChats(enabled: boolean, pathname: string): number {
   }, [refresh, pathname]);
   useRealtime((e) => {
     if (e.type === "message" || e.type === "reconnected") refresh();
+  });
+  return count;
+}
+
+/** Значок «Поддержки»: у поддержки — сколько обращений ждут ответа, у пользователя — сколько с непрочитанным ответом. */
+function useSupportBadge(user: UserInfo | null, pathname: string): number {
+  const [count, setCount] = useState(0);
+  const staff = !!user?.roles.some((r) => r === "moderator" || r === "admin");
+  const enabled = !!user;
+  const refresh = useCallback(() => {
+    if (!enabled) return;
+    (staff ? support.counts().then((c) => c.open) : support.mine().then((list) => list.filter((t) => t.unread > 0).length))
+      .then(setCount)
+      .catch(() => {});
+  }, [enabled, staff]);
+  useEffect(() => {
+    refresh();
+  }, [refresh, pathname]);
+  useRealtime((e) => {
+    if (e.type === "message" || e.type === "refresh" || e.type === "reconnected") refresh();
   });
   return count;
 }

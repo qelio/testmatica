@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
 
-from .. import realtime, relations
+from .. import realtime, relations, tickets
 from ..deps import auth, db, media, outbox
 from ..models import (
     KIND_DEAL,
@@ -302,6 +302,8 @@ async def send_message(
     member.last_read_at = msg.created_at
     if body.announcement:
         conv.pinned_message_id = msg.id
+    if conv.kind == KIND_SUPPORT:
+        await tickets.on_message(session, conv.id, principal)
 
     recipients = list(
         (
@@ -316,7 +318,12 @@ async def send_message(
     )
     names = await _names(session, [principal.user_id])
     out = _message_out(msg, names, await _attachment_urls([msg]))
-    title = (await session.get(RelGroup, conv.group_id)).title if conv.kind == KIND_GROUP else out.author_name
+    if conv.kind == KIND_GROUP:
+        title = (await session.get(RelGroup, conv.group_id)).title
+    elif conv.kind == KIND_SUPPORT and conv.title:
+        title = conv.title  # «Обращение: …» / «Спор по отзыву · …» — видно, о чём переписка
+    else:
+        title = out.author_name
 
     # В аудит — только факт, без текста. Текст — в команде уведомлений (она не попадает в аудит).
     await outbox.event(

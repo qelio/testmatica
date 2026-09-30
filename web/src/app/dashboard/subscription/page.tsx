@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
@@ -19,7 +20,7 @@ const FEATURES: { title: string; free: string; basic: string; soon?: boolean }[]
   { title: "Модерация ваших материалов", free: "в общей очереди", basic: "в первую очередь" },
   { title: "Прокторинг тестов", free: "—", basic: "✓" },
   { title: "Аналитика", free: "средний балл, посещаемость", basic: "+ динамика, сравнение, тепловая карта, ведомость, PDF/Excel" },
-  { title: "Поддержка", free: "обычная", basic: "приоритетная", soon: true },
+  { title: "Поддержка", free: "обычная", basic: "приоритетная" },
 ];
 
 export default function SubscriptionPage() {
@@ -102,6 +103,7 @@ function PaymentResult({ id, onFinished, onClose }: { id: string; onFinished: ()
 
 function Current({ s, onChanged }: { s: SubscriptionState; onChanged: () => void }) {
   const [autoRenew, setAutoRenew] = useState(true);
+  const [offer, setOffer] = useState(false); // акцепт оферты — оплата с этой галочкой
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const basic = s.plan === "basic";
@@ -180,7 +182,7 @@ function Current({ s, onChanged }: { s: SubscriptionState; onChanged: () => void
             Продолжить начатую оплату
           </Button>
         )}
-        <Button onClick={pay} loading={busy}>
+        <Button onClick={pay} loading={busy} disabled={!offer}>
           {basic ? `Продлить на месяц — ${fmtRub(s.price_rub)}` : `Подключить «Базовый» — ${fmtRub(s.price_rub)} в месяц`}
         </Button>
         {!(basic && s.auto_renew) && (
@@ -189,6 +191,16 @@ function Current({ s, onChanged }: { s: SubscriptionState; onChanged: () => void
             Сохранить карту и продлевать автоматически
           </label>
         )}
+        <label className="flex basis-full items-start gap-2 text-sm">
+          <input type="checkbox" checked={offer} onChange={(e) => setOffer(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
+          <span className="text-fg-soft">
+            Принимаю условия{" "}
+            <Link href="/legal/offer" target="_blank" className="text-brand underline">
+              публичной оферты
+            </Link>
+            {autoRenew || (basic && s.auto_renew) ? ", в том числе автоматические списания раз в месяц — отключить можно здесь в любой момент" : ""}
+          </span>
+        </label>
       </div>
       {basic && <p className="text-xs text-fg-soft">Досрочная оплата добавит месяц к текущему сроку.</p>}
     </section>

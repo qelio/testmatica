@@ -73,6 +73,9 @@ class TutorProfile(Base):
     education_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     # Администратор скрыл профиль: в поиске и по ссылке его нет, включить показ педагог не может.
     blocked_reason: Mapped[str | None] = mapped_column(Text)
+    # Согласие на распространение ПД (ст. 10.1 152-ФЗ) — редакция и время; без него анкету не показать в поиске.
+    public_consent_version: Mapped[str | None] = mapped_column(String(20))
+    public_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

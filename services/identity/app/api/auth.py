@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 from testmatica_common.ids import uuid7
 
-from .. import otp, ratelimit, sessions
+from .. import legal_consents, otp, ratelimit, sessions
 from ..deps import db, outbox
-from ..models import STATUS_ACTIVE, STATUS_BANNED, STATUS_PENDING, Consent, User
+from ..models import STATUS_ACTIVE, STATUS_BANNED, STATUS_PENDING, User
 from ..schemas import (
     Authenticated,
     ChallengeResponse,
@@ -43,9 +43,7 @@ async def register(
         roles=[body.role],
         status=STATUS_PENDING,
     )
-    session.add(
-        Consent(user_id=user.id, type="pdn", version=body.consent_version, ip=sessions.client_ip(request))
-    )
+    await legal_consents.record(session, user.id, request, source="registration")
     challenge = await otp.issue(session, user, otp.PURPOSE_EMAIL_VERIFICATION)
     try:
         await session.commit()

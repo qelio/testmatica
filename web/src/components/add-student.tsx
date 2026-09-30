@@ -269,6 +269,7 @@ function ManualForm({ groupId, onCreated }: { groupId?: string; onCreated: (c: S
         value={form.password}
         onChange={(e) => setForm({ ...form, password: e.target.value })}
       />
+      <ManagedConsentNote />
       <Button type="submit" loading={loading} className="w-full">
         Создать аккаунт
       </Button>
@@ -276,9 +277,27 @@ function ManualForm({ groupId, onCreated }: { groupId?: string; onCreated: (c: S
   );
 }
 
+/** Педагог выбирает за ученика только логин — соглашение и согласие на ПД ученик (или родитель) даёт сам при первом входе. */
+function ManagedConsentNote() {
+  return (
+    <p className="text-xs text-fg-soft">
+      Создавая аккаунт, вы подтверждаете, что вправе передать имя ученика платформе (например, с согласия родителей). При первом входе
+      ученик — или родитель, если ученику меньше 14 лет, — примет{" "}
+      <a href="/legal/terms" target="_blank" className="underline">
+        соглашение
+      </a>{" "}
+      и даст{" "}
+      <a href="/legal/consent" target="_blank" className="underline">
+        согласие на обработку данных
+      </a>
+      .
+    </p>
+  );
+}
+
 export function CredentialsView({ credentials, onClose }: { credentials: StudentCredentials; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
-  const text = `Тестматика\nЛогин: ${credentials.login}\nПароль: ${credentials.password}\nВход: ${typeof window !== "undefined" ? window.location.origin : ""}/login`;
+  const text = `ТестМатика\nЛогин: ${credentials.login}\nПароль: ${credentials.password}\nВход: ${typeof window !== "undefined" ? window.location.origin : ""}/login`;
   return (
     <div className="space-y-4">
       <Alert kind="success">
@@ -358,6 +377,7 @@ function BulkForm({ groupId, onCreated }: { groupId?: string; onCreated: (r: Bul
           {groupId && " Все сразу попадут в эту группу."}
         </span>
       </label>
+      <ManagedConsentNote />
       <Button type="submit" loading={loading} disabled={!names.length || names.length > 40} className="w-full">
         Создать и скачать карточки
       </Button>

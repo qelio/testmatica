@@ -13,6 +13,8 @@ export type UserInfo = {
   managed?: boolean;
   two_factor_required?: boolean;
   avatar_url?: string | null;
+  /** Нужно принять соглашение и дать согласие на обработку ПД (текущие редакции) — окно при входе. */
+  consent_required?: boolean;
 };
 
 export type Authenticated = {
@@ -169,12 +171,15 @@ export const identity = {
   changePassword: (current_password: string, new_password: string) =>
     api<void>(`${ID}/me/password`, { method: "POST", body: { current_password, new_password } }),
   setTwoFactor: (enabled: boolean, password: string) => api<UserInfo>(`${ID}/me/2fa`, { method: "PUT", body: { enabled, password } }),
+  giveConsents: (byRepresentative: boolean) =>
+    api<UserInfo>(`${ID}/me/consents`, { method: "POST", body: { accept_terms: true, consent_pdn: true, by_representative: byRepresentative } }),
   register: (data: {
     email: string;
     password: string;
     full_name: string;
     role: "student" | "teacher";
     consent_pdn: boolean;
+    accept_terms: boolean;
   }) =>
     api<{ user_id: string; challenge_id: string; destination: string }>(`${ID}/auth/register`, {
       method: "POST",
@@ -635,6 +640,40 @@ export const chat = {
   read: (id: string) => api<void>(`${CH}/conversations/${id}/read`, { method: "POST", body: {} }),
   unpin: (id: string) => api<void>(`${CH}/conversations/${id}/pin`, { method: "DELETE" }),
   deleteMessage: (id: string) => api<void>(`${CH}/messages/${id}`, { method: "DELETE" }),
+};
+
+// ---- поддержка (chat) ----
+
+export type TicketCategory = "account" | "lessons" | "tests" | "tutors" | "payments" | "bug" | "idea" | "other";
+export type TicketStatus = "open" | "answered" | "closed";
+export type SupportTicket = {
+  id: string;
+  category: TicketCategory;
+  subject: string;
+  status: TicketStatus;
+  priority: boolean;
+  requester_id: string;
+  requester_name: string;
+  requester_roles: string[];
+  assignee_id: string | null;
+  assignee_name: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  unread: number;
+  last_text: string | null;
+};
+
+export const support = {
+  create: (data: { category: TicketCategory; subject: string; text: string; attachment_ids: string[] }) =>
+    api<SupportTicket>(`${CH}/support/tickets`, { method: "POST", body: data }),
+  mine: () => api<SupportTicket[]>(`${CH}/support/tickets`),
+  ticket: (id: string) => api<SupportTicket>(`${CH}/support/tickets/${id}`),
+  queue: (status: TicketStatus, mine = false) => api<SupportTicket[]>(`${CH}/support/queue?status=${status}${mine ? "&mine=true" : ""}`),
+  counts: () => api<{ open: number; mine_open: number }>(`${CH}/support/queue/counts`),
+  assign: (id: string) => api<SupportTicket>(`${CH}/support/tickets/${id}/assign`, { method: "POST", body: {} }),
+  close: (id: string) => api<SupportTicket>(`${CH}/support/tickets/${id}/close`, { method: "POST", body: {} }),
+  reopen: (id: string) => api<SupportTicket>(`${CH}/support/tickets/${id}/reopen`, { method: "POST", body: {} }),
 };
 
 // ---- media ----
@@ -1295,6 +1334,8 @@ export type MyTutorProfile = {
   missing: string[];
   education: EducationDoc[];
   blocked_reason: string | null;
+  /** Согласие на распространение ПД уже дано. */
+  public_consent: boolean;
 };
 export type TutorProfileInput = {
   published: boolean;
@@ -1306,6 +1347,7 @@ export type TutorProfileInput = {
   formats: TutorFormat[];
   price: number | null;
   experience_years: number | null;
+  public_consent?: boolean;
 };
 export type TutorSearch = {
   subject_id?: string;
@@ -1565,7 +1607,8 @@ export type SubscriptionState = {
 
 export const billing = {
   subscription: () => api<SubscriptionState>(`${BL}/subscription`),
-  checkout: (autoRenew: boolean) => api<BillingPayment>(`${BL}/subscription/checkout`, { method: "POST", body: { auto_renew: autoRenew } }),
+  checkout: (autoRenew: boolean) =>
+    api<BillingPayment>(`${BL}/subscription/checkout`, { method: "POST", body: { auto_renew: autoRenew, accept_offer: true } }),
   setAutoRenew: (enabled: boolean) => api<SubscriptionState>(`${BL}/subscription/auto-renew`, { method: "PUT", body: { enabled } }),
   forgetCard: () => api<SubscriptionState>(`${BL}/subscription/payment-method`, { method: "DELETE" }),
   payments: () => api<BillingPayment[]>(`${BL}/payments`),
