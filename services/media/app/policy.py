@@ -32,6 +32,9 @@ PURPOSES: dict[str, Purpose] = {
     "document": Purpose(20 * MB, frozenset(IMAGES | {".pdf"}), "документ"),
     # Картинки главной страницы и обложки новостей — загружает администратор, видят все.
     "site": Purpose(10 * MB, frozenset(IMAGES - {".heic"}), "картинка для сайта"),
+    # Картинки и файлы внутри текста (условие задачи, разбор, теория, новости) — по постоянной ссылке
+    # /files/{id}/content, её видит каждый, кому показан текст. HEIC браузеры не показывают — не принимаем.
+    "content": Purpose(20 * MB, frozenset((IMAGES - {".heic"}) | DOCUMENTS | ARCHIVES | AUDIO), "картинка или файл в тексте"),
 }
 
 

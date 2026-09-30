@@ -5,6 +5,7 @@ import { useState } from "react";
 import { CodeEditor } from "@/components/code-editor";
 import { ExamItemsPicker } from "@/components/exams";
 import { Markdown } from "@/components/markdown";
+import { RichEditor } from "@/components/rich-editor";
 import { buildRubric, TopicSelect } from "@/components/topics";
 import { Alert, Button, Field, Select } from "@/components/ui";
 import { assessment, type TaskFull, type TaskInput, type TaskType } from "@/lib/api";
@@ -135,7 +136,7 @@ export function TaskEditor({
             )}
           </div>
         ) : (
-          <textarea rows={6} required className={`${TEXTAREA} font-mono text-sm`} value={form.statement} onChange={(e) => set("statement", e.target.value)} placeholder="Текст задачи. Формулы — $x^2$" />
+          <RichEditor value={form.statement} onChange={(v) => set("statement", v)} placeholder="Текст задачи. Формулы, картинки и файлы — кнопками на панели" />
         )}
       </div>
 
@@ -236,10 +237,13 @@ export function TaskEditor({
         </div>
       )}
 
-      <label className="block">
-        <span className="mb-1.5 block text-sm font-medium">Разбор решения</span>
-        <textarea rows={3} className={TEXTAREA} value={form.explanation} onChange={(e) => set("explanation", e.target.value)} placeholder="Ученик увидит разбор после верного ответа или нескольких попыток" />
-      </label>
+      <RichEditor
+        label="Разбор решения"
+        value={form.explanation}
+        onChange={(v) => set("explanation", v)}
+        placeholder="Ученик увидит разбор после верного ответа или нескольких попыток"
+        minHeight="5rem"
+      />
       <Field label="Теги через запятую" placeholder="уравнения, 7 класс" value={tags} onChange={(e) => setTags(e.target.value)} />
 
       <div className="flex gap-2">
