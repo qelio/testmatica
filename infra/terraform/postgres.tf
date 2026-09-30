@@ -57,7 +57,8 @@ resource "yandex_mdb_postgresql_user" "svc" {
   cluster_id = yandex_mdb_postgresql_cluster.main.id
   name       = each.key
   password   = random_password.pg[each.key].result
-  conn_limit = 20
+  # 14 сервисов × 12 = 168 ≤ 200 − 15 системных (max_connections у b2.medium). Пул в сервисе — не больше 10.
+  conn_limit = 12
 }
 
 resource "yandex_mdb_postgresql_database" "svc" {
