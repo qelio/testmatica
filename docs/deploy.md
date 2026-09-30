@@ -89,6 +89,7 @@ docker compose -f compose.prod.yaml exec identity python -m app.cli create-user 
 - оплата тарифа отвечает «скоро появится» (`PAYMENT_PROVIDER=disabled`), тариф выдаёт администратор.
 
 ## Повседневное
+- **Порядок изменений** (решение №30): крупное — ветка `feature/…` → PR в `main` (проверки и сборка без выкладки) → влить PR; мелкое — коммит сразу в `main`. Любой пуш в `main` выкладывает на сайт.
 - **Обновление** — пуш в `main`. Тег образов = коммит.
 - **Откат** — `ssh deploy@<vm_ip> sh /opt/testmatica/deploy.sh <предыдущий коммит>`.
 - **Логи** — `docker compose -f compose.prod.yaml logs -f <сервис>`.
