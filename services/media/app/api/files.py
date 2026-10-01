@@ -1,15 +1,19 @@
+import io
 import mimetypes
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
 from testmatica_common.ids import uuid7
 
-from .. import storage
+from .. import importer, storage
 from ..deps import auth, db, outbox
 from ..models import StoredFile
 from ..policy import MB, PURPOSES, extension, safe_filename
@@ -51,10 +55,30 @@ async def upload(
 
     # Тип определяем по расширению, а не по заголовку от клиента.
     mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    stored = await _store(session, principal, purpose, filename, ext, mime, size, file.file)
+    return file_out(stored)
+
+
+class ImportIn(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+
+
+@router.post("/import", response_model=FileOut, status_code=201)
+async def import_image(body: ImportIn, principal: Principal = Depends(auth.principal),
+                       session: AsyncSession = Depends(db.session)) -> FileOut:
+    """Перенести картинку с другого сайта (вставили текст вместе с картинкой): скачиваем сами и храним как «content».
+    Иначе картинка ссылалась бы на чужой сайт — а он часто не отдаёт картинки другим сайтам или удаляет их."""
+    data, ext, mime = await importer.fetch_image(body.url)
+    name = safe_filename(PurePosixPath(urlsplit(body.url).path).stem or "картинка") + ext
+    return file_out(await _store(session, principal, "content", name, ext, mime, len(data), io.BytesIO(data)))
+
+
+async def _store(session: AsyncSession, principal: Principal, purpose: str, filename: str, ext: str, mime: str,
+                 size: int, body) -> StoredFile:
     file_id = uuid7()
     now = datetime.now(UTC)
     key = f"{purpose}/{now:%Y/%m}/{file_id}{ext}"
-    await storage.put(key, file.file, mime)
+    await storage.put(key, body, mime)
 
     stored = StoredFile(
         id=file_id, owner_id=principal.user_id, purpose=purpose, filename=filename, mime=mime, size=size, key=key
@@ -68,7 +92,7 @@ async def upload(
         actor_id=principal.user_id,
     )
     await session.commit()
-    return file_out(stored)
+    return stored
 
 
 async def _own(session: AsyncSession, file_id: UUID, principal: Principal) -> StoredFile:
