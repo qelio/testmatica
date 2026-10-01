@@ -26,6 +26,7 @@ class FakeIdentity:
 
     def __init__(self) -> None:
         self.users: dict[str, dict] = {}  # логин/email -> PersonOut
+        self.signed_out: list[dict] = []  # запросы «выйти из аккаунтов»
 
     def add(self, identifier: str, full_name: str, roles=("student",), user_id: UUID | None = None) -> UUID:
         uid = user_id or uuid4()
@@ -52,6 +53,9 @@ class FakeIdentity:
                     "managed_by_teacher_id": body["teacher_id"]}
             self.users[login] = user
             return httpx.Response(201, json={"user": user, "login": login, "password": body.get("password") or "gen-pass-1"})
+        if path == "/internal/sessions/sign-out":
+            self.signed_out.append(json.loads(request.content))
+            return httpx.Response(204)
         if path.startswith("/internal/managed-students/") and request.method == "PATCH":
             body = json.loads(request.content)
             uid = path.rsplit("/", 1)[1]

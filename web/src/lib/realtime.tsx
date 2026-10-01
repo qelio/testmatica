@@ -13,13 +13,15 @@ export type RealtimeEvent =
   // Тесты: ученик начал или сдал работу (by_teacher — завершил педагог), сервер видеосвязи увидел или потерял показ экрана.
   | {
       type: "assignment";
-      kind: "started" | "submitted" | "screen";
+      kind: "started" | "submitted" | "screen" | "reviewed";
       assignment_id: string;
       attempt_id: string;
       student_id: string;
       by_teacher: boolean;
       sharing: boolean | null;
     }
+  // Педагог вывел ученика из аккаунта (оставил вход на школьном компьютере) — выйти на этой вкладке сразу.
+  | { type: "logout" }
   | { type: "reconnected" };
 
 type Listener = (e: RealtimeEvent) => void;
@@ -29,8 +31,12 @@ const RealtimeContext = createContext<{ subscribe: (l: Listener) => () => void }
 /** Одно WebSocket-подключение на вкладку. Переподключается с нарастающей паузой;
  *  после восстановления шлёт «reconnected», чтобы экраны догрузили пропущенное. */
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
-  const { status } = useAuth();
+  const { status, signOut } = useAuth();
   const listeners = useRef(new Set<Listener>());
+  const signOutRef = useRef(signOut);
+  useEffect(() => {
+    signOutRef.current = signOut;
+  });
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -56,6 +62,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           wasConnected = true;
           attempt = 0;
           ping = setInterval(() => ws?.readyState === WebSocket.OPEN && ws.send('{"type":"ping"}'), 25000);
+        } else if (data.type === "logout") {
+          void signOutRef.current();
         } else if (data.type !== "pong") {
           emit(data);
         }

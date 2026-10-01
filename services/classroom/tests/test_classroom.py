@@ -354,3 +354,26 @@ async def test_internal_teacher_groups(client, teacher):
     assert [g["title"] for g in active] == ["7А"] and active[0]["id"] == a["id"]
     every = (await client.get(f"/internal/teachers/{teacher}/groups", params={"archived": True}, headers=headers)).json()
     assert [g["title"] for g in every] == ["7А", "8Б"]
+
+
+async def test_teacher_signs_students_out(client, teacher, fake_identity):
+    """Ученики оставили вход на школьных компьютерах — выйти у всего класса или у одного ученика."""
+    group = await create_group(client, teacher, "5А")
+    ids = []
+    for last, first in (("Петрова", "Аня"), ("Сидоров", "Борис")):
+        resp = await client.post("/students/manual", json={"last_name": last, "first_name": first, "group_id": group["id"]},
+                                 headers=bearer(teacher))
+        ids.append(resp.json()["student"]["student_id"])
+
+    whole = await client.post(f"/groups/{group['id']}/sign-out", headers=bearer(teacher))
+    assert whole.json() == {"count": 2}
+    assert sorted(fake_identity.signed_out[-1]["user_ids"]) == sorted(ids) and fake_identity.signed_out[-1]["teacher_id"] == str(teacher)
+
+    one = await client.post(f"/students/{ids[0]}/sign-out", headers=bearer(teacher))
+    assert one.json() == {"count": 1} and fake_identity.signed_out[-1]["user_ids"] == [ids[0]]
+
+    # Чужой педагог — ни класс, ни ученика.
+    other = uuid4()
+    assert (await client.post(f"/groups/{group['id']}/sign-out", headers=bearer(other))).status_code == 404
+    assert (await client.post(f"/students/{ids[0]}/sign-out", headers=bearer(other))).status_code == 404
+    assert len(fake_identity.signed_out) == 2

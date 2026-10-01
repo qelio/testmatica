@@ -88,3 +88,20 @@ async def test_lookup(client):
 
     missing = await client.get("/internal/users/lookup", params={"identifier": "nobody"}, headers=H)
     assert missing.status_code == 404
+
+
+async def test_teacher_signs_student_out(client):
+    """Ученик оставил вход на школьном компьютере — педагог выводит его из аккаунта на всех устройствах."""
+    teacher = str(uuid4())
+    creds = (await client.post("/internal/managed-students", json={"teacher_id": teacher, "last_name": "Смирнова", "first_name": "Оля"},
+                               headers=H)).json()
+    login = await client.post("/auth/login", json={"identifier": creds["login"], "password": creds["password"]})
+    assert login.status_code == 200 and (await client.post("/auth/refresh")).status_code == 200
+
+    resp = await client.post("/internal/sessions/sign-out", json={"teacher_id": teacher, "user_ids": [creds["user"]["id"]]}, headers=H)
+    assert resp.status_code == 204
+    assert (await client.post("/auth/refresh")).json()["error"]["code"] in ("no_session", "session_revoked", "invalid_session")
+    [event] = await events("identity.user.signed_out")
+    assert event["data"] == {"user_id": creds["user"]["id"], "by": "teacher"} and event["actor_id"] == teacher
+    # Снова войти можно — пароль не меняется.
+    assert (await client.post("/auth/login", json={"identifier": creds["login"], "password": creds["password"]})).status_code == 200

@@ -5,6 +5,7 @@ import io
 import math
 import random
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode.qr import QrCodeWidget
@@ -180,8 +181,14 @@ def _card(c: Canvas, card: Card, x: float, y: float, w: float, h: float, n: int,
     top = iy + ih - (4.5 if compact else 6.5) * mm
     c.setFillColor(accent)
     c.setFont("Round-Bold", 6 if compact else 7.5)
-    c.drawString(ix + 3 * mm, top, "ПРОПУСК В ТЕСТМАТИКУ")
+    # Адрес сайта — чтобы войти и без телефона: набрать в браузере школьного компьютера.
+    # На маленькой карточке заголовок короче — иначе адрес наезжает на планету.
+    head = "ПРОПУСК" if compact else "ПРОПУСК В ТЕСТМАТИКУ"
+    c.drawString(ix + 3 * mm, top, head)
     c.setFillColor(INK)
+    c.setFont("Round-Bold", 6 if compact else 7.5)
+    c.drawString(ix + 3 * mm + c.stringWidth(head, "Round-Bold", 6 if compact else 7.5) + 1.5 * mm, top,
+                 f"· {urlsplit(login_url).netloc}")
     lines = _name_lines(card.full_name, 10 if compact else 14, iw * 0.66, 2 if not compact else 1)
     step = lines[0][1] * 1.25  # межстрочный — по первой строке
     for n, (text, size) in enumerate(lines):
@@ -203,7 +210,7 @@ def _card(c: Canvas, card: Card, x: float, y: float, w: float, h: float, n: int,
     _rocket(c, qx + qr / 2 - 2 * mm, qy + qr + 5 * mm, 9 * mm, accent)
     c.setFillColor(SOFT)
     c.setFont("Sans", 6)
-    c.drawString(ix + 3 * mm, iy + 2.5 * mm, "Пароль никому не показывай. Вход — по QR-коду или на сайте.")
+    c.drawString(ix + 3 * mm, iy + 2.5 * mm, f"Пароль никому не показывай. Вход — по QR-коду или на сайте {urlsplit(login_url).netloc}")
 
 
 def _cut_lines(c: Canvas, x0: float, y0: float, cols: int, rows: int, w: float, h: float) -> None:
