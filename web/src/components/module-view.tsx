@@ -111,8 +111,17 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
   );
 }
 
-function MarkdownEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return <RichEditor label="Текст" value={value} onChange={onChange} placeholder="Объясните тему: текст, формулы, таблицы, картинки, файлы" minHeight="14rem" />;
+function MarkdownEditor({ value, onChange, onBusyChange }: { value: string; onChange: (v: string) => void; onBusyChange: (busy: boolean) => void }) {
+  return (
+    <RichEditor
+      label="Текст"
+      value={value}
+      onChange={onChange}
+      onBusyChange={onBusyChange}
+      placeholder="Объясните тему: текст, формулы, таблицы, картинки, файлы"
+      minHeight="14rem"
+    />
+  );
 }
 
 function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => void }) {
@@ -126,6 +135,7 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const needsFile = kind === "video" || kind === "pdf" || kind === "file";
+  const [editorBusy, setEditorBusy] = useState(false); // в тексте грузится картинка или файл
 
   if (!open) {
     return (
@@ -189,7 +199,7 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
       ) : (
         <Field label="Название" required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
       )}
-      {(kind === "text" || kind === "card") && <MarkdownEditor value={body} onChange={setBody} />}
+      {(kind === "text" || kind === "card") && <MarkdownEditor value={body} onChange={setBody} onBusyChange={setEditorBusy} />}
       {kind === "link" && (
         <Field label="Ссылка" type="url" required placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={(e) => setUrl(e.target.value)} />
       )}
@@ -218,7 +228,7 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
         <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
           Отмена
         </Button>
-        <Button type="submit" loading={busy || uploads.busy} disabled={(kind === "task" ? !taskId : !title.trim()) || (needsFile && !uploads.ids.length)} className="flex-1">
+        <Button type="submit" loading={busy || uploads.busy} disabled={(kind === "task" ? !taskId : !title.trim()) || (needsFile && !uploads.ids.length) || editorBusy} className="flex-1">
           Добавить
         </Button>
       </div>
@@ -232,6 +242,7 @@ function MaterialEditor({ material, onCancel, onSaved }: { material: Material; o
   const [url, setUrl] = useState(material.url ?? "");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [editorBusy, setEditorBusy] = useState(false); // в тексте грузится картинка или файл
   return (
     <form
       className="space-y-4 rounded-2xl border border-brand/40 bg-surface p-5"
@@ -255,14 +266,14 @@ function MaterialEditor({ material, onCancel, onSaved }: { material: Material; o
     >
       {error && <Alert>{error}</Alert>}
       <Field label="Название" required value={title} onChange={(e) => setTitle(e.target.value)} />
-      {(material.kind === "text" || material.kind === "card") && <MarkdownEditor value={body} onChange={setBody} />}
+      {(material.kind === "text" || material.kind === "card") && <MarkdownEditor value={body} onChange={setBody} onBusyChange={setEditorBusy} />}
       {material.kind === "link" && <Field label="Ссылка" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} />}
       {material.file && <p className="text-sm text-fg-soft">Файл: {material.file.filename}. Чтобы заменить файл, удалите материал и добавьте заново.</p>}
       <div className="flex gap-2">
         <Button type="button" variant="secondary" onClick={onCancel}>
           Отмена
         </Button>
-        <Button type="submit" loading={busy} className="flex-1">
+        <Button type="submit" loading={busy} disabled={editorBusy} className="flex-1">
           Сохранить
         </Button>
       </div>

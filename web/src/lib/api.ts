@@ -689,6 +689,11 @@ export function contentFileUrl(fileId: string): string {
   return `/api/media/files/${fileId}/content`;
 }
 
+/** Перенести картинку с другого сайта к нам (вставили текст вместе с картинкой) — сервер скачает её сам. */
+export function importImage(url: string): Promise<UploadedFile> {
+  return api<UploadedFile>("/api/media/files/import", { method: "POST", body: { url } });
+}
+
 export function isContentFileUrl(href: string | undefined): boolean {
   return !!href && /^\/api\/media\/files\/[0-9a-f-]+\/content$/.test(href);
 }

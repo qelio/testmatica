@@ -3,14 +3,18 @@
 import "katex/dist/katex.min.css";
 
 import { Mathematics } from "@tiptap/extension-mathematics";
-import Image from "@tiptap/extension-image";
 import { TableKit } from "@tiptap/extension-table";
+import TextAlign from "@tiptap/extension-text-align";
 import { Placeholder } from "@tiptap/extensions";
 import { Markdown } from "@tiptap/markdown";
 import { type Editor, EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import katex from "katex";
 import {
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
   Bold,
   Code,
   Heading2,
@@ -33,7 +37,8 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { Alert, Button, Modal } from "@/components/ui";
-import { contentFileUrl, uploadFile } from "@/lib/api";
+import { contentFileUrl, importImage, isContentFileUrl, uploadFile } from "@/lib/api";
+import { AlignBlock, type Alignment, MdHeading, MdImage, MdParagraph } from "@/lib/editor-markdown";
 import { errorText } from "@/lib/hooks";
 
 const IMAGE_TYPES = "image/png,image/jpeg,image/gif,image/webp";
@@ -52,12 +57,15 @@ export function RichEditor({
   label,
   placeholder,
   minHeight = "10rem",
+  onBusyChange,
 }: {
   value: string;
   onChange: (markdown: string) => void;
   label?: string;
   placeholder?: string;
   minHeight?: string;
+  /** Идёт загрузка картинки или файла — форма не должна сохраняться, иначе их не будет в тексте. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [math, setMath] = useState<MathEdit | null>(null);
   const [uploading, setUploading] = useState(0);
@@ -72,9 +80,18 @@ export function RichEditor({
     immediatelyRender: false,
     extensions: [
       // Подчёркивания в Markdown нет — не предлагаем, чтобы оно не терялось при сохранении.
-      StarterKit.configure({ underline: false, link: { openOnClick: false, autolink: true } }),
-      Image,
+      StarterKit.configure({ paragraph: false, heading: false, underline: false, link: { openOnClick: false, autolink: true } }),
+      MdParagraph,
+      MdHeading,
+      // Картинка — в строке текста (её выравнивает абзац), размер меняется за угол; data:-картинки (из Word) переносим к себе.
+      MdImage.configure({
+        inline: true,
+        allowBase64: true,
+        resize: { enabled: true, directions: ["bottom-right", "bottom-left"], minWidth: 40, minHeight: 20, alwaysPreserveAspectRatio: true },
+      }),
       TableKit.configure({ table: { resizable: false } }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      AlignBlock,
       Mathematics.configure({
         inlineOptions: { onClick: (node, pos) => setMath({ latex: node.attrs.latex, block: false, pos }) },
         blockOptions: { onClick: (node, pos) => setMath({ latex: node.attrs.latex, block: true, pos }) },
@@ -114,6 +131,65 @@ export function RichEditor({
     emitted.current = value;
     editor.commands.setContent(value, { contentType: "markdown", emitUpdate: false });
   }, [editor, value]);
+
+  // Колбэк — в ref: форма может передавать новую функцию на каждой отрисовке.
+  const busyCallback = useRef(onBusyChange);
+  useEffect(() => {
+    busyCallback.current = onBusyChange;
+  });
+  useEffect(() => {
+    busyCallback.current?.(uploading > 0);
+  }, [uploading]);
+
+  // Картинки не из нашего хранилища (вставили текст с другого сайта, из Word) — переносим к себе:
+  // чужой сайт часто не отдаёт картинки другим сайтам, а относительный адрес у нас вообще не откроется.
+  const adopting = useRef(new Set<string>());
+  useEffect(() => {
+    if (!editor) return;
+    const replace = (from: string, to: string | null) => {
+      const { tr } = editor.state;
+      const found: { pos: number; size: number; attrs: Record<string, unknown> }[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === "image" && node.attrs.src === from) found.push({ pos, size: node.nodeSize, attrs: node.attrs });
+      });
+      for (const f of found.reverse()) {
+        if (to) tr.setNodeMarkup(f.pos, undefined, { ...f.attrs, src: to });
+        else tr.delete(f.pos, f.pos + f.size);
+      }
+      if (found.length) editor.view.dispatch(tr);
+    };
+    const adopt = () => {
+      editor.state.doc.descendants((node) => {
+        const src = node.type.name === "image" ? String(node.attrs.src ?? "") : "";
+        if (!src || isContentFileUrl(src) || adopting.current.has(src)) return;
+        adopting.current.add(src);
+        const done = () => {
+          adopting.current.delete(src);
+          setUploading((n) => n - 1);
+        };
+        setUploading((n) => n + 1);
+        const job: Promise<{ id: string }> = src.startsWith("data:image/")
+          ? fetch(src)
+              .then((r) => r.blob())
+              .then((b) => uploadFile(new File([b], `картинка.${b.type.split("/")[1] || "png"}`, { type: b.type }), "content"))
+          : /^https?:\/\//.test(src)
+            ? importImage(src)
+            : Promise.reject(new Error("relative"));
+        job
+          .then((f) => replace(src, contentFileUrl(f.id)))
+          .catch(() => {
+            replace(src, null);
+            setError("Картинку с другого сайта не удалось перенести — сохраните её на компьютер и вставьте кнопкой «Картинка».");
+          })
+          .finally(done);
+      });
+    };
+    adopt();
+    editor.on("update", adopt);
+    return () => {
+      editor.off("update", adopt);
+    };
+  }, [editor]);
 
   // Загрузка — в ref: её вызывают обработчики вставки и перетаскивания, созданные вместе с редактором.
   useEffect(() => {
@@ -202,6 +278,7 @@ function Toolbar({ editor, onMath, onImage, onFile }: { editor: Editor; onMath: 
       codeBlock: e.isActive("codeBlock"),
       link: e.isActive("link"),
       table: e.isActive("table"),
+      align: (["center", "right", "justify"] as Alignment[]).find((a) => e.isActive({ textAlign: a })) ?? "left",
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
     }),
@@ -235,12 +312,17 @@ function Toolbar({ editor, onMath, onImage, onFile }: { editor: Editor; onMath: 
       <Tool icon={ListOrdered} label="Нумерованный список" active={s.ordered} onClick={() => chain().toggleOrderedList().run()} />
       <Tool icon={Quote} label="Цитата" active={s.quote} onClick={() => chain().toggleBlockquote().run()} />
       <Sep />
+      <Tool icon={AlignLeft} label="По левому краю" active={s.align === "left"} onClick={() => chain().setTextAlign("left").run()} />
+      <Tool icon={AlignCenter} label="По центру" active={s.align === "center"} onClick={() => chain().setTextAlign("center").run()} />
+      <Tool icon={AlignRight} label="По правому краю" active={s.align === "right"} onClick={() => chain().setTextAlign("right").run()} />
+      <Tool icon={AlignJustify} label="По ширине" active={s.align === "justify"} onClick={() => chain().setTextAlign("justify").run()} />
+      <Sep />
       <Tool icon={Sigma} label="Формула" onClick={onMath} />
       <Tool icon={Code} label="Код в строке" active={s.code} onClick={() => chain().toggleCode().run()} />
       <Tool icon={SquareCode} label="Блок кода" active={s.codeBlock} onClick={() => chain().toggleCodeBlock().run()} />
       <Tool icon={Table} label="Таблица" active={s.table} onClick={() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} />
       <Tool icon={Link2} label="Ссылка" active={s.link} onClick={link} />
-      <Tool icon={ImagePlus} label="Картинка (можно вставить из буфера или перетащить)" onClick={onImage} />
+      <Tool icon={ImagePlus} label="Картинка (можно вставить из буфера или перетащить; размер — за уголок)" onClick={onImage} />
       <Tool icon={Paperclip} label="Прикрепить файл" onClick={onFile} />
       <Sep />
       <Tool icon={Undo2} label="Отменить (Ctrl+Z)" disabled={!s.canUndo} onClick={() => chain().undo().run()} />
