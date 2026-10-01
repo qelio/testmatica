@@ -11,7 +11,7 @@ from testmatica_common.errors import ApiError
 
 from .. import access, views
 from ..deps import auth, db
-from ..models import Assignment, Task, Test, TestItem
+from ..models import SOLUTION_FILE_TYPES, Assignment, Task, Test, TestItem
 from ..schemas import QuizIn, QuizItemOut, QuizOut, QuizSummary
 
 router = APIRouter(prefix="/tests", tags=["tests"])
@@ -40,7 +40,7 @@ async def quiz_out(session: AsyncSession, test: Test) -> QuizOut:
     return QuizOut(
         id=test.id, title=test.title, description=test.description, order_mode=test.order_mode,
         shuffle_options=test.shuffle_options, time_mode=test.time_mode, time_limit_s=test.time_limit_s,
-        items=[QuizItemOut(task_id=i.task_id, points=i.points, task=summaries[i.task_id]) for i in test.items if i.task_id in summaries],
+        items=[QuizItemOut(task_id=i.task_id, points=i.points, solution_file=i.solution_file, task=summaries[i.task_id]) for i in test.items if i.task_id in summaries],
         max_score=sum(i.points for i in test.items),
         assignments_count=(await _assignments_count(session, [test.id])).get(test.id, 0),
         updated_at=test.updated_at,
@@ -66,9 +66,11 @@ async def _apply(session: AsyncSession, test: Test, body: QuizIn, p: Principal) 
         if task is None or not await access.can_view(session, task, p) or not (task.owner_id == p.user_id or task.status == "published") \
                 or task.status == "removed":
             raise ApiError(422, "task_not_available", "Задача недоступна — возможно, её сняли с публикации")
+        if item.solution_file and task.type not in SOLUTION_FILE_TYPES:
+            raise ApiError(422, "solution_file_not_allowed", "Файл с решением можно запросить только к короткому ответу и выбору варианта")
     for field in ("title", "description", "order_mode", "shuffle_options", "time_mode", "time_limit_s"):
         setattr(test, field, getattr(body, field))
-    test.items = [TestItem(task_id=i.task_id, points=i.points, position=n) for n, i in enumerate(body.items)]
+    test.items = [TestItem(task_id=i.task_id, points=i.points, solution_file=i.solution_file, position=n) for n, i in enumerate(body.items)]
     test.updated_at = datetime.now(UTC)
 
 

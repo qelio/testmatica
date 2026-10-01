@@ -55,7 +55,7 @@ async def test_homework_full_cycle(client, fakes):
     fakes.lessons[lesson] = str(teacher)
     grade_type = str(uuid4())
 
-    # Оценка в журнал — только с уроком и типом оценки.
+    # Оценка в журнал — только с типом оценки.
     bad = await client.post(f"/tests/{test['id']}/assign", json={"target_type": "group", "target_id": gid, "grade_to_journal": True},
                             headers=bearer(teacher))
     assert bad.status_code == 422
@@ -386,3 +386,94 @@ async def test_admin_removes_task_but_issued_tests_keep_working(client, fakes):
 
     restored = (await client.post(f"/admin/tasks/{tasks[0]['id']}/restore", headers=bearer(boss, ("admin",)))).json()
     assert restored["status"] == "private"
+
+
+async def test_solution_files_teacher_review_and_grade_scale(client, fakes):
+    """Решение №34: файлы с решением к короткому ответу и выбору, итог — после проверки педагогом,
+    свои критерии оценки, оценка в журнал без урока, ручная правка заданий и оценки."""
+    teacher, pupil = uuid4(), uuid4()
+    await link(teacher, pupil)
+    tasks = await make_tasks(client, teacher)
+    choice, short, long = tasks[0], tasks[1], tasks[3]
+    # Файл с решением — только к короткому ответу и выбору.
+    bad = await client.post("/tests", json={"title": "Т", "items": [{"task_id": long["id"], "solution_file": True}]}, headers=bearer(teacher))
+    assert bad.json()["error"]["code"] == "solution_file_not_allowed"
+    test = (await client.post("/tests", json={"title": "Проверочная", "items": [
+        {"task_id": choice["id"], "points": 1}, {"task_id": short["id"], "points": 1, "solution_file": True}]}, headers=bearer(teacher))).json()
+    assert [i["solution_file"] for i in test["items"]] == [False, True]
+
+    # Критерии оценки — убывающие границы; в журнал — без урока, но с типом оценки.
+    wrong_scale = await client.post(f"/tests/{test['id']}/assign", json={
+        "target_type": "student", "target_id": str(pupil), "grade_scale": {"five": 60, "four": 70, "three": 50}}, headers=bearer(teacher))
+    assert wrong_scale.status_code == 422
+    grade_type = str(uuid4())
+    a = await assign(client, teacher, test, target_type="student", target_id=str(pupil), grade_to_journal=True, grade_type_id=grade_type,
+                     grade_scale={"five": 90, "four": 70, "three": 50})
+    assert a["needs_review"] and a["grade_scale"] == {"5": 90, "4": 70, "3": 50} and a["lesson_id"] is None
+
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))).json()
+    flags = {t["task"]["id"]: t["solution_file"] for t in attempt["tasks"]}
+    assert flags == {choice["id"]: False, short["id"]: True}
+    right = next(o["id"] for o in choice["options"] if o["is_correct"])
+    # К выбору без галочки файл не прикрепить, к короткому ответу с галочкой — можно.
+    no = await client.put(f"/attempts/{attempt['id']}/answers/{choice['id']}",
+                          json={"answer": {"option_ids": [right]}, "file_ids": [fakes.file(pupil)]}, headers=student(pupil))
+    assert no.json()["error"]["code"] == "files_not_allowed"
+    await answer(client, attempt, choice, pupil, option_ids=[right])
+    solution = fakes.file(pupil, "черновик.jpg")
+    ok = await client.put(f"/attempts/{attempt['id']}/answers/{short['id']}",
+                          json={"answer": {"text": "3.5"}, "file_ids": [solution]}, headers=student(pupil))
+    assert ok.status_code == 200, ok.text
+    done = (await client.post(f"/attempts/{attempt['id']}/submit", headers=student(pupil))).json()
+
+    # Всё проверилось автоматически: ученик видит, что верно, но итога и оценки нет до проверки педагогом.
+    assert not done["checked"] and done["score"] is None and done["grade"] is None and done["needs_review"]
+    statuses = {t["task"]["id"]: (t["result"]["status"], [f["filename"] for f in t["result"]["files"]]) for t in done["tasks"]}
+    assert statuses == {choice["id"]: ("correct", []), short["id"]: ("correct", ["черновик.jpg"])}
+    assert await outbox("assessment.attempt.graded") == []
+    given = (await client.get(f"/assignments/{a['id']}", headers=bearer(teacher))).json()
+    assert given["students"][0]["attempts"][0]["checked"] is False  # «ждёт проверки» у педагога
+
+    # Проверять может только педагог.
+    assert (await client.post(f"/attempts/{attempt['id']}/review", json={}, headers=student(pupil))).status_code in (403, 404)
+
+    # Педагог не засчитал выбор (решение в файле не сходится): 1 из 2 = 50% → по критериям «3».
+    reviewed = (await client.post(f"/attempts/{attempt['id']}/review", json={"tasks": {choice["id"]: False}},
+                                  headers=bearer(teacher))).json()
+    assert reviewed["checked"] and reviewed["score"] == 1 and reviewed["percent"] == 50 and reviewed["grade"] == 3
+    graded = (await outbox("assessment.attempt.graded"))[-1]["data"]
+    assert graded["grade"] == 3 and graded["to_journal"] and graded["group_id"] is None and graded["assigned_at"]
+    assert not graded["by_teacher"]
+    seen = (await client.get(f"/attempts/{attempt['id']}", headers=student(pupil))).json()
+    assert seen["grade"] == 3 and {t["task"]["id"]: t["result"]["status"] for t in seen["tasks"]}[choice["id"]] == "incorrect"
+
+    # Оценку можно поставить вручную; null — снова по критериям.
+    manual = (await client.post(f"/attempts/{attempt['id']}/review", json={"grade": 5}, headers=bearer(teacher))).json()
+    assert manual["grade"] == 5 and manual["grade_override"] == 5
+    assert (await outbox("assessment.attempt.graded"))[-1]["data"]["by_teacher"]
+    auto = (await client.post(f"/attempts/{attempt['id']}/review", json={"grade": None}, headers=bearer(teacher))).json()
+    assert auto["grade"] == 3 and auto["grade_override"] is None
+
+
+async def test_teacher_overrides_auto_checked_tasks(client, fakes):
+    """Даже без файлов с решением педагог может засчитать неверное или пустое задание — итог пересчитывается."""
+    teacher, pupil = uuid4(), uuid4()
+    await link(teacher, pupil)
+    tasks = await make_tasks(client, teacher)
+    choice, short = tasks[0], tasks[1]
+    test = (await client.post("/tests", json={"title": "Т", "items": [
+        {"task_id": choice["id"], "points": 1}, {"task_id": short["id"], "points": 1}]}, headers=bearer(teacher))).json()
+    a = await assign(client, teacher, test, target_type="student", target_id=str(pupil))
+    assert not a["needs_review"]
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(pupil))).json()
+    await answer(client, attempt, short, pupil, text="3,4")  # неверно; на выбор не ответил
+    done = (await client.post(f"/attempts/{attempt['id']}/submit", headers=student(pupil))).json()
+    assert done["checked"] and done["score"] == 0 and done["grade"] == 2
+
+    fixed = (await client.post(f"/attempts/{attempt['id']}/review", json={"tasks": {short["id"]: True, choice["id"]: True}},
+                               headers=bearer(teacher))).json()
+    assert fixed["score"] == 2 and fixed["grade"] == 5
+    results = {t["task"]["id"]: t["result"]["status"] for t in fixed["tasks"]}
+    assert results == {choice["id"]: "correct", short["id"]: "correct"}
+    unknown = await client.post(f"/attempts/{attempt['id']}/review", json={"tasks": {str(uuid4()): True}}, headers=bearer(teacher))
+    assert unknown.status_code == 422

@@ -428,7 +428,10 @@ export type GradeType = { id: string; name: string; position: number; is_active:
 
 export type Grade = {
   id: string;
-  lesson_id: string;
+  /** Урок; null — оценка за работу (колонка work_id). */
+  lesson_id: string | null;
+  work_id?: string | null;
+  title?: string | null;
   student_id: string;
   value: number;
   grade_type_id: string;
@@ -452,6 +455,8 @@ export type Stats = {
 export type Journal = {
   title: string;
   lessons: { id: string; starts_at: string; subject: string | null; topic: string | null; started: boolean; ktp: string[] }[];
+  /** Колонки оценок за тесты и ДЗ без привязки к уроку. */
+  works: { id: string; title: string; at: string }[];
   students: { id: string; full_name: string; current: boolean; stats: Stats }[];
   grades: Grade[];
   attendance: { lesson_id: string; student_id: string; status: AttendanceStatus }[];
@@ -941,6 +946,8 @@ export type Submission = {
   failed_case: number | null;
   failure: "wrong_answer" | "runtime_error" | "time_limit" | "memory_limit" | null;
   teacher_comment: string | null;
+  /** Когда проверил или изменил педагог. */
+  reviewed_at?: string | null;
   created_at: string;
   checked_at: string | null;
   run_log: { number: number; status: string; time_ms: number; output: string; error: string }[] | null;
@@ -1004,12 +1011,13 @@ export type ItemTaskProgress = {
 
 export type TimeMode = "none" | "total" | "per_task";
 export type QuizSettings = { order_mode: "fixed" | "random"; shuffle_options: boolean; time_mode: TimeMode; time_limit_s: number | null };
-export type QuizInput = QuizSettings & { title: string; description: string; items: { task_id: string; points: number }[] };
+export type QuizItemInput = { task_id: string; points: number; solution_file: boolean };
+export type QuizInput = QuizSettings & { title: string; description: string; items: QuizItemInput[] };
 export type Quiz = QuizSettings & {
   id: string;
   title: string;
   description: string;
-  items: { task_id: string; points: number; task: TaskSummary }[];
+  items: { task_id: string; points: number; solution_file: boolean; task: TaskSummary }[];
   max_score: number;
   assignments_count: number;
   updated_at: string;
@@ -1068,6 +1076,10 @@ export type Assignment = {
   settings: QuizSettings;
   tasks_count: number;
   max_score: number;
+  /** С какого процента 5, 4, 3. */
+  grade_scale: GradeScaleStored;
+  /** К заданиям прикладывают файлы с решением — итог после вашей проверки. */
+  needs_review: boolean;
   grade_to_journal: boolean;
   grade_type_id: string | null;
   proctoring: boolean;
@@ -1076,6 +1088,8 @@ export type Assignment = {
   can_start: boolean;
 };
 export type AssignmentKind = "test" | "homework" | "live";
+export type GradeScale = { five: number; four: number; three: number };
+export type GradeScaleStored = { "5": number; "4": number; "3": number };
 export type AssignInput = {
   kind: AssignmentKind;
   title?: string | null;
@@ -1085,6 +1099,7 @@ export type AssignInput = {
   target_id: string;
   lesson_id?: string | null;
   deadline?: string | null;
+  grade_scale?: GradeScale;
   grade_to_journal?: boolean;
   grade_type_id?: string | null;
   proctoring?: boolean;
@@ -1095,6 +1110,8 @@ export type AttemptTask = {
   answer: Submission["answer"] | null;
   files: Attachment[];
   locked: boolean;
+  /** Нужно прикрепить файл с решением. */
+  solution_file: boolean;
   result: Submission | null;
   earned: number | null;
 };
@@ -1117,6 +1134,12 @@ export type Attempt = {
   percent: number | null;
   grade: number | null;
   checked: boolean;
+  /** Работу проверяет педагог (файлы с решением). */
+  needs_review: boolean;
+  reviewed_at: string | null;
+  /** Оценку поставил педагог вручную. */
+  grade_override: number | null;
+  grade_scale: GradeScaleStored;
   server_time: string;
   proctoring: boolean;
   finished_by_teacher?: boolean;
@@ -1235,6 +1258,9 @@ export const assessment = {
   nextTask: (attemptId: string) => api<Attempt>(`${AS}/attempts/${attemptId}/next`, { method: "POST" }),
   submitAttempt: (attemptId: string) => api<Attempt>(`${AS}/attempts/${attemptId}/submit`, { method: "POST" }),
   recheck: (submissionId: string) => api<Submission>(`${AS}/submissions/${submissionId}/recheck`, { method: "POST" }),
+  /** Проверка работы педагогом: засчитать задания (только изменённые) и оценка (null — по критериям). */
+  reviewAttempt: (attemptId: string, tasks: Record<string, boolean>, grade: number | null) =>
+    api<Attempt>(`${AS}/attempts/${attemptId}/review`, { method: "POST", body: { tasks, grade } }),
 
   review: (id: string, score: number, comment: string) =>
     api<Submission>(`${AS}/submissions/${id}/review`, { method: "POST", body: { score, comment } }),

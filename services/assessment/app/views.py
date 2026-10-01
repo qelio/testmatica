@@ -86,5 +86,5 @@ def submission_out(s: Submission, with_log: bool, urls: dict[str, str] | None = 
         id=s.id, task_id=s.task_id, student_id=s.student_id, context_type=s.context_type, context_id=s.context_id,
         answer=s.answer, files=[FileRef(**f, url=urls.get(f["id"])) for f in s.files], status=s.status, score=s.score,
         failed_case=s.failed_case, failure=s.failure, teacher_comment=s.teacher_comment, created_at=s.created_at,
-        checked_at=s.checked_at, run_log=s.run_log if with_log else None,
+        checked_at=s.checked_at, reviewed_at=s.reviewed_at, run_log=s.run_log if with_log else None,
     )

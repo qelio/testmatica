@@ -1,5 +1,5 @@
 """Живые обновления тестов через WebSocket чата: педагог сразу видит, что ученик начал или сдал работу,
-ученик — что педагог завершил её или сервер видеосвязи увидел показ экрана (прокторинг). Без записи в БД."""
+ученик — что педагог завершил или проверил её, сервер видеосвязи увидел показ экрана (прокторинг). Без записи в БД."""
 
 from uuid import UUID
 
@@ -12,6 +12,7 @@ KINDS = {
     "assessment.attempt.started": "started",
     "assessment.attempt.submitted": "submitted",
     "assessment.attempt.screen": "screen",
+    "assessment.attempt.reviewed": "reviewed",
 }
 
 

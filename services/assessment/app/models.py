@@ -15,6 +15,7 @@ LONG = "long"  # развёрнутый ответ, возможен файл �
 CODE = "code"  # программа на Python, прогон тест-кейсов в песочнице
 TYPES = (CHOICE, SHORT, LONG, CODE)
 AUTO_TYPES = (CHOICE, SHORT, CODE)  # только такие можно добавлять в курсы библиотеки
+SOLUTION_FILE_TYPES = (CHOICE, SHORT)  # в тесте к ним можно запросить файл с решением
 
 # Статусы, как у курсов: приватная задача сразу доступна автору; в публичный банк — через модерацию.
 PRIVATE, PENDING, PUBLISHED, REJECTED = "private", "pending", "published", "rejected"
@@ -250,6 +251,8 @@ class Submission(Base):
 # Просто тест (без урока) / тест на дом (к уроку) / тест на уроке (к уроку, прогресс в реальном времени).
 PLAIN, HOMEWORK, LIVE = "test", "homework", "live"
 IN_PROGRESS, SUBMITTED = "in_progress", "submitted"
+# Процент → оценка по пятибалльной шкале; педагог может задать свои границы при назначении.
+DEFAULT_GRADE_SCALE = {"5": 85, "4": 65, "3": 45}
 
 
 class Test(Base):
@@ -284,6 +287,8 @@ class TestItem(Base):
     task_id: Mapped[UUID] = mapped_column(ForeignKey("tasks.id", ondelete="RESTRICT"), index=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     points: Mapped[int] = mapped_column(SmallInteger, default=1)
+    # Короткий ответ или выбор: ученик прикрепляет файл с решением, работу проверяет педагог (решение №34).
+    solution_file: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
 
 class Assignment(Base):
@@ -315,8 +320,12 @@ class Assignment(Base):
     max_attempts: Mapped[int | None] = mapped_column(SmallInteger)
     # {order_mode, shuffle_options, time_mode, time_limit_s}
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    # [{task_id, points}] — в порядке теста
+    # [{task_id, points, solution_file}] — в порядке теста
     items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    # Критерии оценки: с какого процента ставится 5, 4 и 3 (ниже — 2).
+    grade_scale: Mapped[dict[str, int]] = mapped_column(JSONB, default=lambda: dict(DEFAULT_GRADE_SCALE),
+                                                        server_default='{"5": 85, "4": 65, "3": 45}')
+    # Оценка в журнал — отдельной колонкой работы, без привязки к уроку (у старых работ — колонка урока lesson_id).
     grade_to_journal: Mapped[bool] = mapped_column(Boolean, default=False)
     grade_type_id: Mapped[UUID | None]
     # Прокторинг (тариф «Базовый»): демонстрация экрана ученика, камера по запросу, сигналы о смене вкладки (ТЗ, раздел 7).
@@ -368,7 +377,10 @@ class Attempt(Base):
     max_score: Mapped[float] = mapped_column(Float, default=0)
     percent: Mapped[float | None] = mapped_column(Float)
     grade: Mapped[int | None] = mapped_column(SmallInteger)
-    checked: Mapped[bool] = mapped_column(Boolean, default=False)  # все ответы проверены (код, развёрнутые)
+    checked: Mapped[bool] = mapped_column(Boolean, default=False)  # все ответы проверены (код, развёрнутые, педагогом)
+    # Педагог проверил работу целиком (нужно, если к заданиям прикладывают файлы с решением) и, возможно, сам поставил оценку.
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    grade_override: Mapped[int | None] = mapped_column(SmallInteger)
     proctor_consent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # согласие на мониторинг
     # Прокторинг: показывает ли ученик экран — по данным сервера видеосвязи (событие video.proctor.screen).
     # Без показа ответы не принимаются; screen_changed_at — чтобы запоздавшее событие не перетёрло свежее.
