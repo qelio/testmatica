@@ -23,6 +23,7 @@ from ..schemas import (
     Journal,
     JournalLesson,
     JournalStudent,
+    JournalWork,
 )
 
 router = APIRouter(tags=["journal"])
@@ -35,6 +36,8 @@ def grade_out(g: Grade, type_names: dict[UUID, str]) -> GradeOut:
     return GradeOut(
         id=g.id,
         lesson_id=g.lesson_id,
+        work_id=g.source_ref if g.lesson_id is None else None,
+        title=g.title,
         student_id=g.student_id,
         value=g.value,
         grade_type_id=g.grade_type_id,
@@ -84,13 +87,27 @@ async def journal(
     lessons = [lesson for lesson in lessons if lesson["status"] == "scheduled"]
     lesson_ids = [UUID(lesson["id"]) for lesson in lessons]
 
-    grades = (
+    grades = list(
         (await session.execute(select(Grade).where(Grade.lesson_id.in_(lesson_ids)).order_by(Grade.created_at)))
         .scalars()
         .all()
         if lesson_ids
         else []
     )
+    # Оценки за работы без урока: у группы — работы группе, у ученика — выданные лично ему.
+    work_filter = Grade.group_id == group_id if group_id else (Grade.student_id == student_id) & Grade.group_id.is_(None)
+    grades += (
+        await session.execute(
+            select(Grade)
+            .where(Grade.teacher_id == principal.user_id, Grade.lesson_id.is_(None), work_filter,
+                   Grade.lesson_starts_at >= start, Grade.lesson_starts_at < end)
+            .order_by(Grade.created_at)
+        )
+    ).scalars().all()
+    works: dict[UUID, JournalWork] = {}
+    for g in grades:
+        if g.lesson_id is None and g.source_ref and g.source_ref not in works:
+            works[g.source_ref] = JournalWork(id=g.source_ref, title=g.title or "Работа", at=g.lesson_starts_at)
     marks = (
         (await session.execute(select(Attendance).where(Attendance.lesson_id.in_(lesson_ids)))).scalars().all()
         if lesson_ids
@@ -150,6 +167,7 @@ async def journal(
             )
             for lesson in lessons
         ],
+        works=sorted(works.values(), key=lambda w: w.at),
         students=rows,
         grades=[grade_out(g, types) for g in grades],
         attendance=[AttendanceOut(lesson_id=a.lesson_id, student_id=a.student_id, status=a.status) for a in marks],
@@ -260,7 +278,8 @@ async def _grade_event(session: AsyncSession, event: str, grade: Grade, grade_ty
             "teacher_id": str(grade.teacher_id),
             "teacher_name": await people.name_of(session, grade.teacher_id),
             "student_id": str(grade.student_id),
-            "lesson_id": str(grade.lesson_id),
+            "lesson_id": str(grade.lesson_id) if grade.lesson_id else None,
+            "title": grade.title,
             "lesson_starts_at": grade.lesson_starts_at.isoformat(),
             "subject": grade.subject,
             "value": grade.value,

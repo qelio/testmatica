@@ -16,11 +16,14 @@ from ..deps import auth, classroom, db, media, outbox, plans, schedule
 from ..models import (
     CHECKING,
     CHOICE,
+    CORRECT,
     ERROR,
+    INCORRECT,
     IN_PROGRESS,
     LIVE,
     LONG,
     PROCTOR_ALERTS,
+    REVIEWED,
     SUBMITTED,
     Assignment,
     AssignmentStudent,
@@ -36,6 +39,7 @@ from ..schemas import (
     AssignmentStudentOut,
     AttemptBrief,
     AttemptOut,
+    AttemptReviewIn,
     AttemptStatusOut,
     AttemptTask,
     DraftIn,
@@ -87,7 +91,8 @@ async def assign(
         opens_at=body.opens_at, deadline=body.deadline, max_attempts=body.max_attempts,
         settings={"order_mode": test.order_mode, "shuffle_options": test.shuffle_options, "time_mode": test.time_mode,
                   "time_limit_s": test.time_limit_s},
-        items=[{"task_id": str(i.task_id), "points": i.points} for i in test.items],
+        items=[{"task_id": str(i.task_id), "points": i.points, "solution_file": i.solution_file} for i in test.items],
+        grade_scale=body.grade_scale.stored(),
         grade_to_journal=body.grade_to_journal, grade_type_id=body.grade_type_id if body.grade_to_journal else None,
         proctoring=body.proctoring,
         students=[AssignmentStudent(student_id=s, allowed_attempts=body.max_attempts or 1) for s in student_ids],
@@ -179,7 +184,8 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
         teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, opens_at=a.opens_at,
         deadline=deadline, not_open_yet=not_open_yet, overdue=bool(deadline and now >= deadline), closed=a.closed_at is not None,
         max_attempts=a.max_attempts, attempts_left=attempts_left, settings=a.settings,
-        tasks_count=len(a.items), max_score=sum(i["points"] for i in a.items), grade_to_journal=a.grade_to_journal,
+        tasks_count=len(a.items), max_score=sum(i["points"] for i in a.items), grade_scale=a.grade_scale,
+        needs_review=attempts.needs_review(a), grade_to_journal=a.grade_to_journal,
         grade_type_id=a.grade_type_id, created_at=a.created_at, students=students, can_start=can_start,
     )
 
@@ -365,6 +371,7 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
     subs = await attempts.latest_submissions(session, t.id) if submitted else {}
     urls = await _file_urls([*subs.values(), *[_Files(d.files) for d in drafts.values()]])
     points = {i["task_id"]: i["points"] for i in a.items}
+    with_file = attempts.solution_tasks(a)
     per_task = a.settings.get("time_mode") == "per_task"
 
     out: list[AttemptTask] = []
@@ -387,16 +394,17 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
         out.append(AttemptTask(
             task=view, points=points.get(task_id, 1), answer=answer,
             files=[FileRef(**f, url=urls.get(f["id"])) for f in files],
-            locked=submitted or (per_task and n < t.current_index),
+            locked=submitted or (per_task and n < t.current_index), solution_file=task_id in with_file,
             result=views.submission_out(sub, with_log=teacher_view, urls=urls) if sub else None,
-            earned=attempts._earned(sub, points.get(task_id, 1)) if submitted and t.checked else None,
+            earned=attempts._earned(sub, points.get(task_id, 1)) if submitted and (t.checked or teacher_view) else None,
         ))
     return AttemptOut(
         id=t.id, assignment_id=a.id, title=a.title, student_id=t.student_id, number=t.number, status=t.status,
         settings=a.settings, started_at=t.started_at, ends_at=t.ends_at, current_index=t.current_index,
         current_ends_at=attempts.current_ends_at(t, a) if not submitted else None, submitted_at=t.submitted_at,
         auto_submitted=t.auto_submitted, score=t.score if t.checked or teacher_view else None, max_score=t.max_score,
-        percent=t.percent, grade=t.grade, checked=t.checked, server_time=datetime.now(UTC), proctoring=a.proctoring,
+        percent=t.percent, grade=t.grade, checked=t.checked, needs_review=attempts.needs_review(a), reviewed_at=t.reviewed_at,
+        grade_override=t.grade_override, grade_scale=a.grade_scale, server_time=datetime.now(UTC), proctoring=a.proctoring,
         finished_by_teacher=t.finished_by_teacher, screen_ok=_screen_ok(t, a), tasks=out,
     )
 
@@ -464,7 +472,8 @@ async def save_answer(
 
     files = [f for f in draft.files if UUID(f["id"]) in body.file_ids]
     new_ids = [i for i in body.file_ids if str(i) not in {f["id"] for f in files}]
-    if (new_ids or files) and (task.type != LONG or task.file_mode == "none"):
+    files_allowed = (task.type == LONG and task.file_mode != "none") or str(task_id) in attempts.solution_tasks(a)
+    if (new_ids or files) and not files_allowed:
         raise ApiError(422, "files_not_allowed", "К этому заданию нельзя прикрепить файл")
     if new_ids:
         claimed = await media.post(
@@ -547,6 +556,48 @@ async def recheck(submission_id: UUID, principal: Principal = Depends(teacher), 
                          actor_id=principal.user_id)
     await session.commit()
     return views.submission_out(sub, with_log=True)
+
+
+@router.post("/attempts/{attempt_id}/review", response_model=AttemptOut)
+async def review_attempt(
+    attempt_id: UUID, body: AttemptReviewIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> AttemptOut:
+    """Проверка работы педагогом: засчитать или не засчитать задания (в том числе проверенные автоматически)
+    и поставить оценку вручную (null — по критериям работы). После этого итог виден ученику и уходит в журнал."""
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    if not is_teacher:
+        raise ApiError(404, "attempt_not_found", "Попытка не найдена")
+    if t.status != SUBMITTED:
+        raise ApiError(409, "not_submitted", "Ученик ещё не сдал работу")
+    unknown = [str(i) for i in body.tasks if str(i) not in t.task_order]
+    if unknown:
+        raise ApiError(422, "task_not_found", "Такого задания нет в работе", {"task_ids": unknown})
+    now = datetime.now(UTC)
+    subs = await attempts.latest_submissions(session, t.id)
+    tasks = {x.id: x for x in (await session.execute(select(Task).where(Task.id.in_(list(body.tasks))))).scalars()}
+    for task_id, correct in body.tasks.items():
+        sub = subs.get(task_id)
+        if sub is None:
+            if not correct:
+                continue  # без ответа и так 0 баллов
+            sub = Submission(task_id=task_id, student_id=t.student_id, context_type="assignment", context_id=t.id,
+                             answer={}, files=[], created_at=now)
+            session.add(sub)
+        # Развёрнутый ответ — «проверено педагогом» с полным или нулевым баллом; остальные — верно/неверно.
+        sub.status = REVIEWED if tasks[task_id].type == LONG else CORRECT if correct else INCORRECT
+        sub.score, sub.checked_at = (1.0 if correct else 0.0), sub.checked_at or now
+        sub.reviewer_id, sub.reviewed_at = principal.user_id, now
+    t.reviewed_at, t.grade_override = now, body.grade
+    await session.flush()
+    await attempts.recompute(session, t, a)
+    await outbox.event(
+        session, "assessment.attempt.reviewed",
+        {"attempt_id": str(t.id), "assignment_id": str(a.id), "student_id": str(t.student_id), "teacher_id": str(a.teacher_id),
+         "tasks": {str(k): v for k, v in body.tasks.items()}, "grade": t.grade, "grade_override": body.grade},
+        actor_id=principal.user_id,
+    )
+    await session.commit()
+    return await attempt_out(session, t, a, principal, teacher_view=True)
 
 
 # ---------- прокторинг ----------

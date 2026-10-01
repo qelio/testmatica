@@ -7,14 +7,22 @@ import { useState } from "react";
 import { ExamChips } from "@/components/exams";
 import { TaskPicker } from "@/components/task-picker";
 import { Alert, Badge, Button, Field, Select } from "@/components/ui";
-import { assessment, type Quiz, type QuizInput, type TaskSummary, type TimeMode } from "@/lib/api";
+import { assessment, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TimeMode } from "@/lib/api";
 import { TASK_TYPE_LABELS } from "@/lib/format";
 import { errorText } from "@/lib/hooks";
 
-type Item = { task_id: string; points: number; title: string; task?: TaskSummary };
+type Item = { task_id: string; points: number; solution_file: boolean; title: string; task?: TaskSummary; type?: TaskType };
+
+/** К каким типам задач можно запросить файл с решением (решение №34). */
+const SOLUTION_TYPES = new Set<TaskType>(["short", "choice"]);
 
 const TEXTAREA =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
+
+function canAskFile(item: Item): boolean {
+  const type = item.task?.type ?? item.type;
+  return !!type && SOLUTION_TYPES.has(type);
+}
 
 /** Редактор теста: задачи из банка, баллы, порядок, перемешивание, таймер. Назначают тест в разделе «Назначение тестов». */
 export function TestEditor({ test }: { test?: Quiz }) {
@@ -26,7 +34,7 @@ export function TestEditor({ test }: { test?: Quiz }) {
   const [timeMode, setTimeMode] = useState<TimeMode>(test?.time_mode ?? "none");
   const [minutes, setMinutes] = useState(test?.time_limit_s ? test.time_limit_s / 60 : 20);
   const [items, setItems] = useState<Item[]>(
-    () => test?.items.map((i) => ({ task_id: i.task_id, points: i.points, title: i.task.title, task: i.task })) ?? [],
+    () => test?.items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file, title: i.task.title, task: i.task })) ?? [],
   );
   const [picking, setPicking] = useState(false);
   const [dirty, setDirty] = useState(!test);
@@ -51,13 +59,13 @@ export function TestEditor({ test }: { test?: Quiz }) {
       shuffle_options: shuffle,
       time_mode: timeMode,
       time_limit_s: timeMode === "none" ? null : Math.round(minutes * 60),
-      items: items.map((i) => ({ task_id: i.task_id, points: i.points })),
+      items: items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file && canAskFile(i) })),
     };
     try {
       const saved = test ? await assessment.updateTest(test.id, body) : await assessment.createTest(body);
       setDirty(false);
       if (!test) router.replace(`/dashboard/tests/${saved.id}`);
-      else setItems(saved.items.map((i) => ({ task_id: i.task_id, points: i.points, title: i.task.title, task: i.task })));
+      else setItems(saved.items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file, title: i.task.title, task: i.task })));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -67,6 +75,7 @@ export function TestEditor({ test }: { test?: Quiz }) {
 
   const total = items.reduce((n, i) => n + i.points, 0);
   const hasManual = items.some((i) => i.task?.type === "long");
+  const withFiles = items.some((i) => i.solution_file && canAskFile(i));
 
   return (
     <form className="space-y-6" onSubmit={save}>
@@ -130,6 +139,17 @@ export function TestEditor({ test }: { test?: Quiz }) {
                     </span>
                   )}
                 </span>
+                {canAskFile(item) && (
+                  <label className="flex items-center gap-1.5 text-sm text-fg-soft" title="Ученик прикрепит фото или файл с ходом решения">
+                    <input
+                      type="checkbox"
+                      checked={item.solution_file}
+                      onChange={(e) => change(setItems)(items.map((x, n) => (n === i ? { ...x, solution_file: e.target.checked } : x)))}
+                      className="h-4 w-4 accent-brand"
+                    />
+                    файл с решением
+                  </label>
+                )}
                 <label className="flex items-center gap-1.5 text-sm text-fg-soft">
                   баллы
                   <input
@@ -158,13 +178,19 @@ export function TestEditor({ test }: { test?: Quiz }) {
           </ol>
         )}
         {hasManual && <p className="text-xs text-fg-soft">Развёрнутые ответы проверяете вы — итог и оценка появятся после проверки.</p>}
+        {withFiles && (
+          <p className="text-xs text-fg-soft">
+            К отмеченным заданиям ученик прикрепит файл с решением. Ответы проверятся автоматически и ученик сразу увидит, какие верны, но итог и
+            оценку он получит после вашей проверки — работа будет ждать её в «Назначении тестов».
+          </p>
+        )}
         {picking ? (
           <div className="space-y-2">
             <TaskPicker
               selected={null}
               autoOnly={false}
               exclude={items.map((i) => i.task_id)}
-              onSelect={(id, taskTitle) => change(setItems)([...items, { task_id: id, points: 1, title: taskTitle }])}
+              onSelect={(id, taskTitle, type) => change(setItems)([...items, { task_id: id, points: 1, solution_file: false, title: taskTitle, type }])}
             />
             <Button type="button" variant="ghost" onClick={() => setPicking(false)}>
               Готово

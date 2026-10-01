@@ -56,7 +56,9 @@ class GradeUpdate(BaseModel):
 
 class GradeOut(BaseModel):
     id: UUID
-    lesson_id: UUID
+    lesson_id: UUID | None = Field(description="Урок; пусто — оценка за работу (колонка work_id)")
+    work_id: UUID | None = Field(None, description="Работа из assessment, за которую оценка")
+    title: str | None = Field(None, description="Название работы")
     student_id: UUID
     value: int
     grade_type_id: UUID
@@ -96,6 +98,14 @@ class JournalLesson(BaseModel):
     ktp: list[str] = Field(default_factory=list, description="Темы уроков КТП, привязанных к занятию")
 
 
+class JournalWork(BaseModel):
+    """Колонка журнала для оценок за тест или ДЗ без привязки к уроку."""
+
+    id: UUID = Field(description="id выданной работы в assessment")
+    title: str
+    at: datetime = Field(description="Когда работа назначена")
+
+
 class JournalStudent(BaseModel):
     id: UUID
     full_name: str
@@ -106,6 +116,7 @@ class JournalStudent(BaseModel):
 class Journal(BaseModel):
     title: str
     lessons: list[JournalLesson]
+    works: list[JournalWork] = Field(default_factory=list)
     students: list[JournalStudent]
     grades: list[GradeOut]
     attendance: list[AttendanceOut]

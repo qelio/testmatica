@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from testmatica_common.testing import make_envelope
@@ -15,6 +16,7 @@ async def graded(**data) -> None:
 
 
 async def test_grade_from_test_goes_to_journal(client, world):
+    """Оценка за работу — отдельной колонкой журнала, без привязки к уроку (решение №34)."""
     teacher, pupil = uuid4(), uuid4()
     await add_person(teacher, "Мария Ивановна", ("teacher",))
     group = world.group(teacher, [pupil])
@@ -23,7 +25,8 @@ async def test_grade_from_test_goes_to_journal(client, world):
     assignment = str(uuid4())
     base = {"attempt_id": str(uuid4()), "assignment_id": assignment, "student_id": str(pupil), "teacher_id": str(teacher),
             "title": "Дроби", "kind": "homework", "score": 5, "max_score": 6, "percent": 83.3, "grade": 4,
-            "to_journal": True, "lesson_id": str(lesson), "grade_type_id": type_id}
+            "to_journal": True, "lesson_id": str(lesson), "group_id": str(group), "grade_type_id": type_id,
+            "assigned_at": datetime.now(UTC).isoformat()}
 
     await graded(**base | {"to_journal": False})  # педагог не просил — журнал не трогаем
     assert await outbox("academic.grade.created") == []
@@ -32,6 +35,8 @@ async def test_grade_from_test_goes_to_journal(client, world):
     journal = (await client.get("/journal", params={"group_id": str(group), **period()}, headers=bearer(teacher))).json()
     [grade] = journal["grades"]
     assert grade["value"] == 4 and grade["source"] == "test" and grade["comment"] == "ДЗ «Дроби»: 83.3% (5 из 6)"
+    assert grade["lesson_id"] is None and grade["work_id"] == assignment  # не в колонке урока
+    assert [(w["id"], w["title"]) for w in journal["works"]] == [(assignment, "Дроби")]
     assert (await outbox("academic.grade.created"))[0]["data"]["value"] == 4
 
     # Переназначили, пересдал лучше — оценка обновилась, а не задвоилась.
@@ -39,5 +44,16 @@ async def test_grade_from_test_goes_to_journal(client, world):
     journal = (await client.get("/journal", params={"group_id": str(group), **period()}, headers=bearer(teacher))).json()
     assert [(g["value"], g["comment"]) for g in journal["grades"]] == [(5, "ДЗ «Дроби»: 100% (6 из 6)")]
 
-    # Урок удалён — оценку пропускаем без ошибки.
-    await graded(**base | {"assignment_id": str(uuid4()), "lesson_id": str(uuid4())})
+    # Педагог исправил оценку вручную — та же колонка, в комментарии видно, что оценку поставил он.
+    await graded(**base | {"grade": 3, "by_teacher": True})
+    journal = (await client.get("/journal", params={"group_id": str(group), **period()}, headers=bearer(teacher))).json()
+    assert [(g["value"], g["comment"]) for g in journal["grades"]] == [(3, "ДЗ «Дроби»: 83.3% (5 из 6), оценку поставил педагог")]
+
+    # Работа, выданная лично ученику, — в его журнале, а не в журнале группы.
+    own = str(uuid4())
+    await graded(**base | {"assignment_id": own, "group_id": None, "title": "Лично"})
+    journal = (await client.get("/journal", params={"group_id": str(group), **period()}, headers=bearer(teacher))).json()
+    assert [w["title"] for w in journal["works"]] == ["Дроби"]
+    world.links.add((str(teacher), str(pupil)))
+    personal = (await client.get("/journal", params={"student_id": str(pupil), **period()}, headers=bearer(teacher))).json()
+    assert [w["title"] for w in personal["works"]] == ["Лично"]

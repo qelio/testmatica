@@ -203,6 +203,7 @@ class SubmissionOut(BaseModel):
     teacher_comment: str | None
     created_at: datetime
     checked_at: datetime | None
+    reviewed_at: datetime | None = Field(None, description="Когда проверил или изменил педагог")
     run_log: list[dict[str, Any]] | None = Field(None, description="Протокол прогона — только педагогу")
     task_title: str | None = Field(None, description="Название задачи — в истории ученика для педагога")
     task_type: str | None = None
@@ -335,6 +336,7 @@ class ItemTaskProgress(BaseModel):
 class QuizItemIn(BaseModel):
     task_id: UUID
     points: int = Field(1, ge=1, le=100)
+    solution_file: bool = Field(False, description="Ученик прикрепляет файл с решением (короткий ответ и выбор); проверяет педагог")
 
 
 class QuizIn(BaseModel):
@@ -362,6 +364,7 @@ class QuizIn(BaseModel):
 class QuizItemOut(BaseModel):
     task_id: UUID
     points: int
+    solution_file: bool = False
     task: TaskSummary
 
 
@@ -390,6 +393,23 @@ class QuizSummary(BaseModel):
     updated_at: datetime
 
 
+class GradeScale(BaseModel):
+    """С какого процента ставится оценка; ниже границы «3» — 2."""
+
+    five: int = Field(85, ge=1, le=100)
+    four: int = Field(65, ge=1, le=100)
+    three: int = Field(45, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def _order(self) -> "GradeScale":
+        if not self.five > self.four > self.three:
+            raise ValueError("Границы оценок должны убывать: для «5» — больше, чем для «4», для «4» — больше, чем для «3»")
+        return self
+
+    def stored(self) -> dict[str, int]:
+        return {"5": self.five, "4": self.four, "3": self.three}
+
+
 class AssignIn(BaseModel):
     kind: Literal["test", "homework", "live"] = Field(
         "test", description="Просто тест / тест на дом (к уроку) / тест на уроке (к уроку, прогресс в реальном времени)"
@@ -401,7 +421,8 @@ class AssignIn(BaseModel):
     opens_at: datetime | None = Field(None, description="Когда откроется; по умолчанию — сразу")
     deadline: datetime | None = Field(None, description="Когда закроется; по умолчанию — не закрывается")
     max_attempts: int | None = Field(1, ge=1, le=50, description="Сколько попыток; null — без ограничений (засчитывается лучшая)")
-    grade_to_journal: bool = False
+    grade_scale: GradeScale = Field(default_factory=lambda: GradeScale(), description="Критерии оценки: с какого процента 5, 4, 3")
+    grade_to_journal: bool = Field(False, description="Оценка в журнал — отдельной колонкой работы, без привязки к уроку")
     grade_type_id: UUID | None = None
     proctoring: bool = Field(False, description="Прокторинг — тариф «Базовый»; ученик даёт согласие при старте")
 
@@ -418,8 +439,8 @@ class AssignIn(BaseModel):
             raise ValueError("Выберите урок, к которому относится тест")
         if self.kind == "test":
             self.lesson_id = None
-        if self.grade_to_journal and (self.lesson_id is None or self.grade_type_id is None):
-            raise ValueError("Для оценки в журнал выберите урок и тип оценки")
+        if self.grade_to_journal and self.grade_type_id is None:
+            raise ValueError("Для оценки в журнал выберите тип оценки")
         return self
 
 
@@ -472,6 +493,8 @@ class AssignmentOut(BaseModel):
     settings: dict[str, Any]
     tasks_count: int
     max_score: int
+    grade_scale: dict[str, int] = Field(description="С какого процента 5, 4, 3: {\"5\": 85, \"4\": 65, \"3\": 45}")
+    needs_review: bool = Field(False, description="К заданиям прикладывают файлы с решением — итог после проверки педагогом")
     grade_to_journal: bool
     grade_type_id: UUID | None
     created_at: datetime
@@ -489,6 +512,7 @@ class AttemptTask(BaseModel):
     answer: dict[str, Any] | None
     files: list[FileRef]
     locked: bool = Field(description="Таймер на задание: время вышло или задание пройдено")
+    solution_file: bool = Field(False, description="Нужно прикрепить файл с решением")
     result: SubmissionOut | None = None
     earned: float | None = None
 
@@ -512,6 +536,10 @@ class AttemptOut(BaseModel):
     percent: float | None
     grade: int | None
     checked: bool
+    needs_review: bool = Field(False, description="Работу проверяет педагог (файлы с решением)")
+    reviewed_at: datetime | None = None
+    grade_override: int | None = Field(None, description="Оценку поставил педагог вручную")
+    grade_scale: dict[str, int] = Field(default_factory=dict)
     server_time: datetime = Field(description="Для точного таймера на клиенте")
     proctoring: bool = False
     finished_by_teacher: bool = False
@@ -525,6 +553,13 @@ class AttemptStatusOut(BaseModel):
     status: str
     screen_ok: bool
     finished_by_teacher: bool
+
+
+class AttemptReviewIn(BaseModel):
+    """Проверка работы педагогом: какие задания засчитать (только изменённые) и оценка (null — по критериям)."""
+
+    tasks: dict[UUID, bool] = Field(default_factory=dict, description="id задачи → решено верно")
+    grade: int | None = Field(None, ge=1, le=5)
 
 
 class DraftIn(BaseModel):
