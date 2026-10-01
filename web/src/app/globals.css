@@ -163,3 +163,28 @@ body {
 .tm-editor [data-type="inline-math"]:hover, .tm-editor [data-type="block-math"]:hover { background: var(--muted); }
 .tm-editor [data-type="block-math"] { display: block; text-align: center; padding: 0.4em; }
 
+/* Выравнивание из редактора (:::center … ::: в тексте, text-align у абзаца в редакторе). */
+.prose-tm .tm-align-left { text-align: left; }
+.prose-tm .tm-align-center { text-align: center; }
+.prose-tm .tm-align-right { text-align: right; }
+.prose-tm .tm-align-justify { text-align: justify; }
+.prose-tm img[width] { height: auto; }
+
+/* Уголки для изменения размера картинки в редакторе — видны при наведении и у выделенной картинки. */
+.tm-editor [data-resize-handle] {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--brand);
+  border: 2px solid var(--surface);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 1;
+}
+.tm-editor [data-resize-handle="bottom-right"] { cursor: nwse-resize; }
+.tm-editor [data-resize-handle="bottom-left"] { cursor: nesw-resize; }
+.tm-editor [data-resize-container]:hover [data-resize-handle],
+.tm-editor .ProseMirror-selectednode [data-resize-handle] { opacity: 1; }
+.tm-editor [data-resize-container] { max-width: 100%; vertical-align: bottom; }
+.tm-editor [data-resize-container] img { max-width: 100%; }
+

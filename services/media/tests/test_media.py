@@ -110,3 +110,41 @@ async def test_content_files_by_permanent_link(client):
     private = (await upload(client, user, "диплом.pdf", b"%PDF", purpose="document")).json()
     assert (await client.get(f"/files/{private['id']}/content", follow_redirects=False)).status_code == 404
     assert (await client.get(f"/files/{uuid4()}/content", follow_redirects=False)).status_code == 404
+
+
+async def test_import_refuses_internal_addresses(client):
+    """Картинку с другого сайта сервер скачивает сам — во внутреннюю сеть, к метаданным облака и по чужим схемам не ходит."""
+    user = uuid4()
+    for url in ("http://localhost/x.png", "http://127.0.0.1:8000/x.png", "http://169.254.169.254/latest/meta-data",
+                "http://s3:8333/testmatica/x.png", "http://10.0.0.5/x.png", "ftp://example.com/x.png",
+                "http://user:pw@example.com/x.png", "file:///etc/passwd"):
+        resp = await client.post("/files/import", json={"url": url}, headers=bearer(user))
+        assert resp.status_code == 422 and resp.json()["error"]["code"] == "image_unavailable", url
+    assert (await client.post("/files/import", json={"url": "http://example.com/x.png"})).status_code == 401
+
+
+async def test_import_stores_image_as_content(client, monkeypatch):
+    from app import importer
+
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+
+    async def fake_fetch(url):
+        assert url == "https://ege.example.ru/get_file?id=5"
+        return png, ".png", "image/png"
+
+    monkeypatch.setattr(importer, "fetch_image", fake_fetch)
+    user = uuid4()
+    f = (await client.post("/files/import", json={"url": "https://ege.example.ru/get_file?id=5"}, headers=bearer(user))).json()
+    assert (f["purpose"], f["mime"], f["filename"]) == ("content", "image/png", "get_file.png")
+    loc = (await client.get(f"/files/{f['id']}/content", follow_redirects=False)).headers["location"]
+    async with httpx.AsyncClient() as s3:
+        assert (await s3.get(internal_s3(loc))).content == png
+
+
+def test_image_sniffing():
+    from app.importer import sniff
+
+    assert sniff(b"\xff\xd8\xff\xe0rest") == (".jpg", "image/jpeg")
+    assert sniff(b"RIFF\x00\x00\x00\x00WEBPVP8") == (".webp", "image/webp")
+    assert sniff("<html>не картинка</html>".encode()) is None
+    assert sniff(b"<svg xmlns='http://www.w3.org/2000/svg'/>") is None  # SVG может нести скрипты — не принимаем
