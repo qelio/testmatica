@@ -59,6 +59,9 @@ export function TaskEditor({
   const [preview, setPreview] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  // Пока в редакторе грузится картинка или файл — не сохраняем: их ещё нет в тексте.
+  const [loadingIn, setLoadingIn] = useState<Record<string, boolean>>({});
+  const uploading = Object.values(loadingIn).some(Boolean);
   const set = <K extends keyof TaskInput>(k: K, v: TaskInput[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   async function save(e: React.FormEvent) {
@@ -136,7 +139,12 @@ export function TaskEditor({
             )}
           </div>
         ) : (
-          <RichEditor value={form.statement} onChange={(v) => set("statement", v)} placeholder="Текст задачи. Формулы, картинки и файлы — кнопками на панели" />
+          <RichEditor
+            value={form.statement}
+            onChange={(v) => set("statement", v)}
+            onBusyChange={(b) => setLoadingIn((s) => ({ ...s, statement: b }))}
+            placeholder="Текст задачи. Формулы, картинки и файлы — кнопками на панели"
+          />
         )}
       </div>
 
@@ -241,6 +249,7 @@ export function TaskEditor({
         label="Разбор решения"
         value={form.explanation}
         onChange={(v) => set("explanation", v)}
+        onBusyChange={(b) => setLoadingIn((s) => ({ ...s, explanation: b }))}
         placeholder="Ученик увидит разбор после верного ответа или нескольких попыток"
         minHeight="5rem"
       />
@@ -252,7 +261,7 @@ export function TaskEditor({
             Отмена
           </Button>
         )}
-        <Button type="submit" loading={busy} className="flex-1">
+        <Button type="submit" loading={busy} disabled={uploading} className="flex-1" title={uploading ? "Дождитесь загрузки картинки или файла" : undefined}>
           {task ? "Сохранить" : "Создать задачу"}
         </Button>
       </div>

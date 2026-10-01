@@ -87,6 +87,7 @@ function NewsEditor({ initial, onClose }: { initial: NewsFull | null; onClose: (
   const [coverUrl, setCoverUrl] = useState(initial?.cover_url ?? null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [editorBusy, setEditorBusy] = useState(false); // в тексте грузится картинка или файл
   const set = <K extends keyof NewsInput>(k: K, v: NewsInput[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   async function save(status: NewsInput["status"]) {
@@ -136,12 +137,12 @@ function NewsEditor({ initial, onClose }: { initial: NewsFull | null; onClose: (
           setCoverUrl(null);
         }}
       />
-      <RichEditor label="Текст" value={form.body} onChange={(v) => set("body", v)} placeholder="Текст новости" minHeight="18rem" />
+      <RichEditor label="Текст" value={form.body} onChange={(v) => set("body", v)} onBusyChange={setEditorBusy} placeholder="Текст новости" minHeight="18rem" />
       <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-        <Button loading={busy} disabled={!form.title.trim()} onClick={() => save("published")}>
+        <Button loading={busy} disabled={!form.title.trim() || editorBusy} onClick={() => save("published")}>
           {initial?.status === "published" ? "Сохранить" : "Опубликовать"}
         </Button>
-        <Button variant="secondary" disabled={busy || !form.title.trim()} onClick={() => save("draft")}>
+        <Button variant="secondary" disabled={busy || !form.title.trim() || editorBusy} onClick={() => save("draft")}>
           {initial?.status === "published" ? "Снять с публикации" : "Сохранить черновик"}
         </Button>
         {initial && (
