@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
@@ -140,7 +141,7 @@ function JournalTable({
   onCell: (lessonId: string, studentId: string) => void;
   onAllPresent: (lessonId: string) => void;
 }) {
-  if (journal.lessons.length === 0) {
+  if (journal.lessons.length === 0 && journal.works.length === 0) {
     return <EmptyState title="В этом месяце занятий нет" text="Запланируйте занятия в расписании — они появятся здесь столбцами." />;
   }
   if (journal.students.length === 0) {
@@ -148,7 +149,7 @@ function JournalTable({
   }
   const grades = new Map<string, Grade[]>();
   for (const g of journal.grades) {
-    const key = `${g.lesson_id}:${g.student_id}`;
+    const key = `${g.lesson_id ?? g.work_id}:${g.student_id}`;
     grades.set(key, [...(grades.get(key) ?? []), g]);
   }
   const marks = new Map(journal.attendance.map((a) => [`${a.lesson_id}:${a.student_id}`, a.status]));
@@ -177,6 +178,14 @@ function JournalTable({
                 </th>
               );
             })}
+            {journal.works.map((w) => (
+              <th key={w.id} className="max-w-28 min-w-20 border-l border-line bg-brand/5 px-1.5 py-1.5 text-center font-normal" title={w.title}>
+                <span className="block text-[11px] text-fg-soft">{fmtDate(w.at, { day: "2-digit", month: "2-digit" })}</span>
+                <Link href={`/dashboard/assignments/${w.id}`} className="line-clamp-2 text-xs font-medium hover:text-brand">
+                  {w.title}
+                </Link>
+              </th>
+            ))}
             <th className="border-l border-line px-2 py-2 text-center font-medium">Ср. балл</th>
             <th className="px-2 py-2 text-center font-medium">Посещ.</th>
           </tr>
@@ -215,6 +224,24 @@ function JournalTable({
                   </td>
                 );
               })}
+              {journal.works.map((w) => {
+                const cellGrades = grades.get(`${w.id}:${s.id}`) ?? [];
+                return (
+                  <td key={w.id} className="border-l border-line/70 bg-brand/5 p-0 text-center">
+                    <Link
+                      href={`/dashboard/assignments/${w.id}`}
+                      title={cellGrades.map((g) => `${g.grade_type}. ${g.comment}`).join("\n") || "Оценки пока нет"}
+                      className="flex h-11 w-full items-center justify-center gap-1 hover:bg-muted"
+                    >
+                      {cellGrades.map((g) => (
+                        <span key={g.id} className={`font-semibold ${gradeTone(g.value)}`}>
+                          {g.value}
+                        </span>
+                      ))}
+                    </Link>
+                  </td>
+                );
+              })}
               <td className="border-l border-line px-2 text-center font-semibold">{fmtAverage(s.stats.average)}</td>
               <td className="px-2 text-center text-fg-soft">{fmtRate(s.stats.attendance_rate)}</td>
             </tr>
@@ -223,8 +250,9 @@ function JournalTable({
         <tfoot>
           <tr className="border-t border-line bg-muted/50">
             <td className="sticky left-0 z-10 bg-muted px-3 py-2 font-medium">Итого по {journal.students.length > 1 ? "группе" : "ученику"}</td>
-            <td colSpan={journal.lessons.length} className="border-l border-line px-3 text-xs text-fg-soft">
+            <td colSpan={journal.lessons.length + journal.works.length} className="border-l border-line px-3 text-xs text-fg-soft">
               Н — отсутствовал, О — опоздал, Б — болел, · — присутствовал
+              {journal.works.length > 0 && " · выделенные колонки — оценки за тесты и ДЗ; изменить — на странице работы"}
             </td>
             <td className="border-l border-line px-2 text-center font-semibold">{fmtAverage(journal.stats.average)}</td>
             <td className="px-2 text-center text-fg-soft">{fmtRate(journal.stats.attendance_rate)}</td>

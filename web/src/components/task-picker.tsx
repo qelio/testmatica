@@ -6,7 +6,7 @@ import { ExamChips } from "@/components/exams";
 import { TaskEditor } from "@/components/task-editor";
 import { buildRubric, topicFilter, topicLabel, TopicSelect } from "@/components/topics";
 import { Badge, Button, Modal, Spinner } from "@/components/ui";
-import { assessment } from "@/lib/api";
+import { assessment, type TaskType } from "@/lib/api";
 import { DIFFICULTY_LABELS, TASK_TYPE_LABELS } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
 
@@ -18,7 +18,7 @@ export function TaskPicker({
   exclude = [],
 }: {
   selected: string | null;
-  onSelect: (id: string, title: string) => void;
+  onSelect: (id: string, title: string, type: TaskType) => void;
   autoOnly?: boolean;
   exclude?: string[];
 }) {
@@ -81,7 +81,7 @@ export function TaskPicker({
             <li key={t.id}>
               <button
                 type="button"
-                onClick={() => onSelect(t.id, t.title)}
+                onClick={() => onSelect(t.id, t.title, t.type)}
                 aria-pressed={selected === t.id}
                 className={`flex w-full items-center gap-2 px-2 py-2 text-left text-sm ${selected === t.id ? "bg-brand/10" : "hover:bg-muted"}`}
               >
@@ -106,7 +106,7 @@ export function TaskPicker({
             setCreating(false);
             setScope("mine");
             tasks.reload();
-            onSelect(t.id, t.title);
+            onSelect(t.id, t.title, t.type);
           }}
         />
       </Modal>
