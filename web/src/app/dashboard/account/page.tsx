@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { AvatarUploadButton } from "@/components/avatar-cropper";
+import { NameFields, nameOf, sameName } from "@/components/name-fields";
 import { Alert, Badge, Button, CodeStep, Field, Select, Spinner } from "@/components/ui";
 import { identity, uploadFile, type UserInfo } from "@/lib/api";
 import { ROLE_LABELS, useAuth } from "@/lib/auth";
@@ -137,7 +138,7 @@ function AvatarBlock({ user, onChanged }: { user: UserInfo; onChanged: (u: UserI
 }
 
 function ProfileBlock({ user, onChanged }: { user: UserInfo; onChanged: (u: UserInfo) => void }) {
-  const [name, setName] = useState(user.full_name);
+  const [name, setName] = useState(() => nameOf(user));
   const [tz, setTz] = useState(user.timezone);
   const { run, busy, feedback } = useAction();
   const zones = ZONES.some(([z]) => z === user.timezone) ? ZONES : [[user.timezone, user.timezone] as [string, string], ...ZONES];
@@ -149,13 +150,13 @@ function ProfileBlock({ user, onChanged }: { user: UserInfo; onChanged: (u: User
         onSubmit={(e) => {
           e.preventDefault();
           void run(async () => {
-            onChanged(await identity.updateMe({ full_name: name, timezone: tz }));
+            onChanged(await identity.updateMe({ name, timezone: tz }));
             return "Сохранено";
           });
         }}
       >
+        <NameFields value={name} onChange={setName} />
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Имя и фамилия" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
           <Select label="Часовой пояс" value={tz} onChange={(e) => setTz(e.target.value)}>
             {zones.map(([z, title]) => (
               <option key={z} value={z}>
@@ -169,7 +170,7 @@ function ProfileBlock({ user, onChanged }: { user: UserInfo; onChanged: (u: User
             Логин для входа: <b className="text-fg">{user.login}</b>
           </p>
         )}
-        <Button type="submit" variant="secondary" loading={busy} disabled={name.trim() === user.full_name && tz === user.timezone}>
+        <Button type="submit" variant="secondary" loading={busy} disabled={sameName(name, user) && tz === user.timezone}>
           Сохранить
         </Button>
       </form>

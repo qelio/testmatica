@@ -86,6 +86,7 @@ async def assign(
 
     a = Assignment(
         test_id=test.id, teacher_id=principal.user_id, title=body.title or test.title, test_title=test.title,
+        grade_level=test.grade_level,
         description=test.description, kind=body.kind,
         target_type=body.target_type, target_id=body.target_id, target_title=target_title, lesson_id=body.lesson_id,
         opens_at=body.opens_at, deadline=body.deadline, max_attempts=body.max_attempts,
@@ -120,11 +121,25 @@ async def _answered(session: AsyncSession, attempt_ids: list[UUID]) -> dict[UUID
     return dict(rows.all())
 
 
-def _brief(t: Attempt, answered: int) -> AttemptBrief:
+async def _correct(session: AsyncSession, attempt_ids: list[UUID]) -> dict[UUID, int]:
+    """Сколько заданий решено верно в каждой сданной попытке (развёрнутый ответ — если оценён полностью)."""
+    if not attempt_ids:
+        return {}
+    rows = await session.execute(
+        select(Submission.context_id, func.count(func.distinct(Submission.task_id)))
+        .where(Submission.context_type == "assignment", Submission.context_id.in_(attempt_ids),
+               (Submission.status == CORRECT) | ((Submission.status == REVIEWED) & (Submission.score >= 1)))
+        .group_by(Submission.context_id)
+    )
+    return dict(rows.all())
+
+
+def _brief(t: Attempt, answered: int, correct: dict[UUID, int] | None = None) -> AttemptBrief:
     return AttemptBrief(
         id=t.id, number=t.number, status=t.status, started_at=t.started_at, submitted_at=t.submitted_at,
         auto_submitted=t.auto_submitted, finished_by_teacher=t.finished_by_teacher, screen_sharing=t.screen_sharing,
-        answered=answered, total=len(t.task_order), score=t.score, max_score=t.max_score,
+        answered=answered, total=len(t.task_order),
+        correct=correct.get(t.id, 0) if correct is not None and t.status == SUBMITTED else None, score=t.score, max_score=t.max_score,
         percent=t.percent, grade=t.grade, checked=t.checked,
     )
 
@@ -147,18 +162,21 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
     all_attempts = (await session.execute(query)).scalars().all()
     await _sync_open(session, a, list(all_attempts))
     answered = await _answered(session, [t.id for t in all_attempts])
+    # Педагогу — сколько верно у каждой сданной попытки; ученику — только когда работа проверена.
+    correct = await _correct(session, [t.id for t in all_attempts if t.status == SUBMITTED and (teacher_view or t.checked)])
     alerts: dict[UUID, int] = {}
     if a.proctoring and teacher_view:
         alerts = dict((await session.execute(
             select(ProctorEvent.student_id, func.count()).where(ProctorEvent.assignment_id == a.id, ProctorEvent.kind.in_(PROCTOR_ALERTS))
             .group_by(ProctorEvent.student_id)
         )).all())
-    names = await views.names(session, [r.student_id for r in rows] + [a.teacher_id])
+    names = await views.names(session, [r.student_id for r in rows] + [a.teacher_id] + ([a.target_id] if a.target_type == "student" else []))
     students = sorted(
         (
             AssignmentStudentOut(
                 student_id=r.student_id, full_name=names.get(r.student_id, "Ученик"), allowed_attempts=r.allowed_attempts,
-                attempts=[_brief(t, answered.get(t.id, 0)) for t in all_attempts if t.student_id == r.student_id],
+                attempts=[_brief(t, answered.get(t.id, 0), correct if teacher_view or t.checked else None)
+                          for t in all_attempts if t.student_id == r.student_id],
                 proctor_alerts=alerts.get(r.student_id, 0),
             )
             for r in rows
@@ -178,9 +196,12 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
             and not any(t.status == IN_PROGRESS for t in mine) and (limit is None or len(mine) < limit)
         )
     return AssignmentOut(
-        id=a.id, test_id=a.test_id, title=a.title, test_title=a.test_title, description=a.description, kind=a.kind,
+        id=a.id, test_id=a.test_id, title=a.title, test_title=a.test_title, grade_level=a.grade_level,
+        description=a.description, kind=a.kind,
         proctoring=a.proctoring, target_type=a.target_type,
-        target_id=a.target_id, target_title=a.target_title, teacher_id=a.teacher_id,
+        target_id=a.target_id, teacher_id=a.teacher_id,
+        # Ученику — текущее имя из реплики («Фамилия Имя»), а не копия на момент выдачи.
+        target_title=names.get(a.target_id, a.target_title) if a.target_type == "student" else a.target_title,
         teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, opens_at=a.opens_at,
         deadline=deadline, not_open_yet=not_open_yet, overdue=bool(deadline and now >= deadline), closed=a.closed_at is not None,
         max_attempts=a.max_attempts, attempts_left=attempts_left, settings=a.settings,

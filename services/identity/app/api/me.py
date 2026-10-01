@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
+from testmatica_common.names import PersonName
 
 from .. import avatars, legal_consents, otp, sessions
 from ..config import settings
@@ -24,7 +25,7 @@ STAFF = {"moderator", "admin"}  # им 2FA обязательна без иск�
 
 
 class ProfileIn(BaseModel):
-    full_name: str | None = Field(None, min_length=1, max_length=200)
+    name: PersonName | None = Field(None, description="Фамилия, имя, отчество")
     timezone: str | None = Field(None, min_length=1, max_length=64)
 
     @field_validator("timezone")
@@ -103,8 +104,8 @@ async def update_me(body: ProfileIn, principal: Principal = Depends(auth.princip
     """Имя и часовой пояс. Имя в других сервисах обновится по событию."""
     user = await _load(session, principal, lock=True)
     changed = False
-    if body.full_name is not None and " ".join(body.full_name.split()) != user.full_name:
-        user.full_name, changed = " ".join(body.full_name.split()), True
+    if body.name is not None and user.set_name(body.name):
+        changed = True
     if body.timezone is not None and body.timezone != user.timezone:
         user.timezone, changed = body.timezone, True
     if changed:

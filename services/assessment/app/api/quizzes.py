@@ -38,7 +38,7 @@ async def quiz_out(session: AsyncSession, test: Test) -> QuizOut:
     tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_([i.task_id for i in test.items])))).scalars()}
     summaries = {s.id: s for s in await views.summaries(session, list(tasks.values()))}
     return QuizOut(
-        id=test.id, title=test.title, description=test.description, order_mode=test.order_mode,
+        id=test.id, title=test.title, description=test.description, grade_level=test.grade_level, order_mode=test.order_mode,
         shuffle_options=test.shuffle_options, time_mode=test.time_mode, time_limit_s=test.time_limit_s,
         items=[QuizItemOut(task_id=i.task_id, points=i.points, solution_file=i.solution_file, task=summaries[i.task_id]) for i in test.items if i.task_id in summaries],
         max_score=sum(i.points for i in test.items),
@@ -52,7 +52,7 @@ async def my_tests(principal: Principal = Depends(author), session: AsyncSession
     tests = (await session.execute(select(Test).where(Test.owner_id == principal.user_id).order_by(Test.updated_at.desc()))).scalars().all()
     counts = await _assignments_count(session, [t.id for t in tests])
     return [
-        QuizSummary(id=t.id, title=t.title, tasks_count=len(t.items), max_score=sum(i.points for i in t.items),
+        QuizSummary(id=t.id, title=t.title, grade_level=t.grade_level, tasks_count=len(t.items), max_score=sum(i.points for i in t.items),
                     time_mode=t.time_mode, time_limit_s=t.time_limit_s, assignments_count=counts.get(t.id, 0), updated_at=t.updated_at)
         for t in tests
     ]
@@ -68,7 +68,7 @@ async def _apply(session: AsyncSession, test: Test, body: QuizIn, p: Principal) 
             raise ApiError(422, "task_not_available", "Задача недоступна — возможно, её сняли с публикации")
         if item.solution_file and task.type not in SOLUTION_FILE_TYPES:
             raise ApiError(422, "solution_file_not_allowed", "Файл с решением можно запросить только к короткому ответу и выбору варианта")
-    for field in ("title", "description", "order_mode", "shuffle_options", "time_mode", "time_limit_s"):
+    for field in ("title", "description", "grade_level", "order_mode", "shuffle_options", "time_mode", "time_limit_s"):
         setattr(test, field, getattr(body, field))
     test.items = [TestItem(task_id=i.task_id, points=i.points, solution_file=i.solution_file, position=n) for n, i in enumerate(body.items)]
     test.updated_at = datetime.now(UTC)

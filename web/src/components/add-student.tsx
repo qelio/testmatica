@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { EMPTY_NAME, NameFields } from "@/components/name-fields";
 import { Alert, Button, Field, Modal } from "@/components/ui";
 import { classroom, saveFile, type Student, type StudentCredentials } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -235,7 +236,7 @@ function RequestForm({ groupId, onDone }: { groupId?: string; onDone: () => void
 }
 
 function ManualForm({ groupId, onCreated }: { groupId?: string; onCreated: (c: StudentCredentials) => void }) {
-  const [form, setForm] = useState({ full_name: "", login: "", password: "" });
+  const [form, setForm] = useState({ name: EMPTY_NAME, login: "", password: "" });
   const { loading, error, run } = useSubmit();
   return (
     <form
@@ -245,7 +246,7 @@ function ManualForm({ groupId, onCreated }: { groupId?: string; onCreated: (c: S
         run(async () => {
           onCreated(
             await classroom.createManual({
-              full_name: form.full_name,
+              ...form.name,
               login: form.login || null,
               password: form.password || null,
               group_id: groupId,
@@ -255,12 +256,7 @@ function ManualForm({ groupId, onCreated }: { groupId?: string; onCreated: (c: S
       }}
     >
       <Feedback error={error} />
-      <Field
-        label="Имя и фамилия"
-        required
-        value={form.full_name}
-        onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-      />
+      <NameFields value={form.name} onChange={(name) => setForm({ ...form, name })} idPrefix="new-student" autoComplete={false} />
       <Field
         label="Логин"
         hint="Необязательно — придумаем сами. Латинские буквы и цифры."
@@ -367,13 +363,13 @@ function BulkForm({ groupId, onCreated }: { groupId?: string; onCreated: (r: Bul
     >
       <Feedback error={error} />
       <label className="block">
-        <span className="mb-1.5 block text-sm font-medium">Ученики — по одному на строке</span>
+        <span className="mb-1.5 block text-sm font-medium">Ученики — по одному на строке: фамилия, имя, отчество</span>
         <textarea
           rows={10}
           required
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={"Анна Петрова\nБорис Сидоров\nВика Кузнецова"}
+          placeholder={"Петрова Анна\nСидоров Борис Ильич\nКузнецова Вика"}
           className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
         <span className="mt-1 block text-xs text-fg-soft">

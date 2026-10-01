@@ -40,9 +40,11 @@ async def test_profile_avatar_password(client, files):
     info = (await client.get("/me", headers=me)).json()
     assert info["two_factor_method"] == "email" and info["email_verified"] and info["avatar_url"] is None
 
-    updated = (await client.patch("/me", json={"full_name": "  Анна   Петрова ", "timezone": "Asia/Yekaterinburg"}, headers=me)).json()
-    assert updated["full_name"] == "Анна Петрова" and updated["timezone"] == "Asia/Yekaterinburg"
-    assert (await events("identity.user.updated"))[-1]["data"]["full_name"] == "Анна Петрова"
+    name = {"last_name": "  Петрова ", "first_name": "Анна", "middle_name": "Сергеевна"}
+    updated = (await client.patch("/me", json={"name": name, "timezone": "Asia/Yekaterinburg"}, headers=me)).json()
+    assert updated["full_name"] == "Петрова Анна Сергеевна" and updated["timezone"] == "Asia/Yekaterinburg"
+    assert (updated["last_name"], updated["first_name"], updated["middle_name"]) == ("Петрова", "Анна", "Сергеевна")
+    assert (await events("identity.user.updated"))[-1]["data"]["full_name"] == "Петрова Анна Сергеевна"
     assert (await client.patch("/me", json={"timezone": "Mars/Base"}, headers=me)).status_code == 422
 
     fid = str(uuid4())
@@ -101,7 +103,7 @@ async def test_two_factor_toggle_and_managed_student(client, files):
     assert denied.json()["error"]["code"] == "two_factor_required"
 
     # Ученик без email: включить нельзя, пока не добавит адрес; добавил — вход с кодом включается сам (решение №6).
-    creds = (await client.post("/internal/managed-students", json={"teacher_id": str(uuid4()), "full_name": "Петя"}, headers=H)).json()
+    creds = (await client.post("/internal/managed-students", json={"teacher_id": str(uuid4()), "last_name": "Иванов", "first_name": "Петя"}, headers=H)).json()
     resp = await client.post("/auth/login", json={"identifier": creds["login"], "password": creds["password"]})
     pupil = auth(resp.json())
     assert (await client.get("/me", headers=pupil)).json()["managed"] is True
@@ -118,12 +120,12 @@ async def test_consents_on_first_login(client, files):
     await register(client, "anna@example.com")
     me = auth(await login(client, "anna@example.com"))
     assert (await client.get("/me", headers=me)).json()["consent_required"] is False
-    no_terms = await client.post("/auth/register", json={"email": "b@example.com", "password": PASSWORD, "full_name": "Б",
+    no_terms = await client.post("/auth/register", json={"email": "b@example.com", "password": PASSWORD, "last_name": "Б", "first_name": "Б",
                                                          "role": "student", "consent_pdn": True, "accept_terms": False})
     assert no_terms.status_code == 422
 
     # Ученик, созданный педагогом, — окно согласия при первом входе; без галочек дальше нельзя.
-    creds = (await client.post("/internal/managed-students", json={"teacher_id": str(uuid4()), "full_name": "Петя"}, headers=H)).json()
+    creds = (await client.post("/internal/managed-students", json={"teacher_id": str(uuid4()), "last_name": "Иванов", "first_name": "Петя"}, headers=H)).json()
     pupil = auth((await client.post("/auth/login", json={"identifier": creds["login"], "password": creds["password"]})).json())
     assert (await client.get("/me", headers=pupil)).json()["consent_required"] is True
     bad = await client.post("/me/consents", json={"accept_terms": True, "consent_pdn": False}, headers=pupil)

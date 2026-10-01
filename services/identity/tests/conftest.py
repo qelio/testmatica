@@ -73,7 +73,7 @@ async def register(client: httpx.AsyncClient, email: str, role: str = "student",
         json={
             "email": email,
             "password": PASSWORD,
-            "full_name": "Иван Петров",
+            "last_name": "Петров", "first_name": "Иван",
             "role": role,
             "consent_pdn": True, "accept_terms": True,
         },

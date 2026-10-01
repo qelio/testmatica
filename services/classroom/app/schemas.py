@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from testmatica_common.names import PersonName
 
 
 def _clean(value: str | None) -> str | None:
@@ -67,8 +68,7 @@ class StudentOut(BaseModel):
     lesson_minutes: int | None = None
 
 
-class ManualStudentCreate(BaseModel):
-    full_name: str = Field(min_length=1, max_length=200)
+class ManualStudentCreate(PersonName):
     login: str | None = Field(None, max_length=32)
     password: str | None = Field(None, min_length=6, max_length=128)
     group_id: UUID | None = None
@@ -81,7 +81,8 @@ class StudentCredentials(BaseModel):
 
 
 class BulkStudentsCreate(BaseModel):
-    full_names: list[str] = Field(min_length=1, max_length=40, description="По одному ученику; логин и пароль — автоматически")
+    full_names: list[str] = Field(min_length=1, max_length=40,
+                                  description="По одному ученику: «Фамилия Имя Отчество»; логин и пароль — автоматически")
     group_id: UUID | None = None
 
     @field_validator("full_names")
@@ -118,7 +119,7 @@ class CardsIn(BaseModel):
 
 
 class StudentUpdate(BaseModel):
-    full_name: str = Field(min_length=1, max_length=200)
+    name: PersonName
 
 
 class StudentBilling(BaseModel):

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { EMPTY_NAME, NameFields } from "@/components/name-fields";
 import { Alert, Button, CodeStep, Field } from "@/components/ui";
 import { ApiError, identity } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -19,7 +20,7 @@ const ROLE_OPTIONS: { value: Role; title: string; text: string }[] = [
 export default function RegisterPage() {
   const router = useRouter();
   const { status, signIn } = useAuth();
-  const [form, setForm] = useState({ full_name: "", email: "", password: "", role: "student" as Role, consent: false, terms: false });
+  const [form, setForm] = useState({ ...EMPTY_NAME, email: "", password: "", role: "student" as Role, consent: false, terms: false });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
@@ -42,7 +43,9 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const res = await identity.register({
-        full_name: form.full_name,
+        last_name: form.last_name,
+        first_name: form.first_name,
+        middle_name: form.middle_name,
         email: form.email,
         password: form.password,
         role: form.role,
@@ -132,14 +135,13 @@ export default function RegisterPage() {
         </div>
       </fieldset>
 
-      <Field
-        label="Имя и фамилия"
-        name="full_name"
-        autoComplete="name"
-        required
-        value={form.full_name}
-        error={fieldErrors.full_name}
-        onChange={(e) => update("full_name", e.target.value)}
+      <NameFields
+        value={{ last_name: form.last_name, first_name: form.first_name, middle_name: form.middle_name }}
+        errors={fieldErrors}
+        onChange={(n) => {
+          setForm((f) => ({ ...f, ...n }));
+          setFieldErrors((errs) => ({ ...errs, last_name: "", first_name: "", middle_name: "" }));
+        }}
       />
       <Field
         label="Email"

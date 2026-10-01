@@ -1,7 +1,7 @@
 """Служебные команды.
 
     docker compose exec identity python -m app.cli create-user \
-        --email admin@testmatica.local --name "Администратор" --role admin
+        --email admin@testmatica.local --last-name Иванов --first-name Иван --role admin
 """
 
 import argparse
@@ -11,13 +11,15 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
+from testmatica_common.names import PersonName
+
 from .deps import db, outbox
 from .models import ROLES, STATUS_ACTIVE, User
 from .security import hash_password
 from .users import create_user, find_by_email, person_data
 
 
-async def _create_user(email: str, name: str, role: str, password: str) -> None:
+async def _create_user(email: str, name: PersonName, role: str, password: str) -> None:
     async with db.sessionmaker() as session:
         if await find_by_email(session, email):
             raise SystemExit(f"Пользователь {email} уже существует")
@@ -25,7 +27,7 @@ async def _create_user(email: str, name: str, role: str, password: str) -> None:
             session,
             email=email,
             password_hash=hash_password(password),
-            full_name=name,
+            name=name,
             roles=[role],
             status=STATUS_ACTIVE,
             email_verified_at=datetime.now(UTC),
@@ -53,7 +55,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     create = sub.add_parser("create-user", help="Создать активного пользователя (например, администратора)")
     create.add_argument("--email", required=True)
-    create.add_argument("--name", required=True)
+    create.add_argument("--last-name", required=True, help="Фамилия")
+    create.add_argument("--first-name", required=True, help="Имя")
+    create.add_argument("--middle-name", default="", help="Отчество")
     create.add_argument("--role", choices=ROLES, required=True)
     create.add_argument("--password", help="Если не указан — будет запрошен")
     sub.add_parser("publish-snapshot", help="Разослать данные всех пользователей другим сервисам")
@@ -61,7 +65,8 @@ def main() -> None:
 
     if args.command == "create-user":
         password = args.password or getpass.getpass("Пароль: ")
-        asyncio.run(_create_user(args.email, args.name, args.role, password))
+        name = PersonName(last_name=args.last_name, first_name=args.first_name, middle_name=args.middle_name)
+        asyncio.run(_create_user(args.email, name, args.role, password))
     elif args.command == "publish-snapshot":
         asyncio.run(_publish_snapshot())
 
