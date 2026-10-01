@@ -10,7 +10,7 @@ from testmatica_common.plans import BASIC
 from .. import logic, people
 from ..deps import auth, db, outbox, plans, subjects
 from ..models import Group, GroupMember
-from ..schemas import AddMember, GroupCreate, GroupDetail, GroupOut, GroupUpdate, MemberOut
+from ..schemas import AddMember, GroupCreate, GroupDetail, GroupOut, GroupUpdate, MemberOut, SignedOut
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 teacher = auth.require(ROLE_TEACHER)
@@ -185,6 +185,19 @@ async def restore_group(
         )
         await session.commit()
     return await _reload(session, group)
+
+
+@router.post("/{group_id}/sign-out", response_model=SignedOut)
+async def sign_out_group(
+    group_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> SignedOut:
+    """Выйти из аккаунтов всех учеников класса или группы на всех устройствах — после урока за школьными компьютерами."""
+    group = await logic.owned_group(session, group_id, principal.user_id)
+    ids = list((await session.execute(
+        select(GroupMember.student_id).where(GroupMember.group_id == group.id, GroupMember.left_at.is_(None))
+    )).scalars())
+    await logic.sign_out(principal.user_id, ids)
+    return SignedOut(count=len(ids))
 
 
 @router.post("/{group_id}/members", status_code=204)

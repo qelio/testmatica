@@ -157,6 +157,22 @@ async def update_managed_student(
     return Credentials(user=PersonOut.of(user), login=user.login, password=password)
 
 
+class SignOutIn(BaseModel):
+    teacher_id: UUID
+    user_ids: list[UUID] = Field(min_length=1, max_length=200)
+
+
+@router.post("/sessions/sign-out", status_code=204)
+async def sign_out_students(body: SignOutIn, session: AsyncSession = Depends(db.session)) -> None:
+    """Выйти из аккаунтов учеников на всех устройствах (ученик оставил вход на школьном компьютере).
+    Права проверяет classroom: это ученики педагога. Открытые вкладки закрываются сразу — по событию через WebSocket,
+    остальные устройства выйдут при следующем продлении сессии."""
+    for user_id in body.user_ids:
+        await sessions.revoke_all(session, user_id, sessions.REASON_TEACHER)
+        await outbox.event(session, "identity.user.signed_out", {"user_id": str(user_id), "by": "teacher"}, actor_id=body.teacher_id)
+    await session.commit()
+
+
 class PresenceIn(BaseModel):
     user_ids: list[UUID] = Field(max_length=200)
 

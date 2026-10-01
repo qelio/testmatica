@@ -227,6 +227,7 @@ function StudentModal({
   const [loading, setLoading] = useState(false);
   const [credentials, setCredentials] = useState<StudentCredentials | null>(null);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
 
   function close() {
     setCredentials(null);
@@ -307,6 +308,27 @@ function StudentModal({
             <p className="text-sm text-fg-soft">
               Ученик сам управляет своим аккаунтом: имя и пароль может изменить только он.
             </p>
+          )}
+          {student.status === "active" && (
+            <div>
+              <Button
+                variant="secondary"
+                loading={loading}
+                onClick={() =>
+                  act(async () => {
+                    await classroom.signOutStudent(student.student_id);
+                    setSignedOut(true);
+                  })
+                }
+              >
+                Выйти из аккаунта
+              </Button>
+              <p className="mt-1.5 text-sm text-fg-soft">
+                {signedOut
+                  ? "Готово: вход завершён на всех устройствах. Войти снова можно со своим логином и паролем."
+                  : "Если ученик оставил вход на школьном компьютере — завершить его на всех устройствах."}
+              </p>
+            </div>
           )}
           <div className="border-t border-line pt-4">
             {confirmUnlink ? (
