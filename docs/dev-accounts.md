@@ -13,5 +13,5 @@
 Новый аккаунт с нужной ролью:
 
 ```bash
-docker compose exec identity python -m app.cli create-user --email <email> --name "<Имя>" --role <student|teacher|moderator|admin>
+docker compose exec identity python -m app.cli create-user --email <email> --last-name "<Фамилия>" --first-name "<Имя>" --role <student|teacher|moderator|admin>
 ```

@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.ids import uuid7
+from testmatica_common.names import PersonName
 
 from .deps import outbox
 from .models import User, UserRole
@@ -30,7 +31,7 @@ async def create_user(
     *,
     email: str | None,
     password_hash: str,
-    full_name: str,
+    name: PersonName,
     roles: list[str],
     status: str,
     actor_id: UUID | None = None,
@@ -40,11 +41,11 @@ async def create_user(
         id=uuid7(),
         email=normalize(email) if email else None,
         password_hash=password_hash,
-        full_name=full_name,
         status=status,
         roles=[UserRole(role=r) for r in roles],
         **fields,
     )
+    user.set_name(name)
     session.add(user)
     await session.flush()
     await outbox.event(
@@ -61,6 +62,9 @@ def person_data(user: User) -> dict:
     return {
         "user_id": str(user.id),
         "full_name": user.full_name,
+        "last_name": user.last_name,
+        "first_name": user.first_name,
+        "middle_name": user.middle_name,
         "login": user.login,
         "roles": user.role_names,
         "avatar_file_id": str(user.avatar_file_id) if user.avatar_file_id else None,

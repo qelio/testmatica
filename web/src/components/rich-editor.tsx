@@ -38,7 +38,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Alert, Button, Modal } from "@/components/ui";
 import { contentFileUrl, importImage, isContentFileUrl, uploadFile } from "@/lib/api";
-import { AlignBlock, type Alignment, MdHeading, MdImage, MdParagraph } from "@/lib/editor-markdown";
+import { AlignBlock, type Alignment, MdHeading, MdImage, MdParagraph, MdTable } from "@/lib/editor-markdown";
 import { errorText } from "@/lib/hooks";
 
 const IMAGE_TYPES = "image/png,image/jpeg,image/gif,image/webp";
@@ -89,7 +89,8 @@ export function RichEditor({
         allowBase64: true,
         resize: { enabled: true, directions: ["bottom-right", "bottom-left"], minWidth: 40, minHeight: 20, alwaysPreserveAspectRatio: true },
       }),
-      TableKit.configure({ table: { resizable: false } }),
+      TableKit.configure({ table: false }),
+      MdTable.configure({ resizable: false }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       AlignBlock,
       Mathematics.configure({

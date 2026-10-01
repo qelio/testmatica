@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 
+import { GradeFilter } from "@/components/grade-filter";
 import { Badge, EmptyState, Spinner, Alert } from "@/components/ui";
 import { type Assignment, assessment } from "@/lib/api";
-import { attemptsText, fmtLimit, KIND_LABELS, studentStatus, summary } from "@/lib/assignments";
+import { attemptsText, fmtLimit, gradeLevelLabel, KIND_LABELS, matchesGrade, studentStatus, summary } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 import { useLoad } from "@/lib/hooks";
@@ -46,6 +47,8 @@ function TeacherView() {
 
 function Given() {
   const list = useLoad(() => assessment.assignments("teacher"), []);
+  const [grade, setGrade] = useState("");
+  const [target, setTarget] = useState("");
   if (list.error) return <Alert>{list.error}</Alert>;
   if (!list.data) return <Spinner />;
   if (!list.data.length)
@@ -55,14 +58,46 @@ function Given() {
         text="Соберите тест из задач банка в разделе «Тесты» и назначьте его: просто тестом, домашним заданием к уроку или тестом на уроке."
       />
     );
+  // Кому назначали: группы и ученики — из самих назначений.
+  const targets = [...new Map(list.data.map((a) => [a.target_id, a])).values()].sort(
+    (x, y) => x.target_type.localeCompare(y.target_type) || x.target_title.localeCompare(y.target_title, "ru"),
+  );
+  const shown = list.data.filter((a) => matchesGrade(a.grade_level, grade) && (!target || a.target_id === target));
   return (
-    <ul className="space-y-2">
-      {list.data.map((a) => (
-        <li key={a.id}>
-          <GivenCard a={a} />
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <GradeFilter value={grade} onChange={setGrade} withNone={list.data.some((a) => !a.grade_level)} />
+        <select
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          aria-label="Кому назначен"
+          className="h-10 max-w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
+        >
+          <option value="">Все группы и ученики</option>
+          {["group", "student"].map((type) => {
+            const items = targets.filter((t) => t.target_type === type);
+            return items.length ? (
+              <optgroup key={type} label={type === "group" ? "Группы" : "Ученики"}>
+                {items.map((t) => (
+                  <option key={t.target_id} value={t.target_id}>
+                    {t.target_title}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null;
+          })}
+        </select>
+        {(grade || target) && <span className="text-sm text-fg-soft">Найдено: {shown.length}</span>}
+      </div>
+      {!shown.length && <p className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-fg-soft">Ничего не найдено.</p>}
+      <ul className="space-y-2">
+        {shown.map((a) => (
+          <li key={a.id}>
+            <GivenCard a={a} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -82,6 +117,7 @@ function GivenCard({ a }: { a: Assignment }) {
       <p className="mt-1 text-sm text-fg-soft">
         {[
           a.target_title,
+          gradeLevelLabel(a.grade_level),
           a.not_open_yet && a.opens_at ? `откроется ${fmtDateTime(a.opens_at)}` : null,
           a.deadline ? `до ${fmtDateTime(a.deadline)}` : null,
           attemptsText(a),

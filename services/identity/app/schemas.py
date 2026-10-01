@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from testmatica_common.names import PersonName
 
 from .config import settings
 from .legal import CURRENT, PDN, TERMS
@@ -14,23 +15,14 @@ def _check_password(value: str) -> str:
     return value
 
 
-class RegisterRequest(BaseModel):
+class RegisterRequest(PersonName):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    full_name: str = Field(min_length=1, max_length=200)
     role: Literal["student", "teacher"]
     consent_pdn: bool = Field(description="Согласие на обработку персональных данных — отдельной галочкой (152-ФЗ)")
     accept_terms: bool = Field(description="Принимаю пользовательское соглашение")
 
     _password = field_validator("password")(_check_password)
-
-    @field_validator("full_name")
-    @classmethod
-    def _strip_name(cls, value: str) -> str:
-        value = " ".join(value.split())
-        if not value:
-            raise ValueError("Укажите имя")
-        return value
 
     @field_validator("consent_pdn")
     @classmethod
@@ -86,7 +78,10 @@ class UserOut(BaseModel):
     id: UUID
     email: str | None
     login: str | None
-    full_name: str
+    full_name: str = Field(description="«Фамилия Имя Отчество» — для показа в списках")
+    last_name: str
+    first_name: str = Field(description="Для обращения: «Привет, Мария»")
+    middle_name: str
     roles: list[str]
     two_factor_method: str | None
     timezone: str
@@ -104,6 +99,9 @@ class UserOut(BaseModel):
             email=user.email,
             login=user.login,
             full_name=user.full_name,
+            last_name=user.last_name,
+            first_name=user.first_name,
+            middle_name=user.middle_name,
             roles=user.role_names,
             two_factor_method=user.two_factor_method,
             timezone=user.timezone,

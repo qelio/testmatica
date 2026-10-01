@@ -262,6 +262,7 @@ class Test(Base):
     __table_args__ = (
         CheckConstraint("order_mode IN ('fixed', 'random')", name="order_mode_valid"),
         CheckConstraint("time_mode IN ('none', 'total', 'per_task')", name="time_mode_valid"),
+        CheckConstraint("grade_level BETWEEN 1 AND 11", name="grade_level_valid"),
         Index("ix_tests_owner", "owner_id", "updated_at"),
     )
 
@@ -269,6 +270,7 @@ class Test(Base):
     owner_id: Mapped[UUID]
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
+    grade_level: Mapped[int | None] = mapped_column(SmallInteger)  # для какого класса (1–11); у старых тестов — не указан
     order_mode: Mapped[str] = mapped_column(String(6), default="fixed")  # порядок заданий
     shuffle_options: Mapped[bool] = mapped_column(Boolean, default=False)  # варианты ответа у каждого свои
     time_mode: Mapped[str] = mapped_column(String(8), default="none")  # таймер на весь тест или на каждое задание
@@ -308,6 +310,7 @@ class Assignment(Base):
     # Название назначения («ДЗ к уроку 12 марта») — его видят ученики; test_title — каким был тест при назначении.
     title: Mapped[str] = mapped_column(String(200))
     test_title: Mapped[str] = mapped_column(String(200))
+    grade_level: Mapped[int | None] = mapped_column(SmallInteger)  # класс теста при назначении — для фильтра
     description: Mapped[str] = mapped_column(Text, default="")
     kind: Mapped[str] = mapped_column(String(8))
     target_type: Mapped[str] = mapped_column(String(10))

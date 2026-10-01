@@ -33,7 +33,7 @@ export default function DashboardPage() {
   }, [load]);
 
   if (!user) return null;
-  const firstName = user.full_name.split(" ")[0];
+  const firstName = user.first_name || user.full_name;
   const student = user.roles.includes("student");
 
   return (

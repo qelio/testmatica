@@ -342,6 +342,7 @@ class QuizItemIn(BaseModel):
 class QuizIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field("", max_length=5000)
+    grade_level: int = Field(ge=1, le=11, description="Для какого класса тест (1–11)")
     order_mode: Literal["fixed", "random"] = "fixed"
     shuffle_options: bool = False
     time_mode: Literal["none", "total", "per_task"] = "none"
@@ -372,6 +373,7 @@ class QuizOut(BaseModel):
     id: UUID
     title: str
     description: str
+    grade_level: int | None
     order_mode: str
     shuffle_options: bool
     time_mode: str
@@ -385,6 +387,7 @@ class QuizOut(BaseModel):
 class QuizSummary(BaseModel):
     id: UUID
     title: str
+    grade_level: int | None
     tasks_count: int
     max_score: int
     time_mode: str
@@ -454,6 +457,7 @@ class AttemptBrief(BaseModel):
     finished_by_teacher: bool = False
     screen_sharing: bool = Field(False, description="Прокторинг: показывает экран (по данным сервера видеосвязи)")
     answered: int = Field(description="Сколько заданий с ответом (для прогресса на уроке)")
+    correct: int | None = Field(None, description="Сколько заданий решено верно (после сдачи)")
     total: int
     score: float | None
     max_score: float
@@ -475,6 +479,7 @@ class AssignmentOut(BaseModel):
     test_id: UUID
     title: str = Field(description="Название назначения — его видят ученики")
     test_title: str = Field(description="Название теста на момент назначения — для педагога")
+    grade_level: int | None = Field(None, description="Для какого класса тест")
     description: str
     kind: str
     proctoring: bool = False

@@ -47,7 +47,7 @@ async def test_access_token_is_verifiable_by_other_services(client):
 
 
 async def test_register_validation(client):
-    base = {"email": "a@example.com", "password": PASSWORD, "full_name": "А", "role": "student", "consent_pdn": True, "accept_terms": True}
+    base = {"email": "a@example.com", "password": PASSWORD, "last_name": "Б", "first_name": "А", "role": "student", "consent_pdn": True, "accept_terms": True}
 
     no_consent = await client.post("/auth/register", json={**base, "consent_pdn": False})
     assert no_consent.status_code == 422
@@ -58,6 +58,9 @@ async def test_register_validation(client):
 
     admin = await client.post("/auth/register", json={**base, "role": "admin"})
     assert admin.status_code == 422
+
+    no_surname = await client.post("/auth/register", json={**base, "last_name": "  "})
+    assert no_surname.status_code == 422
 
     assert (await client.post("/auth/register", json=base)).status_code == 201
     dup = await client.post("/auth/register", json={**base, "email": "A@EXAMPLE.COM"})
@@ -70,7 +73,10 @@ async def test_registration_publishes_event(client):
     assert len(registered) == 1
     assert registered[0]["data"] == {
         "user_id": reg["user_id"],
-        "full_name": "Иван Петров",
+        "full_name": "Петров Иван",
+        "last_name": "Петров",
+        "first_name": "Иван",
+        "middle_name": "",
         "login": None,
         "roles": ["student"],
         "avatar_file_id": None,

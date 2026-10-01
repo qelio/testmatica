@@ -51,7 +51,7 @@ export default function ProctoringPage() {
           <Observer assignment={assignment.data} reload={reload} onError={setError} />
         </LiveKitRoom>
       )}
-      <Recordings assignmentId={id} />
+      <Recordings assignmentId={id} version={assignment.data} />
     </div>
   );
 }
@@ -229,8 +229,21 @@ function fmtDuration(seconds: number): string {
   return s ? `${m} мин ${s} с` : `${m} мин`;
 }
 
-function Recordings({ assignmentId }: { assignmentId: string }) {
+/** Записи экранов. Обновляются вместе со статусами учеников (событие или раз в 5 секунд): запись появляется,
+ *  когда ученик начал показ, и становится доступной через несколько секунд после того, как он закончил. */
+function Recordings({ assignmentId, version }: { assignmentId: string; version: unknown }) {
   const list = useLoad(() => video.proctorRecordings(assignmentId), [assignmentId]);
+  const { reload } = list;
+  useEffect(() => {
+    if (version) void reload();
+  }, [version, reload]);
+  // Пока запись дописывается (ученик сдал работу) — проверяем чаще, не дожидаясь событий.
+  const pending = !!list.data?.some((r) => r.status === "recording");
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(reload, 3000);
+    return () => clearInterval(t);
+  }, [pending, reload]);
   if (!list.data?.length) return null;
   return (
     <section className="space-y-2">

@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Ind
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from testmatica_common.ids import uuid7
 from testmatica_common.messaging import messaging_tables
+from testmatica_common.names import PersonName
 
 STATUS_PENDING = "pending_verification"
 STATUS_ACTIVE = "active"
@@ -46,6 +47,11 @@ class User(TimestampMixin, Base):
     login: Mapped[str | None] = mapped_column(String(64), unique=True)
     phone: Mapped[str | None] = mapped_column(String(20))
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Имя по частям (решение №35); full_name — «Фамилия Имя Отчество», собирается из них (set_name) и расходится
+    # по репликам других сервисов, поэтому везде показывается и сортируется по фамилии.
+    last_name: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    first_name: Mapped[str] = mapped_column(String(80), default="", server_default="")
+    middle_name: Mapped[str] = mapped_column(String(80), default="", server_default="")
     full_name: Mapped[str] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(32), default=STATUS_PENDING)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -67,6 +73,13 @@ class User(TimestampMixin, Base):
     @property
     def role_names(self) -> list[str]:
         return sorted(r.role for r in self.roles)
+
+    def set_name(self, name: PersonName) -> bool:
+        """Задать имя; True — если что-то изменилось."""
+        before = (self.last_name, self.first_name, self.middle_name, self.full_name)
+        self.last_name, self.first_name, self.middle_name = name.last_name, name.first_name, name.middle_name
+        self.full_name = name.full_name
+        return before != (self.last_name, self.first_name, self.middle_name, self.full_name)
 
 
 class UserActivity(Base):

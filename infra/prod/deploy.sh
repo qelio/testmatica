@@ -14,7 +14,10 @@ echo "$TOKEN" | docker login --username iam --password-stdin cr.yandex >/dev/nul
 # Тег версии — в .env, чтобы ручной «docker compose up» запускал ту же версию.
 sed -i "s/^TAG=.*/TAG=$TAG/" .env
 
+# Каждая выкладка приносит новые образы всех сервисов — старые версии удаляем (кроме запущенных),
+# иначе диск ВМ заполняется за несколько выкладок. Откат — по тегу из реестра.
+docker image prune -af >/dev/null
 docker compose -f compose.prod.yaml pull
 docker compose -f compose.prod.yaml up -d --remove-orphans
-docker image prune -f >/dev/null
+docker image prune -af >/dev/null
 docker compose -f compose.prod.yaml ps --format 'table {{.Service}}\t{{.Status}}'

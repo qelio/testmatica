@@ -63,3 +63,17 @@ export function fmtLimit(s: { time_mode: string; time_limit_s: number | null }):
   const value = Number.isInteger(min) ? `${min} мин` : `${Math.round(s.time_limit_s)} с`;
   return s.time_mode === "total" ? `${value} на тест` : `${value} на задание`;
 }
+
+/** Классы, для которых бывают тесты. */
+export const GRADE_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+export function gradeLevelLabel(level: number | null | undefined): string | null {
+  return level ? `${level} класс` : null;
+}
+
+/** Фильтр по классу: "" — все, "none" — класс не указан (тесты, созданные до решения №36). */
+export function matchesGrade(level: number | null | undefined, filter: string): boolean {
+  if (!filter) return true;
+  if (filter === "none") return !level;
+  return level === Number(filter);
+}
