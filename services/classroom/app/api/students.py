@@ -21,6 +21,7 @@ from ..schemas import (
     CardsIn,
     LinkRequestCreate,
     ManualStudentCreate,
+    SignedOut,
     StudentBilling,
     StudentCredentials,
     StudentOut,
@@ -232,6 +233,16 @@ async def unlink_student(
         raise ApiError(404, "student_not_found", "Ученик не найден")
     await logic.end_link(session, link, principal.user_id)
     await session.commit()
+
+
+@router.post("/{student_id}/sign-out", response_model=SignedOut)
+async def sign_out_student(
+    student_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> SignedOut:
+    """Выйти из аккаунта ученика на всех устройствах (например, оставил вход на школьном компьютере)."""
+    await logic.active_link(session, principal.user_id, student_id)
+    await logic.sign_out(principal.user_id, [student_id])
+    return SignedOut(count=1)
 
 
 async def _require_managed(session: AsyncSession, teacher_id: UUID, student_id: UUID) -> None:

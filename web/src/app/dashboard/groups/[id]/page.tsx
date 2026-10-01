@@ -20,6 +20,7 @@ export default function GroupPage() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
 
   if (group.error) {
     return (
@@ -34,6 +35,16 @@ export default function GroupPage() {
 
   const memberIds = new Set(g.members.map((m) => m.student_id));
   const candidates = (students.data ?? []).filter((s) => s.status === "active" && !memberIds.has(s.student_id));
+
+  async function signOut(action: () => Promise<{ count: number }>, text: (n: number) => string) {
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      setNotice(text((await action()).count));
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
 
   async function act(action: () => Promise<unknown>) {
     setError(undefined);
@@ -75,8 +86,26 @@ export default function GroupPage() {
           {!g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
         </div>
       </div>
+      {g.members.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-5 py-3 text-sm">
+          <span className="min-w-0 flex-1 text-fg-soft">
+            Ученики оставили вход на школьных компьютерах? Можно выйти из их аккаунтов — на всех устройствах сразу.
+          </span>
+          <Button
+            variant="secondary"
+            className="h-9"
+            onClick={() =>
+              window.confirm(`Выйти из аккаунтов всех учеников «${g.title}» на всех устройствах? Войти снова они смогут со своим логином и паролем.`) &&
+              signOut(() => classroom.signOutGroup(g.id), (n) => `Выход выполнен у учеников: ${n}.`)
+            }
+          >
+            Выйти у всех учеников
+          </Button>
+        </div>
+      )}
 
       {error && <Alert>{error}</Alert>}
+      {notice && <Alert kind="success">{notice}</Alert>}
 
       {g.members.length === 0 ? (
         <EmptyState
@@ -94,6 +123,14 @@ export default function GroupPage() {
                 </Link>
                 {m.login && <p className="font-mono text-sm text-fg-soft">{m.login}</p>}
               </div>
+              <Button
+                variant="ghost"
+                className="h-9 text-fg-soft"
+                title="Выйти из аккаунта ученика на всех устройствах"
+                onClick={() => signOut(() => classroom.signOutStudent(m.student_id), () => `${m.full_name}: выход выполнен на всех устройствах.`)}
+              >
+                Выйти из аккаунта
+              </Button>
               <Button
                 variant="ghost"
                 className="h-9 text-fg-soft"

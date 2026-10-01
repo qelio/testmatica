@@ -83,6 +83,7 @@ flowchart LR
 |---|---|---|
 | `identity.user.registered` | identity | notification, audit |
 | `identity.user.deleted` | identity | все сервисы (обезличивание) |
+| `identity.user.signed_out` | identity | chat (выход на открытых вкладках), audit |
 | `classroom.link.created` (педагог–ученик) | classroom | chat, audit |
 | `classroom.member.added` / `removed` | classroom | chat, schedule |
 | `schedule.lesson.created` / `updated` / `cancelled` | schedule | notification, billing, video, academic |

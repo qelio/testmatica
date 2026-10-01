@@ -30,6 +30,7 @@ runtime.consumer(
     deals.on_marketplace_event,
 )
 runtime.consumer("chat.assessment", [(EVENTS_EXCHANGE, "assessment.attempt.*")], live.on_assessment_event)
+runtime.consumer("chat.signout", [(EVENTS_EXCHANGE, "identity.user.signed_out")], live.on_identity_event)
 runtime.consumer(
     "chat.support",
     [(EVENTS_EXCHANGE, "marketplace.review.disputed"), (EVENTS_EXCHANGE, "marketplace.review.dispute_resolved")],

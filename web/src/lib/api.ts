@@ -306,6 +306,9 @@ export const classroom = {
   updateGroup: (id: string, data: { title?: string; subject?: string | null; description?: string; paid?: boolean }) =>
     api<Group>(`${CR}/groups/${id}`, { method: "PATCH", body: data }),
   archiveGroup: (id: string) => api<Group>(`${CR}/groups/${id}/archive`, { method: "POST" }),
+  /** Выйти из аккаунтов всех учеников группы на всех устройствах (оставили вход на школьных компьютерах). */
+  signOutGroup: (id: string) => api<{ count: number }>(`${CR}/groups/${id}/sign-out`, { method: "POST" }),
+  signOutStudent: (id: string) => api<{ count: number }>(`${CR}/students/${id}/sign-out`, { method: "POST" }),
   restoreGroup: (id: string) => api<Group>(`${CR}/groups/${id}/restore`, { method: "POST" }),
   addMember: (groupId: string, studentId: string) =>
     api<void>(`${CR}/groups/${groupId}/members`, { method: "POST", body: { student_id: studentId } }),

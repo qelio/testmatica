@@ -16,6 +16,12 @@ KINDS = {
 }
 
 
+async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Педагог вывел ученика из аккаунта — открытые вкладки ученика выходят сразу."""
+    if envelope.type == "identity.user.signed_out":
+        await realtime.publish([UUID(envelope.data["user_id"])], {"type": "logout"})
+
+
 async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None:
     kind = KINDS.get(envelope.type)
     if kind is None:

@@ -118,6 +118,10 @@ class CardsIn(BaseModel):
     title: str | None = Field(None, max_length=120, description="Подпись на листе: например, класс")
 
 
+class SignedOut(BaseModel):
+    count: int = Field(description="Скольких учеников вывели из аккаунта")
+
+
 class StudentUpdate(BaseModel):
     name: PersonName
 
