@@ -284,12 +284,19 @@ def _lesson_out(x: PlanLesson) -> PlanLessonOut:
                          done=x.done, **_copy_fields(x))
 
 
+async def _target_titles(session: AsyncSession, plans: list[Plan]) -> dict[UUID, str]:
+    """Для плана ученика — его текущее имя из реплики («Фамилия Имя»), а не копия на момент создания плана."""
+    names = await people.names(session, {x.target_id for x in plans if x.target_type == "student"})
+    return {x.id: names.get(x.target_id, x.target_title) if x.target_type == "student" else x.target_title for x in plans}
+
+
 async def _plan_out(session: AsyncSession, plan: Plan, p: Principal) -> PlanOut:
     await session.refresh(plan)
     slots = await _slots(p, plan, plan.start_date)
+    titles = await _target_titles(session, [plan])
     return PlanOut(
         id=plan.id, title=plan.title, subject=plan.subject, target_type=plan.target_type, target_id=plan.target_id,
-        target_title=plan.target_title, template_id=plan.template_id, start_date=plan.start_date,
+        target_title=titles[plan.id], template_id=plan.template_id, start_date=plan.start_date,
         lessons=[_lesson_out(x) for x in plan.lessons],
         slots=[Slot(id=s["id"], starts_at=s["starts_at"], topic=s["topic"]) for s in slots],
         updated_at=plan.updated_at,
@@ -311,12 +318,13 @@ async def plans(
     if target_id:
         query = query.where(Plan.target_id == target_id)
     rows = (await session.execute(query.order_by(Plan.updated_at.desc()))).scalars().all()
+    titles = await _target_titles(session, list(rows))
     out = []
     for plan in rows:
         upcoming = next((x for x in plan.lessons if not x.done), None)
         out.append(PlanSummary(
             id=plan.id, title=plan.title, subject=plan.subject, target_type=plan.target_type, target_id=plan.target_id,
-            target_title=plan.target_title, lessons_count=len(plan.lessons), done_count=sum(x.done for x in plan.lessons),
+            target_title=titles[plan.id], lessons_count=len(plan.lessons), done_count=sum(x.done for x in plan.lessons),
             next_topic=upcoming.topic if upcoming else None, next_date=upcoming.planned_date if upcoming else None,
             updated_at=plan.updated_at,
         ))

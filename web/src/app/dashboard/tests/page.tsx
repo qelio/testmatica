@@ -1,15 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
+import { GradeFilter } from "@/components/grade-filter";
 import { Alert, EmptyState, Spinner } from "@/components/ui";
 import { assessment } from "@/lib/api";
-import { fmtLimit } from "@/lib/assignments";
+import { fmtLimit, gradeLevelLabel, matchesGrade } from "@/lib/assignments";
 import { useLoad } from "@/lib/hooks";
 
 /** Мои тесты: наборы задач из банка с настройками. Назначают их в разделе «Назначение тестов». */
 export default function TestsPage() {
   const tests = useLoad(() => assessment.tests(), []);
+  const [grade, setGrade] = useState("");
+  const shown = tests.data?.filter((t) => matchesGrade(t.grade_level, grade)) ?? [];
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -24,18 +28,25 @@ export default function TestsPage() {
         </div>
       </div>
       {tests.error && <Alert>{tests.error}</Alert>}
+      {!!tests.data?.length && (
+        <div className="flex flex-wrap items-center gap-3">
+          <GradeFilter value={grade} onChange={setGrade} withNone={tests.data.some((t) => !t.grade_level)} />
+          {grade && <span className="text-sm text-fg-soft">Найдено: {shown.length}</span>}
+        </div>
+      )}
       {!tests.data ? (
         !tests.error && <Spinner />
       ) : !tests.data.length ? (
         <EmptyState title="Тестов пока нет" text="Тест — это набор задач из банка с настройками: порядок, таймер, баллы." />
       ) : (
         <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
-          {tests.data.map((t) => (
+          {!shown.length && <li className="px-5 py-4 text-sm text-fg-soft">Тестов для этого класса нет.</li>}
+          {shown.map((t) => (
             <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 hover:bg-muted">
               <Link href={`/dashboard/tests/${t.id}`} className="min-w-0 flex-1">
                 <span className="font-medium">{t.title}</span>
                 <span className="block text-sm text-fg-soft">
-                  {[`заданий: ${t.tasks_count}`, `баллов: ${t.max_score}`, fmtLimit(t), t.assignments_count ? `назначен ${t.assignments_count} раз` : null]
+                  {[gradeLevelLabel(t.grade_level), `заданий: ${t.tasks_count}`, `баллов: ${t.max_score}`, fmtLimit(t), t.assignments_count ? `назначен ${t.assignments_count} раз` : null]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>

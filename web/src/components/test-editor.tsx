@@ -6,8 +6,10 @@ import { useState } from "react";
 
 import { ExamChips } from "@/components/exams";
 import { TaskPicker } from "@/components/task-picker";
+import { PreviewToggle, TaskPreview } from "@/components/task-preview";
 import { Alert, Badge, Button, Field, Select } from "@/components/ui";
 import { assessment, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TimeMode } from "@/lib/api";
+import { GRADE_LEVELS } from "@/lib/assignments";
 import { TASK_TYPE_LABELS } from "@/lib/format";
 import { errorText } from "@/lib/hooks";
 
@@ -29,6 +31,7 @@ export function TestEditor({ test }: { test?: Quiz }) {
   const router = useRouter();
   const [title, setTitle] = useState(test?.title ?? "");
   const [description, setDescription] = useState(test?.description ?? "");
+  const [gradeLevel, setGradeLevel] = useState(test?.grade_level ? String(test.grade_level) : "");
   const [orderMode, setOrderMode] = useState(test?.order_mode ?? "fixed");
   const [shuffle, setShuffle] = useState(test?.shuffle_options ?? false);
   const [timeMode, setTimeMode] = useState<TimeMode>(test?.time_mode ?? "none");
@@ -37,6 +40,14 @@ export function TestEditor({ test }: { test?: Quiz }) {
     () => test?.items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file, title: i.task.title, task: i.task })) ?? [],
   );
   const [picking, setPicking] = useState(false);
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const toggleOpen = (id: string) =>
+    setOpened((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [dirty, setDirty] = useState(!test);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -55,6 +66,7 @@ export function TestEditor({ test }: { test?: Quiz }) {
     const body: QuizInput = {
       title,
       description,
+      grade_level: Number(gradeLevel),
       order_mode: orderMode,
       shuffle_options: shuffle,
       time_mode: timeMode,
@@ -81,7 +93,17 @@ export function TestEditor({ test }: { test?: Quiz }) {
     <form className="space-y-6" onSubmit={save}>
       {error && <Alert>{error}</Alert>}
       <section className="space-y-4 rounded-2xl border border-line bg-surface p-5">
-        <Field label="Название" required maxLength={200} value={title} onChange={(e) => change(setTitle)(e.target.value)} />
+        <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
+          <Field label="Название" required maxLength={200} value={title} onChange={(e) => change(setTitle)(e.target.value)} />
+          <Select label="Для какого класса" required value={gradeLevel} onChange={(e) => change(setGradeLevel)(e.target.value)}>
+            <option value="">Выберите</option>
+            {GRADE_LEVELS.map((g) => (
+              <option key={g} value={g}>
+                {g} класс
+              </option>
+            ))}
+          </Select>
+        </div>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium">Описание для учеников</span>
           <textarea rows={2} maxLength={5000} className={TEXTAREA} value={description} onChange={(e) => change(setDescription)(e.target.value)} />
@@ -162,6 +184,7 @@ export function TestEditor({ test }: { test?: Quiz }) {
                     aria-label={`Баллы за задание ${i + 1}`}
                   />
                 </label>
+                <PreviewToggle open={opened.has(item.task_id)} onToggle={() => toggleOpen(item.task_id)} />
                 <span className="flex">
                   <button type="button" className="px-1.5 text-fg-soft hover:text-fg disabled:opacity-30" disabled={i === 0} onClick={() => move(i, i - 1)} aria-label="Выше">
                     ↑
@@ -173,6 +196,11 @@ export function TestEditor({ test }: { test?: Quiz }) {
                     ✕
                   </button>
                 </span>
+                {opened.has(item.task_id) && (
+                  <div className="w-full">
+                    <TaskPreview taskId={item.task_id} />
+                  </div>
+                )}
               </li>
             ))}
           </ol>

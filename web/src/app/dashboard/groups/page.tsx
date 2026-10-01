@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { AddStudentModal, CredentialsView } from "@/components/add-student";
 import { BillingSelect, PaidBadge } from "@/components/billing";
+import { NameFields, splitFullName } from "@/components/name-fields";
 import { SubjectSelect } from "@/components/subject-select";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
 import { classroom, type Group, type Invitation, type Student, type StudentCredentials } from "@/lib/api";
@@ -207,7 +208,7 @@ function StudentsTab({
           </li>
         ))}
       </ul>
-      <StudentModal student={editing} onClose={() => setEditing(null)} onChanged={onChanged} />
+      <StudentModal key={editing?.student_id ?? "none"} student={editing} onClose={() => setEditing(null)} onChanged={onChanged} />
     </>
   );
 }
@@ -221,7 +222,7 @@ function StudentModal({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(() => splitFullName(student?.full_name ?? ""));
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [credentials, setCredentials] = useState<StudentCredentials | null>(null);
@@ -231,7 +232,6 @@ function StudentModal({
     setCredentials(null);
     setConfirmUnlink(false);
     setError(undefined);
-    setName("");
     onClose();
   }
 
@@ -277,7 +277,7 @@ function StudentModal({
           {student.managed ? (
             <>
               <form
-                className="flex items-end gap-2"
+                className="space-y-2"
                 onSubmit={(e) => {
                   e.preventDefault();
                   act(async () => {
@@ -287,15 +287,8 @@ function StudentModal({
                   });
                 }}
               >
-                <div className="flex-1">
-                  <Field
-                    label="Имя и фамилия"
-                    required
-                    defaultValue={student.full_name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </div>
-                <Button type="submit" variant="secondary" loading={loading} disabled={!name.trim()}>
+                <NameFields value={name} onChange={setName} idPrefix="student-name" autoComplete={false} />
+                <Button type="submit" variant="secondary" loading={loading} disabled={!name.last_name.trim() || !name.first_name.trim()}>
                   Сохранить
                 </Button>
               </form>

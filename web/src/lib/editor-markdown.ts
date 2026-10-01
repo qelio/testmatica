@@ -7,6 +7,7 @@ import { Extension } from "@tiptap/core";
 import Heading from "@tiptap/extension-heading";
 import Image from "@tiptap/extension-image";
 import Paragraph from "@tiptap/extension-paragraph";
+import { renderTableToMarkdown, Table } from "@tiptap/extension-table";
 
 export const ALIGNMENTS = ["left", "center", "right", "justify"] as const;
 export type Alignment = (typeof ALIGNMENTS)[number];
@@ -67,6 +68,21 @@ export const MdImage = Image.extend({
   renderMarkdown(node) {
     const { src, alt, width } = (node.attrs ?? {}) as { src?: string; alt?: string; width?: number };
     return `![${alt ?? ""}](${src ?? ""}${width ? ` "width=${Math.round(width)}"` : ""})`;
+  },
+});
+
+type MdTableNode = { type?: string; content?: MdTableNode[]; [key: string]: unknown };
+
+/** Таблица: в Markdown у таблицы всегда есть строка заголовка. У вставленной из Word или с сайта таблицы заголовочных
+ *  ячеек нет — без этого появлялась пустая первая строка; теперь заголовком становится первая строка таблицы. */
+export const MdTable = Table.extend({
+  renderMarkdown(node, h) {
+    const table = node as MdTableNode;
+    const [first, ...rest] = table.content ?? [];
+    const hasHeader = !!first?.content?.some((cell) => cell.type === "tableHeader");
+    const fixed =
+      first && !hasHeader ? { ...table, content: [{ ...first, content: first.content?.map((c) => ({ ...c, type: "tableHeader" })) }, ...rest] } : table;
+    return renderTableToMarkdown(fixed as Parameters<typeof renderTableToMarkdown>[0], h);
   },
 });
 

@@ -6,7 +6,7 @@ from app.config import settings
 
 from .conftest import PASSWORD, register, sent_code
 
-BODY = {"email": "anna@example.com", "password": PASSWORD, "full_name": "Анна", "role": "teacher",
+BODY = {"email": "anna@example.com", "password": PASSWORD, "last_name": "Петрова", "first_name": "Анна", "role": "teacher",
         "consent_pdn": True, "accept_terms": True}
 
 

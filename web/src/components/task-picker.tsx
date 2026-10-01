@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ExamChips } from "@/components/exams";
 import { TaskEditor } from "@/components/task-editor";
+import { PreviewToggle, TaskPreview } from "@/components/task-preview";
 import { buildRubric, topicFilter, topicLabel, TopicSelect } from "@/components/topics";
 import { Badge, Button, Modal, Spinner } from "@/components/ui";
 import { assessment, type TaskType } from "@/lib/api";
@@ -22,6 +23,15 @@ export function TaskPicker({
   autoOnly?: boolean;
   exclude?: string[];
 }) {
+  // Раскрытые условия — прочитать задачу, прежде чем добавить.
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const toggle = (id: string) =>
+    setOpened((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [scope, setScope] = useState<"mine" | "public">("mine");
   const [q, setQ] = useState("");
   const [search, setSearch] = useState("");
@@ -76,14 +86,16 @@ export function TaskPicker({
       ) : tasks.data.items.length === 0 ? (
         <p className="py-3 text-center text-sm text-fg-soft">{scope === "mine" ? "У вас пока нет задач — создайте первую." : "Ничего не найдено."}</p>
       ) : (
-        <ul className="max-h-64 divide-y divide-line overflow-y-auto">
+        <ul className="max-h-96 divide-y divide-line overflow-y-auto">
           {tasks.data.items.filter((t) => !exclude.includes(t.id)).map((t) => (
-            <li key={t.id}>
+            <li key={t.id} className={selected === t.id ? "bg-brand/10" : ""}>
+              <div className="flex items-center gap-1 pr-1">
               <button
                 type="button"
                 onClick={() => onSelect(t.id, t.title, t.type)}
                 aria-pressed={selected === t.id}
-                className={`flex w-full items-center gap-2 px-2 py-2 text-left text-sm ${selected === t.id ? "bg-brand/10" : "hover:bg-muted"}`}
+                title="Добавить"
+                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-sm hover:bg-muted"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{t.title}</span>
@@ -94,6 +106,13 @@ export function TaskPicker({
                 <span className="hidden text-xs text-fg-soft sm:inline">{DIFFICULTY_LABELS[t.difficulty]}</span>
                 {scope === "public" && <span className="hidden max-w-32 truncate text-xs text-fg-soft sm:inline">{t.author_name}</span>}
               </button>
+              <PreviewToggle open={opened.has(t.id)} onToggle={() => toggle(t.id)} />
+              </div>
+              {opened.has(t.id) && (
+                <div className="px-2 pb-2">
+                  <TaskPreview taskId={t.id} />
+                </div>
+              )}
             </li>
           ))}
         </ul>

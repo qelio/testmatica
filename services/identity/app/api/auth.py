@@ -49,7 +49,7 @@ async def register(
         session,
         email=body.email,
         password_hash=hash_password(body.password),
-        full_name=body.full_name,
+        name=body,
         roles=[body.role],
         status=STATUS_PENDING if settings.email_codes else STATUS_ACTIVE,
     )

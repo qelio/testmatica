@@ -78,7 +78,7 @@ ssh deploy@$(terraform output -raw vm_ip) chmod 600 /opt/testmatica/.env
 ```bash
 ssh deploy@<vm_ip>
 cd /opt/testmatica
-docker compose -f compose.prod.yaml exec identity python -m app.cli create-user --email admin@testmatica.ru --name "Администратор" --role admin
+docker compose -f compose.prod.yaml exec identity python -m app.cli create-user --email admin@testmatica.ru --last-name "<Фамилия>" --first-name "<Имя>" --role admin
 ```
 
 ### 8. Проверка после запуска

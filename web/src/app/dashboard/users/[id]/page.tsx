@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 
 import { History } from "@/components/audit-list";
+import { NameFields, nameOf } from "@/components/name-fields";
 import { ReasonModal } from "@/components/reviews";
 import { Alert, Badge, Button, Field, Modal, Spinner } from "@/components/ui";
 import { admin, type AdminUser } from "@/lib/api";
@@ -173,7 +174,7 @@ function UserCard({ initial }: { initial: AdminUser }) {
 }
 
 function EditForm({ u, onSaved }: { u: AdminUser; onSaved: (u: AdminUser) => void }) {
-  const [form, setForm] = useState({ full_name: u.full_name, email: u.email ?? "", login: u.login ?? "" });
+  const [form, setForm] = useState({ name: nameOf(u), email: u.email ?? "", login: u.login ?? "" });
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   return (
@@ -185,7 +186,7 @@ function EditForm({ u, onSaved }: { u: AdminUser; onSaved: (u: AdminUser) => voi
         setError(undefined);
         try {
           onSaved(await admin.editUser(u.id, {
-            full_name: form.full_name,
+            name: form.name,
             ...(form.email && form.email !== u.email ? { email: form.email } : {}),
             ...(form.login && form.login !== u.login ? { login: form.login } : {}),
           }));
@@ -198,7 +199,7 @@ function EditForm({ u, onSaved }: { u: AdminUser; onSaved: (u: AdminUser) => voi
     >
       <h2 className="font-semibold">Данные</h2>
       {error && <Alert>{error}</Alert>}
-      <Field label="Имя и фамилия" required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
+      <NameFields value={form.name} onChange={(name) => setForm({ ...form, name })} idPrefix="admin-name" autoComplete={false} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <Field label="Логин" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} />

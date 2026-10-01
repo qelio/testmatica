@@ -50,7 +50,7 @@ async def test_manual_student(client, teacher, fake_identity):
     group = await create_group(client, teacher)
     resp = await client.post(
         "/students/manual",
-        json={"full_name": "Петя Сидоров", "login": "petya", "group_id": group["id"]},
+        json={"last_name": "Сидоров", "first_name": "Петя", "login": "petya", "group_id": group["id"]},
         headers=bearer(teacher),
     )
     assert resp.status_code == 201, resp.text
@@ -62,12 +62,12 @@ async def test_manual_student(client, teacher, fake_identity):
     assert student["group_ids"] == [group["id"]]
 
     detail = (await client.get(f"/groups/{group['id']}", headers=bearer(teacher))).json()
-    assert [m["full_name"] for m in detail["members"]] == ["Петя Сидоров"]
+    assert [m["full_name"] for m in detail["members"]] == ["Сидоров Петя"]
     assert detail["student_count"] == 1
 
     sid = student["student_id"]
-    renamed = await client.patch(f"/students/{sid}", json={"full_name": "Пётр Сидоров"}, headers=bearer(teacher))
-    assert renamed.json()["full_name"] == "Пётр Сидоров"
+    renamed = await client.patch(f"/students/{sid}", json={"name": {"last_name": "Сидоров", "first_name": "Пётр"}}, headers=bearer(teacher))
+    assert renamed.json()["full_name"] == "Сидоров Пётр"
     reset = await client.post(f"/students/{sid}/reset-password", headers=bearer(teacher))
     assert reset.json()["password"] == "new-pass-2"
 
@@ -93,7 +93,7 @@ async def test_link_request_accept_flow(client, teacher, fake_identity):
     assert mine[0]["status"] == "pending" and mine[0]["full_name"] == "Мария Ивановна"
 
     # Нельзя менять аккаунт ученика, который зарегистрировался сам.
-    assert (await client.patch(f"/students/{sid}", json={"full_name": "X"}, headers=bearer(teacher))).status_code == 404
+    assert (await client.patch(f"/students/{sid}", json={"name": {"last_name": "X", "first_name": "Y"}}, headers=bearer(teacher))).status_code == 404
 
     ok = await client.post(f"/me/requests/{mine[0]['link_id']}/accept", headers=student_bearer(sid))
     assert ok.status_code == 204
@@ -138,7 +138,7 @@ async def test_members_require_active_link_and_unlink_removes_from_groups(client
     assert resp.status_code == 404
 
     sid = (
-        await client.post("/students/manual", json={"full_name": "Аня"}, headers=bearer(teacher))
+        await client.post("/students/manual", json={"last_name": "Петрова", "first_name": "Аня"}, headers=bearer(teacher))
     ).json()["student"]["student_id"]
     assert (
         await client.post(f"/groups/{group['id']}/members", json={"student_id": sid}, headers=bearer(teacher))
@@ -216,7 +216,7 @@ async def test_internal_group_and_link_info(client, teacher, fake_identity):
     group = await create_group(client, teacher)
     sid = (
         await client.post(
-            "/students/manual", json={"full_name": "Аня", "group_id": group["id"]}, headers=bearer(teacher)
+            "/students/manual", json={"last_name": "Петрова", "first_name": "Аня", "group_id": group["id"]}, headers=bearer(teacher)
         )
     ).json()["student"]["student_id"]
 
@@ -318,12 +318,15 @@ async def test_group_offer_started_creates_group(client):
 async def test_bulk_students_and_cards_pdf(client, teacher, fake_identity):
     group = await create_group(client, teacher, "3Б")
     resp = await client.post("/students/manual/bulk", json={
-        "full_names": ["Аня Петрова", "  ", "Занятый Логин", "Борис  Сидоров"], "group_id": group["id"]}, headers=bearer(teacher))
+        "full_names": ["Петрова Аня", "  ", "Логин Занятый", "Сидоров  Борис Ильич", "Вася"], "group_id": group["id"]},
+        headers=bearer(teacher))
     assert resp.status_code == 201, resp.text
     data = resp.json()
-    assert [c["student"]["full_name"] for c in data["created"]] == ["Аня Петрова", "Борис Сидоров"]
+    # Строки списка — «Фамилия Имя Отчество».
+    assert [c["student"]["full_name"] for c in data["created"]] == ["Петрова Аня", "Сидоров Борис Ильич"]
     assert all(c["login"] and c["password"] for c in data["created"])
-    assert data["errors"] == [{"full_name": "Занятый Логин", "message": "Такой логин уже занят"}]
+    assert data["errors"] == [{"full_name": "Логин Занятый", "message": "Такой логин уже занят"},
+                              {"full_name": "Вася", "message": "«Вася»: укажите фамилию и имя"}]
     detail = (await client.get(f"/groups/{group['id']}", headers=bearer(teacher))).json()
     assert len(detail["members"]) == 2  # после ошибки со вторым остальные всё равно попали в группу
 

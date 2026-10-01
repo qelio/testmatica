@@ -43,7 +43,8 @@ class FakeIdentity:
             return httpx.Response(200, json=user)
         if path == "/internal/managed-students" and request.method == "POST":
             body = json.loads(request.content)
-            if body["full_name"] == "Занятый Логин":
+            body["full_name"] = " ".join(p for p in (body["last_name"], body["first_name"], body.get("middle_name")) if p)
+            if body["full_name"] == "Логин Занятый":
                 return httpx.Response(409, json={"error": {"code": "login_taken", "message": "Такой логин уже занят"}})
             login = body.get("login") or f"auto{len(self.users)}"
             uid = str(uuid4())
@@ -55,8 +56,9 @@ class FakeIdentity:
             body = json.loads(request.content)
             uid = path.rsplit("/", 1)[1]
             user = next(u for u in self.users.values() if u["id"] == uid)
-            if body.get("full_name"):
-                user["full_name"] = body["full_name"]
+            if body.get("name"):
+                n = body["name"]
+                user["full_name"] = " ".join(p for p in (n["last_name"], n["first_name"], n.get("middle_name")) if p)
             return httpx.Response(
                 200, json={"user": user, "login": user["login"], "password": "new-pass-2" if body.get("reset_password") else None}
             )

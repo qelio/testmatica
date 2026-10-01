@@ -9,6 +9,7 @@ from sqlalchemy import Date, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_ADMIN, Principal
 from testmatica_common.errors import ApiError
+from testmatica_common.names import PersonName
 
 from .. import sessions
 from ..deps import auth, db, outbox
@@ -27,6 +28,9 @@ DELETED_NAME = "Удалённый пользователь"
 class AdminUser(BaseModel):
     id: UUID
     full_name: str
+    last_name: str
+    first_name: str
+    middle_name: str
     email: str | None
     login: str | None
     phone: str | None
@@ -44,7 +48,8 @@ class AdminUser(BaseModel):
     @classmethod
     def of(cls, u: User) -> "AdminUser":
         return cls(
-            id=u.id, full_name=u.full_name, email=u.email, login=u.login, phone=u.phone, roles=u.role_names, status=u.status,
+            id=u.id, full_name=u.full_name, last_name=u.last_name, first_name=u.first_name, middle_name=u.middle_name,
+            email=u.email, login=u.login, phone=u.phone, roles=u.role_names, status=u.status,
             status_reason=u.status_reason, two_factor_method=u.two_factor_method, managed_by_teacher_id=u.managed_by_teacher_id,
             email_verified=u.email_verified_at is not None, created_at=u.created_at, last_seen_at=u.last_seen_at,
             deleted_at=u.deleted_at,
@@ -58,7 +63,7 @@ class UsersPage(BaseModel):
 
 
 class UserEdit(BaseModel):
-    full_name: str | None = Field(None, min_length=1, max_length=200)
+    name: PersonName | None = None
     email: EmailStr | None = None
     login: str | None = Field(None, min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9._-]+$")
 
@@ -153,8 +158,8 @@ async def edit(user_id: UUID, body: UserEdit, principal: Principal = Depends(adm
     if u.anonymized_at:
         raise ApiError(409, "anonymized", "Аккаунт обезличен — изменить нельзя")
     changes = {}
-    if body.full_name is not None and " ".join(body.full_name.split()) != u.full_name:
-        u.full_name = changes["full_name"] = " ".join(body.full_name.split())
+    if body.name is not None and u.set_name(body.name):
+        changes["full_name"] = u.full_name
     for field in ("email", "login"):
         value = getattr(body, field)
         if value is None or normalize(value) == getattr(u, field):
@@ -290,6 +295,7 @@ async def anonymize_deleted() -> None:
             .with_for_update(skip_locked=True).limit(200)
         )).scalars().all()
         for u in rows:
+            u.last_name, u.first_name, u.middle_name = "", "", ""
             u.full_name, u.email, u.phone = DELETED_NAME, None, None
             u.login = f"deleted-{u.id.hex[:12]}"
             u.password_hash = hash_password(_generate_password())

@@ -11,13 +11,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 from testmatica_common.internal import internal_guard
+from testmatica_common.names import PersonName
 
 from .. import avatars, sessions
 from ..config import settings
 from ..deps import db, outbox
 from ..models import STATUS_ACTIVE, User
 from ..security import hash_password
-from ..users import create_user, find_by_identifier, normalize
+from ..users import create_user, find_by_identifier, normalize, person_data
 
 router = APIRouter(prefix="/internal", tags=["internal"], dependencies=[Depends(internal_guard(settings.internal_token))])
 
@@ -34,6 +35,7 @@ _TRANSLIT = dict(
 class PersonOut(BaseModel):
     id: UUID
     full_name: str
+    first_name: str = ""
     login: str | None
     roles: list[str]
     managed_by_teacher_id: UUID | None
@@ -43,15 +45,15 @@ class PersonOut(BaseModel):
         return cls(
             id=user.id,
             full_name=user.full_name,
+            first_name=user.first_name,
             login=user.login,
             roles=user.role_names,
             managed_by_teacher_id=user.managed_by_teacher_id,
         )
 
 
-class ManagedStudentCreate(BaseModel):
+class ManagedStudentCreate(PersonName):
     teacher_id: UUID
-    full_name: str = Field(min_length=1, max_length=200)
     login: str | None = None
     password: str | None = Field(None, min_length=6, max_length=128)
 
@@ -68,7 +70,7 @@ class ManagedStudentCreate(BaseModel):
 
 class ManagedStudentUpdate(BaseModel):
     teacher_id: UUID
-    full_name: str | None = Field(None, min_length=1, max_length=200)
+    name: PersonName | None = None
     reset_password: bool = False
 
 
@@ -78,8 +80,9 @@ class Credentials(BaseModel):
     password: str | None
 
 
-def _generate_login(full_name: str) -> str:
-    base = "".join(_TRANSLIT.get(ch, ch) for ch in full_name.lower().split()[0] if ch.isalnum() or ch in _TRANSLIT)
+def _generate_login(first_name: str) -> str:
+    """Логин из имени (не фамилии) транслитом: «Оля» → olya4821."""
+    base = "".join(_TRANSLIT.get(ch, ch) for ch in first_name.lower().split()[0] if ch.isalnum() or ch in _TRANSLIT)
     base = re.sub(r"[^a-z0-9]", "", base.replace("-", ""))[:20] or "student"
     return f"{base}{secrets.randbelow(9000) + 1000}"
 
@@ -104,7 +107,7 @@ async def create_managed_student(
 ) -> Credentials:
     """Педагог создаёт аккаунт ученика: имя, логин и пароль (авто или вручную), email не нужен."""
     password = body.password or _generate_password()
-    login = body.login or _generate_login(body.full_name)
+    login = body.login or _generate_login(body.first_name)
     if body.login and await find_by_identifier(session, login):
         raise ApiError(409, "login_taken", "Такой логин уже занят")
     for attempt in range(5):
@@ -114,7 +117,7 @@ async def create_managed_student(
                     session,
                     email=None,
                     password_hash=hash_password(password),
-                    full_name=" ".join(body.full_name.split()),
+                    name=body,
                     roles=["student"],
                     status=STATUS_ACTIVE,
                     actor_id=body.teacher_id,
@@ -125,7 +128,7 @@ async def create_managed_student(
         except IntegrityError:
             if body.login or attempt == 4:
                 raise ApiError(409, "login_taken", "Такой логин уже занят") from None
-            login = _generate_login(body.full_name)
+            login = _generate_login(body.first_name)
     await session.commit()
     return Credentials(user=PersonOut.of(user), login=login, password=password)
 
@@ -138,8 +141,8 @@ async def update_managed_student(
     if user is None or user.managed_by_teacher_id != body.teacher_id:
         raise ApiError(404, "user_not_found", "Ученик не найден или управляется другим педагогом")
     password = None
-    if body.full_name:
-        user.full_name = " ".join(body.full_name.split())
+    if body.name:
+        user.set_name(body.name)
     if body.reset_password:
         password = _generate_password()
         user.password_hash = hash_password(password)
@@ -147,7 +150,7 @@ async def update_managed_student(
     await outbox.event(
         session,
         "identity.user.updated",
-        {"user_id": str(user.id), "full_name": user.full_name, "login": user.login, "password_reset": body.reset_password},
+        person_data(user) | {"password_reset": body.reset_password},
         actor_id=body.teacher_id,
     )
     await session.commit()

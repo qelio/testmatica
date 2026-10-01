@@ -1,10 +1,14 @@
 // Клиент API. Все запросы идут на тот же домен: Traefik направляет /api/<сервис>/... в нужный сервис.
 // Access-токен хранится только в памяти; refresh-токен — в httpOnly-cookie, JS его не видит.
 
-export type UserInfo = {
+/** Имя по частям (решение №35); full_name — «Фамилия Имя Отчество» для показа. */
+export type PersonName = { last_name: string; first_name: string; middle_name: string };
+
+export type UserInfo = PersonName & {
   id: string;
   email: string | null;
   login: string | null;
+  /** «Фамилия Имя Отчество» — так имя показывается во всех списках. */
   full_name: string;
   roles: string[];
   two_factor_method: string | null;
@@ -165,7 +169,7 @@ const ID = "/api/identity";
 export const identity = {
   features: () => api<{ email_codes: boolean }>(`${ID}/auth/features`, { auth: false }),
   me: () => api<UserInfo>(`${ID}/me`),
-  updateMe: (data: { full_name?: string; timezone?: string }) => api<UserInfo>(`${ID}/me`, { method: "PATCH", body: data }),
+  updateMe: (data: { name?: PersonName; timezone?: string }) => api<UserInfo>(`${ID}/me`, { method: "PATCH", body: data }),
   setAvatar: (fileId: string | null) => api<UserInfo>(`${ID}/me/avatar`, { method: "PUT", body: { file_id: fileId } }),
   changeEmail: (email: string, password: string) =>
     api<{ challenge_id: string; destination: string }>(`${ID}/me/email`, { method: "POST", body: { email, password } }),
@@ -176,10 +180,9 @@ export const identity = {
   setTwoFactor: (enabled: boolean, password: string) => api<UserInfo>(`${ID}/me/2fa`, { method: "PUT", body: { enabled, password } }),
   giveConsents: (byRepresentative: boolean) =>
     api<UserInfo>(`${ID}/me/consents`, { method: "POST", body: { accept_terms: true, consent_pdn: true, by_representative: byRepresentative } }),
-  register: (data: {
+  register: (data: PersonName & {
     email: string;
     password: string;
-    full_name: string;
     role: "student" | "teacher";
     consent_pdn: boolean;
     accept_terms: boolean;
@@ -310,7 +313,7 @@ export const classroom = {
     api<void>(`${CR}/groups/${groupId}/members/${studentId}`, { method: "DELETE" }),
 
   students: () => api<Student[]>(`${CR}/students`),
-  createManual: (data: { full_name: string; login?: string | null; password?: string | null; group_id?: string | null }) =>
+  createManual: (data: PersonName & { login?: string | null; password?: string | null; group_id?: string | null }) =>
     api<StudentCredentials>(`${CR}/students/manual`, { method: "POST", body: data }),
   createManualBulk: (fullNames: string[], groupId?: string | null) =>
     api<{ created: StudentCredentials[]; errors: { full_name: string; message: string }[] }>(`${CR}/students/manual/bulk`, {
@@ -322,8 +325,7 @@ export const classroom = {
     apiFile(`${CR}/students/cards.pdf`, { body: { students, title: title ?? null } }),
   requestLink: (identifier: string, group_id?: string | null) =>
     api<Student>(`${CR}/students/requests`, { method: "POST", body: { identifier, group_id } }),
-  renameStudent: (id: string, full_name: string) =>
-    api<Student>(`${CR}/students/${id}`, { method: "PATCH", body: { full_name } }),
+  renameStudent: (id: string, name: PersonName) => api<Student>(`${CR}/students/${id}`, { method: "PATCH", body: { name } }),
   resetPassword: (id: string) => api<StudentCredentials>(`${CR}/students/${id}/reset-password`, { method: "POST" }),
   setStudentBilling: (id: string, paid: boolean) => api<Student>(`${CR}/students/${id}/billing`, { method: "PUT", body: { paid } }),
   unlinkStudent: (id: string) => api<void>(`${CR}/students/${id}`, { method: "DELETE" }),
@@ -1012,11 +1014,13 @@ export type ItemTaskProgress = {
 export type TimeMode = "none" | "total" | "per_task";
 export type QuizSettings = { order_mode: "fixed" | "random"; shuffle_options: boolean; time_mode: TimeMode; time_limit_s: number | null };
 export type QuizItemInput = { task_id: string; points: number; solution_file: boolean };
-export type QuizInput = QuizSettings & { title: string; description: string; items: QuizItemInput[] };
+export type QuizInput = QuizSettings & { title: string; description: string; grade_level: number; items: QuizItemInput[] };
 export type Quiz = QuizSettings & {
   id: string;
   title: string;
   description: string;
+  /** Для какого класса (1–11); у старых тестов — null. */
+  grade_level: number | null;
   items: { task_id: string; points: number; solution_file: boolean; task: TaskSummary }[];
   max_score: number;
   assignments_count: number;
@@ -1025,6 +1029,7 @@ export type Quiz = QuizSettings & {
 export type QuizSummary = {
   id: string;
   title: string;
+  grade_level: number | null;
   tasks_count: number;
   max_score: number;
   time_mode: TimeMode;
@@ -1044,6 +1049,8 @@ export type AttemptBrief = {
   /** Прокторинг: сервер видеосвязи видит показ экрана. */
   screen_sharing?: boolean;
   answered: number;
+  /** Сколько заданий решено верно (после сдачи). */
+  correct?: number | null;
   total: number;
   score: number | null;
   max_score: number;
@@ -1058,6 +1065,8 @@ export type Assignment = {
   title: string;
   /** Название теста на момент назначения — для педагога. */
   test_title: string;
+  /** Класс теста на момент назначения. */
+  grade_level: number | null;
   description: string;
   kind: AssignmentKind;
   target_type: "student" | "group";
@@ -1722,7 +1731,7 @@ export const analytics = {
 
 // ---- админ-панель ----
 
-export type AdminUser = {
+export type AdminUser = PersonName & {
   id: string;
   full_name: string;
   email: string | null;
@@ -1785,7 +1794,7 @@ export const admin = {
   users: (p: { q?: string; role?: string; status?: string; ids?: string[]; limit?: number; offset?: number }) =>
     api<{ items: AdminUser[]; total: number }>(`${ID}/admin/users?${qs(p)}`),
   user: (id: string) => api<AdminUser>(`${ID}/admin/users/${id}`),
-  editUser: (id: string, data: { full_name?: string; email?: string; login?: string }) =>
+  editUser: (id: string, data: { name?: PersonName; email?: string; login?: string }) =>
     api<AdminUser>(`${ID}/admin/users/${id}`, { method: "PATCH", body: data }),
   setRoles: (id: string, roles: string[]) => api<AdminUser>(`${ID}/admin/users/${id}/roles`, { method: "PUT", body: { roles } }),
   ban: (id: string, reason: string) => api<AdminUser>(`${ID}/admin/users/${id}/ban`, { method: "POST", body: { reason } }),

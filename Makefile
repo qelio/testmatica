@@ -53,7 +53,7 @@ snapshot: ## Разослать пользователей, группы и пр
 	$(DC) exec classroom python -m app.cli publish-snapshot
 
 admin: ## Создать администратора: make admin email=admin@example.com
-	$(DC) exec identity python -m app.cli create-user --email $(email) --name "Администратор" --role admin
+	$(DC) exec identity python -m app.cli create-user --email $(email) --last-name "$(or $(last),Администратор)" --first-name "$(or $(first),Платформы)" --role admin
 
 db-init: ## Создать базы для новых сервисов (после добавления в SERVICE_DATABASES)
 	$(DC) up -d --wait postgres
