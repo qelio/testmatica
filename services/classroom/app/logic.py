@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 
-from .deps import outbox
+from .deps import identity, outbox
 from .models import LINK_ACTIVE, LINK_ENDED, LINK_PENDING, Group, GroupMember, TeacherStudentLink
 from .people import name_of
 
@@ -30,6 +30,13 @@ async def get_link(session: AsyncSession, teacher_id: UUID, student_id: UUID, lo
     if lock:
         query = query.with_for_update()
     return (await session.execute(query)).scalar_one_or_none()
+
+
+async def sign_out(teacher_id: UUID, student_ids: list[UUID]) -> None:
+    """Выйти из аккаунтов учеников на всех устройствах (оставили вход на школьном компьютере)."""
+    if student_ids:
+        await identity.post("/internal/sessions/sign-out",
+                            json={"teacher_id": str(teacher_id), "user_ids": [str(s) for s in student_ids]})
 
 
 async def active_link(session: AsyncSession, teacher_id: UUID, student_id: UUID) -> TeacherStudentLink:

@@ -24,6 +24,7 @@ REASON_ROTATED = "rotated"
 REASON_LOGOUT = "logout"
 REASON_PASSWORD_RESET = "password_reset"
 REASON_REUSE = "reuse"
+REASON_TEACHER = "teacher_logout"  # педагог вывел ученика из аккаунта (оставил вход на школьном компьютере)
 
 
 def client_ip(request: Request) -> str:
