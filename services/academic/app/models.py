@@ -52,7 +52,8 @@ class GradeType(Base):
 
 
 class Grade(Base):
-    """Оценка ученику за занятие. За одно занятие может быть несколько оценок."""
+    """Оценка ученику за занятие (за одно занятие — сколько угодно) или за работу из assessment —
+    отдельной колонкой журнала без урока (lesson_id пуст, source_ref — id работы, title — её название)."""
 
     __tablename__ = "grades"
     __table_args__ = (
@@ -62,15 +63,18 @@ class Grade(Base):
         Index("ix_grades_lesson", "lesson_id"),
         Index("ix_grades_student_time", "student_id", "lesson_starts_at"),
         Index("ix_grades_group_time", "group_id", "lesson_starts_at"),
+        Index("ix_grades_teacher_works", "teacher_id", "lesson_starts_at", postgresql_where=text("lesson_id IS NULL")),
         Index("uq_grades_test_ref", "source_ref", "student_id", unique=True, postgresql_where=text("source = 'test'")),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     teacher_id: Mapped[UUID]
     student_id: Mapped[UUID]
-    lesson_id: Mapped[UUID]
+    lesson_id: Mapped[UUID | None]
     # Копия данных занятия на момент оценки — для журнала и аналитики без запросов в schedule.
+    # У оценки за работу без урока — когда работа назначена.
     lesson_starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    title: Mapped[str | None] = mapped_column(String(200))  # название работы — заголовок её колонки
     group_id: Mapped[UUID | None]
     subject: Mapped[str | None] = mapped_column(String(80))
     value: Mapped[int] = mapped_column(SmallInteger)

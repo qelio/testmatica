@@ -75,15 +75,23 @@ function AnswerInput({
   const [code, setCode] = useState(item.answer?.code ?? task.starter_code);
   const [files, setFiles] = useState(item.files);
   const uploads = useUploads("answer", 5);
-  const [state, setState] = useState<SaveState>(item.answer ? "saved" : "idle");
+  const [state, setState] = useState<SaveState>(item.answer || item.files.length ? "saved" : "idle");
   const [error, setError] = useState<string>();
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Файлы: развёрнутый ответ (если задача разрешает) или файл с решением, который запросил педагог.
+  const withFiles = (task.type === "long" && task.file_mode !== "none") || item.solution_file;
+
+  function current(): Answer {
+    if (task.type === "choice") return { option_ids: selected };
+    if (task.type === "code") return { code };
+    return { text };
+  }
 
   async function save(answer: Answer, fileIds = files.map((f) => f.id)) {
     setState("saving");
     try {
       const saved = await onSave(answer, fileIds);
-      if (saved && task.type === "long") {
+      if (saved && withFiles) {
         // Сервер вернул прикреплённые файлы — дальше храним их как часть черновика.
         setFiles(saved.files);
         uploads.clear();
@@ -109,7 +117,7 @@ function AnswerInput({
   useEffect(() => {
     if (!uploadedKey || uploadedKey === lastUploaded.current) return;
     lastUploaded.current = uploadedKey;
-    void save({ text }, [...files.map((f) => f.id), ...uploads.ids]);
+    void save(current(), [...files.map((f) => f.id), ...uploads.ids]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadedKey]);
 
@@ -164,30 +172,6 @@ function AnswerInput({
             aria-label="Решение"
             className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
-          {task.file_mode !== "none" && (
-            <div className="flex flex-wrap items-center gap-2">
-              {files.map((f) => (
-                <span key={f.id} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2 py-1 text-sm">
-                  {f.filename}
-                  <button
-                    type="button"
-                    className="text-fg-soft hover:text-danger"
-                    aria-label={`Убрать ${f.filename}`}
-                    onClick={() => {
-                      const rest = files.filter((x) => x.id !== f.id);
-                      setFiles(rest);
-                      void save({ text }, rest.map((x) => x.id));
-                    }}
-                  >
-                    ✕
-                  </button>
-                </span>
-              ))}
-              <AttachButton onFiles={uploads.add} label="Прикрепить файл с решением" />
-              <span className="text-sm text-fg-soft">{task.file_mode === "required" ? "Файл обязателен" : "Можно прикрепить файл"}</span>
-              <UploadChips items={uploads.items.filter((u) => u.status !== "done")} onRemove={uploads.remove} />
-            </div>
-          )}
         </div>
       )}
       {task.type === "code" && (
@@ -203,6 +187,36 @@ function AnswerInput({
           <p className="text-xs text-fg-soft">
             Python · лимит {task.time_limit_s} с, {task.memory_limit_mb} МБ · проверка тестами — после сдачи работы
           </p>
+        </div>
+      )}
+      {withFiles && (
+        <div className={`flex flex-wrap items-center gap-2 ${item.solution_file ? "rounded-xl border border-dashed border-line px-3 py-2.5" : ""}`}>
+          {files.map((f) => (
+            <span key={f.id} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2 py-1 text-sm">
+              {f.filename}
+              <button
+                type="button"
+                className="text-fg-soft hover:text-danger"
+                aria-label={`Убрать ${f.filename}`}
+                onClick={() => {
+                  const rest = files.filter((x) => x.id !== f.id);
+                  setFiles(rest);
+                  void save(current(), rest.map((x) => x.id));
+                }}
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          <AttachButton onFiles={uploads.add} label="Прикрепить файл с решением" />
+          <span className="text-sm text-fg-soft">
+            {item.solution_file
+              ? "Нужно прикрепить фото или файл с ходом решения — его проверит педагог"
+              : task.file_mode === "required"
+                ? "Файл обязателен"
+                : "Можно прикрепить файл"}
+          </span>
+          <UploadChips items={uploads.items.filter((u) => u.status !== "done")} onRemove={uploads.remove} />
         </div>
       )}
       <p className="h-5 text-xs text-fg-soft" aria-live="polite">
@@ -293,11 +307,26 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
     return () => clearInterval(t);
   }, [checking, reload]);
 
+  // Проверка педагогом: какие задания он засчитал или нет (только изменённые).
+  const [marks, setMarks] = useState<Record<string, boolean>>({});
+  const reviewing = teacher && attempt.status === "submitted";
+
   if (inProgress && !teacher) return <Solving attempt={attempt} offset={offset} reload={reload} />;
 
   return (
     <div className="space-y-5">
       <ResultHeader attempt={attempt} teacher={teacher} />
+      {reviewing && (
+        <TeacherReview
+          key={`${attempt.reviewed_at}-${attempt.grade_override}`}
+          attempt={attempt}
+          marks={marks}
+          onSaved={() => {
+            setMarks({});
+            reload();
+          }}
+        />
+      )}
       <ol className="space-y-4">
         {attempt.tasks.map((item, i) => (
           <li key={item.task.id} className="space-y-3 rounded-2xl border border-line bg-surface p-5">
@@ -313,6 +342,7 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
                       {item.earned} из {item.points} б.
                     </span>
                   )}
+                  {item.result.reviewed_at && item.task.type !== "long" && <span className="text-xs text-fg-soft">решение педагога</span>}
                   {teacher && item.result.status === "error" && (
                     <Button
                       variant="secondary"
@@ -332,6 +362,20 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
               </div>
             )}
             {!item.result && !inProgress && <p className="border-t border-line pt-3 text-sm text-fg-soft">Без ответа — 0 баллов</p>}
+            {reviewing && item.task.type !== "long" && (
+              <CountToggle
+                value={marks[item.task.id] ?? isCorrect(item)}
+                changed={item.task.id in marks}
+                onChange={(v) =>
+                  setMarks((m) => {
+                    const next = { ...m };
+                    if (v === isCorrect(item)) delete next[item.task.id];
+                    else next[item.task.id] = v;
+                    return next;
+                  })
+                }
+              />
+            )}
             {!inProgress && item.task.explanation && (
               <details className="rounded-xl border border-ok/40 bg-ok/5 px-4 py-3">
                 <summary className="cursor-pointer font-medium">Разбор решения</summary>
@@ -347,11 +391,108 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
   );
 }
 
+function isCorrect(item: AttemptTask): boolean {
+  const r = item.result;
+  return !!r && (r.status === "correct" || (r.status === "reviewed" && (r.score ?? 0) >= 1));
+}
+
+function gradeFor(percent: number, scale: Attempt["grade_scale"]): number {
+  return percent >= scale["5"] ? 5 : percent >= scale["4"] ? 4 : percent >= scale["3"] ? 3 : 2;
+}
+
+/** Засчитать задание или нет — педагог может изменить и автоматическую проверку. */
+function CountToggle({ value, changed, onChange }: { value: boolean; changed: boolean; onChange: (v: boolean) => void }) {
+  const btn = (active: boolean, tone: string) =>
+    `rounded-lg border px-3 py-1.5 text-sm ${active ? tone : "border-line text-fg-soft hover:text-fg"}`;
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3" role="radiogroup" aria-label="Засчитать задание">
+      <span className="text-sm text-fg-soft">Ваше решение:</span>
+      <button type="button" role="radio" aria-checked={value} onClick={() => onChange(true)} className={btn(value, "border-ok bg-ok/10 text-ok")}>
+        ✓ Верно
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={!value}
+        onClick={() => onChange(false)}
+        className={btn(!value, "border-danger bg-danger/10 text-danger")}
+      >
+        ✗ Неверно
+      </button>
+      {changed && <span className="text-xs text-brand">изменено — сохраните проверку</span>}
+    </div>
+  );
+}
+
+/** Итог проверки педагогом: пересчёт с его отметками, оценка по критериям или своя, подтверждение. */
+function TeacherReview({ attempt, marks, onSaved }: { attempt: Attempt; marks: Record<string, boolean>; onSaved: () => void }) {
+  const [grade, setGrade] = useState(attempt.grade_override ? String(attempt.grade_override) : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const earned = attempt.tasks.reduce((n, t) => n + (t.task.id in marks ? (marks[t.task.id] ? t.points : 0) : (t.earned ?? 0)), 0);
+  const percent = attempt.max_score ? (earned / attempt.max_score) * 100 : 0;
+  const auto = gradeFor(percent, attempt.grade_scale);
+  const changes = Object.keys(marks).length;
+  const gradeChanged = (grade ? Number(grade) : null) !== attempt.grade_override;
+  const confirm = attempt.needs_review && !attempt.reviewed_at;
+  const pendingLong = attempt.tasks.filter((t) => t.result?.status === "pending_review").length;
+  const s = attempt.grade_scale;
+
+  async function save() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await assessment.reviewAttempt(attempt.id, marks, grade ? Number(grade) : null);
+      onSaved();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="sticky top-16 z-10 space-y-3 rounded-2xl border border-brand/40 bg-surface px-5 py-4 shadow-sm">
+      {error && <Alert>{error}</Alert>}
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+        <div className="min-w-0 flex-1 text-sm">
+          <p className="font-medium">
+            {confirm ? "Проверьте решения и подтвердите — тогда ученик увидит итог" : "Проверка работы"}
+          </p>
+          <p className="text-fg-soft">
+            {earned} из {attempt.max_score} б. · {Math.round(percent)}% · по критериям — {auto} (5 от {s["5"]}%, 4 от {s["4"]}%, 3 от {s["3"]}%)
+          </p>
+          {pendingLong > 0 && <p className="text-tutor">Развёрнутых ответов ждут оценки: {pendingLong} — оцените их в карточках ниже.</p>}
+        </div>
+        <label className="text-sm">
+          <span className="mb-1 block font-medium">Оценка</span>
+          <select
+            value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            className="h-10 rounded-xl border border-line bg-surface px-3 outline-none focus:border-brand"
+          >
+            <option value="">По критериям: {auto}</option>
+            {[5, 4, 3, 2, 1].map((g) => (
+              <option key={g} value={g}>
+                {g} — вручную
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button onClick={save} loading={busy} disabled={!confirm && !changes && !gradeChanged} className="h-10">
+          {confirm ? "Подтвердить проверку" : "Сохранить проверку"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TaskHead({ item, n }: { item: AttemptTask; n: number }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="font-semibold">Задание {n}</span>
       <Badge>{TASK_TYPE_LABELS[item.task.type]}</Badge>
+      {item.solution_file && <Badge tone="warn">нужен файл с решением</Badge>}
       <span className="text-fg-soft">
         {item.points} {item.points === 1 ? "балл" : item.points < 5 ? "балла" : "баллов"}
       </span>
@@ -367,6 +508,7 @@ function ResultHeader({ attempt, teacher }: { attempt: Attempt; teacher: boolean
   if (attempt.status === "in_progress") {
     return <Alert kind="info">Ученик ещё решает — здесь видны его текущие ответы.</Alert>;
   }
+  const correct = attempt.tasks.filter(isCorrect).length;
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-line bg-surface px-5 py-4">
       {attempt.checked ? (
@@ -374,8 +516,15 @@ function ResultHeader({ attempt, teacher }: { attempt: Attempt; teacher: boolean
           <span className="text-3xl font-semibold">{attempt.grade}</span>
           <span>
             {attempt.score} из {attempt.max_score} баллов · {Math.round(attempt.percent ?? 0)}%
+            {attempt.grade_override !== null && <span className="text-fg-soft"> · оценку поставил педагог</span>}
           </span>
         </>
+      ) : attempt.needs_review ? (
+        <span>
+          {teacher
+            ? "Ученик прикладывал файлы с решением — посмотрите их и подтвердите проверку. До этого ученик не видит итог и оценку."
+            : `Работа сдана. Верно: ${correct} из ${attempt.tasks.length}. Итоговую оценку педагог поставит после проверки решений.`}
+        </span>
       ) : (
         <span>
           {teacher
@@ -395,6 +544,7 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
   const perTask = attempt.settings.time_mode === "per_task";
   const visible = perTask ? attempt.tasks.filter((t) => !t.locked) : attempt.tasks;
   const [answered, setAnswered] = useState(() => new Set(attempt.tasks.filter((t) => t.answer || t.files.length).map((t) => t.task.id)));
+  const [withFile, setWithFile] = useState(() => new Set(attempt.tasks.filter((t) => t.files.length).map((t) => t.task.id)));
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const total = attempt.tasks.length;
@@ -404,7 +554,14 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
       const res = await assessment.saveAnswer(attempt.id, taskId, answer, fileIds);
       if (res.status !== "in_progress") reload();
       setAnswered((s) => new Set(s).add(taskId));
-      return res.tasks.find((t) => t.task.id === taskId);
+      const saved = res.tasks.find((t) => t.task.id === taskId);
+      setWithFile((s) => {
+        const next = new Set(s);
+        if (saved?.files.length) next.add(taskId);
+        else next.delete(taskId);
+        return next;
+      });
+      return saved;
     } catch (e) {
       // Время вышло или задание закрылось — показать актуальное состояние.
       reload();
@@ -430,7 +587,7 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
 
   return (
     <div className="space-y-5">
-      <div className="sticky top-0 z-10 -mx-4 flex flex-wrap items-center gap-3 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border">
+      <div className="sticky top-16 z-10 -mx-4 flex flex-wrap items-center gap-3 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border">
         <span className="text-sm text-fg-soft">
           {perTask ? `Задание ${attempt.current_index + 1} из ${total}` : `Отвечено: ${answered.size} из ${total}`}
         </span>
@@ -453,7 +610,11 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
         {perTask && !last ? (
           <Button
             loading={busy}
-            onClick={() => window.confirm("Перейти к следующему заданию? Вернуться к этому будет нельзя.") && act(() => assessment.nextTask(attempt.id))}
+            onClick={() => {
+              const cur = attempt.tasks[attempt.current_index];
+              const warn = cur?.solution_file && !withFile.has(cur.task.id) ? "Вы не прикрепили файл с решением. " : "";
+              if (window.confirm(`${warn}Перейти к следующему заданию? Вернуться к этому будет нельзя.`)) act(() => assessment.nextTask(attempt.id));
+            }}
           >
             Следующее задание →
           </Button>
@@ -462,7 +623,10 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
             loading={busy}
             onClick={() => {
               const missing = total - answered.size;
-              const warn = missing > 0 && !perTask ? `Без ответа заданий: ${missing}. ` : "";
+              const noFile = attempt.tasks.flatMap((t, n) => (t.solution_file && !withFile.has(t.task.id) ? [n + 1] : []));
+              const warn =
+                (missing > 0 && !perTask ? `Без ответа заданий: ${missing}. ` : "") +
+                (noFile.length && !perTask ? `Не прикреплено решение к заданиям: ${noFile.join(", ")}. ` : "");
               if (window.confirm(`${warn}Сдать работу? Изменить ответы после сдачи будет нельзя.`)) act(() => assessment.submitAttempt(attempt.id));
             }}
           >

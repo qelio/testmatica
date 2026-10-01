@@ -20,6 +20,7 @@ from .models import (
     CHOICE,
     CODE,
     CORRECT,
+    DEFAULT_GRADE_SCALE,
     ERROR,
     IN_PROGRESS,
     INCORRECT,
@@ -39,13 +40,22 @@ log = logging.getLogger(__name__)
 
 # Запас на сетевые задержки: ответ, отправленный на последней секунде, не должен потеряться.
 GRACE = timedelta(seconds=5)
-# Процент → оценка по пятибалльной шкале.
-GRADE_SCALE = ((85, 5), (65, 4), (45, 3))
 NOT_FINAL = (CHECKING, PENDING_REVIEW, ERROR)
 
 
-def grade_for(percent: float) -> int:
-    return next((g for bound, g in GRADE_SCALE if percent >= bound), 2)
+def grade_for(percent: float, scale: dict[str, int] | None = None) -> int:
+    """Процент → оценка по критериям работы (по умолчанию: от 85% — 5, от 65% — 4, от 45% — 3)."""
+    scale = scale or DEFAULT_GRADE_SCALE
+    return next((g for g in (5, 4, 3) if percent >= scale[str(g)]), 2)
+
+
+def needs_review(a: Assignment) -> bool:
+    """К каким-то заданиям ученик прикладывает файл с решением — итог только после проверки педагогом."""
+    return any(item.get("solution_file") for item in a.items)
+
+
+def solution_tasks(a: Assignment) -> set[str]:
+    return {item["task_id"] for item in a.items if item.get("solution_file")}
 
 
 def per_task_limit(a: Assignment) -> timedelta | None:
@@ -90,20 +100,25 @@ def sync_timer(attempt: Attempt, a: Assignment, now: datetime, deadline: datetim
     return False
 
 
-def build_submission(task: Task, answer: dict, files: list[dict], student_id: UUID, attempt_id: UUID, now: datetime) -> Submission | None:
-    """Черновик → отправка. Пустой или некорректный ответ — не отправка: за задание 0 баллов."""
+def build_submission(task: Task, answer: dict, files: list[dict], student_id: UUID, attempt_id: UUID, now: datetime,
+                     solution_file: bool = False) -> Submission | None:
+    """Черновик → отправка. Пустой или некорректный ответ — не отправка: за задание 0 баллов.
+    solution_file — к короткому ответу или выбору прикладывают файл с решением: он идёт в отправку для педагога,
+    а файл без ответа — отправка с ответом «нет» (0 баллов, педагог может засчитать)."""
     sub = Submission(task_id=task.id, student_id=student_id, context_type="assignment", context_id=attempt_id, created_at=now)
+    if task.type in (CHOICE, SHORT) and solution_file:
+        sub.files = files
     if task.type == CHOICE:
         valid = {str(o.id) for o in task.options}
         chosen = {str(i) for i in answer.get("option_ids") or []}
         if not chosen or not chosen <= valid:
-            return None
+            return _files_only(sub, now) if sub.files else None
         sub.answer = {"option_ids": sorted(chosen)}
         sub.status = CORRECT if checker.check_choice(task, {UUID(i) for i in chosen}) else INCORRECT
     elif task.type == SHORT:
         text = (answer.get("text") or "").strip()
         if not text:
-            return None
+            return _files_only(sub, now) if sub.files else None
         sub.answer = {"text": text[: checker.MAX_ANSWER]}
         sub.status = CORRECT if checker.check_short(task, text) else INCORRECT
     elif task.type == CODE:
@@ -121,6 +136,11 @@ def build_submission(task: Task, answer: dict, files: list[dict], student_id: UU
     return sub
 
 
+def _files_only(sub: Submission, now: datetime) -> Submission:
+    sub.answer, sub.status, sub.score, sub.checked_at = {}, INCORRECT, 0.0, now
+    return sub
+
+
 async def finalize(session: AsyncSession, attempt: Attempt, a: Assignment, auto: bool, by_teacher: UUID | None = None) -> None:
     """Сдать попытку: черновики → отправки на проверку. Повторно сдать нельзя (ТЗ).
     by_teacher — педагог завершил досрочно (кто именно — в событии для аудита)."""
@@ -129,12 +149,12 @@ async def finalize(session: AsyncSession, attempt: Attempt, a: Assignment, auto:
     now = datetime.now(UTC)
     tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_([UUID(i) for i in attempt.task_order])))).scalars()}
     drafts = {d.task_id: d for d in (await session.execute(select(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt.id))).scalars()}
-    code_subs = []
+    code_subs, with_file = [], solution_tasks(a)
     for task_id in attempt.task_order:
         task, draft = tasks.get(UUID(task_id)), drafts.get(UUID(task_id))
         if task is None or draft is None:
             continue
-        sub = build_submission(task, draft.answer, draft.files, attempt.student_id, attempt.id, now)
+        sub = build_submission(task, draft.answer, draft.files, attempt.student_id, attempt.id, now, task_id in with_file)
         if sub is not None:
             session.add(sub)
             if sub.status == CHECKING:
@@ -182,10 +202,11 @@ async def recompute(session: AsyncSession, attempt: Attempt, a: Assignment | Non
     before = (attempt.checked, attempt.score, attempt.grade)
     attempt.max_score = float(sum(points.values()))
     attempt.score = round(sum(_earned(subs.get(UUID(t)), points.get(t, 1)) for t in attempt.task_order), 2)
-    attempt.checked = not any(s.status in NOT_FINAL for s in subs.values())
+    # С файлами решений итог — только после проверки педагогом, даже если всё проверилось автоматически.
+    attempt.checked = not any(s.status in NOT_FINAL for s in subs.values()) and (attempt.reviewed_at is not None or not needs_review(a))
     if attempt.checked:
         attempt.percent = round(attempt.score / attempt.max_score * 100, 1) if attempt.max_score else 0.0
-        attempt.grade = grade_for(attempt.percent)
+        attempt.grade = attempt.grade_override or grade_for(attempt.percent, a.grade_scale)
     else:
         attempt.percent = attempt.grade = None
     if attempt.checked and before != (attempt.checked, attempt.score, attempt.grade):
@@ -195,13 +216,17 @@ async def recompute(session: AsyncSession, attempt: Attempt, a: Assignment | Non
             select(Attempt).where(Attempt.assignment_id == a.id, Attempt.student_id == attempt.student_id,
                                   Attempt.status == SUBMITTED, Attempt.checked.is_(True))
         )).scalars().all()
-        best = max(checked, key=lambda t: (t.percent or 0, t.submitted_at or t.started_at))
+        best = max(checked, key=lambda t: (t.grade or 0, t.percent or 0, t.submitted_at or t.started_at))
+        # Журнал: оценка — в колонке работы (дата — когда назначена; для группы — в журнале группы).
         await outbox.event(
             session, "assessment.attempt.graded",
             {"attempt_id": str(best.id), "assignment_id": str(a.id), "student_id": str(attempt.student_id),
              "teacher_id": str(a.teacher_id), "title": a.title, "kind": a.kind, "score": best.score,
              "max_score": best.max_score, "percent": best.percent, "grade": best.grade, "attempts": len(checked),
+             "by_teacher": best.grade_override is not None,
              "to_journal": a.grade_to_journal, "lesson_id": str(a.lesson_id) if a.lesson_id else None,
+             "group_id": str(a.target_id) if a.target_type == "group" else None,
+             "assigned_at": a.created_at.isoformat() if a.created_at else None,
              "grade_type_id": str(a.grade_type_id) if a.grade_type_id else None},
         )
 

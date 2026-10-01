@@ -30,7 +30,9 @@ function remarkAlign() {
         const known = (ALIGNMENTS as readonly string[]).includes(node.name ?? "");
         node.data = { hName: "div", hProperties: { className: known ? [`tm-align-${node.name}`] : [] } };
       }
-      node.children = node.children?.map((child) => {
+      // Узлы без детей (формулы, картинки) не трогаем: пустое поле children ломает преобразование в HTML.
+      if (!node.children) return;
+      node.children = node.children.map((child) => {
         if (child.type === "textDirective" || child.type === "leafDirective") {
           const { start, end } = child.position ?? { start: {}, end: {} };
           const raw = start.offset != null && end.offset != null ? source.slice(start.offset, end.offset) : `:${child.name ?? ""}`;

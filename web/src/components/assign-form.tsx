@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Alert, Button, Field, Select } from "@/components/ui";
-import { academic, type Assignment, type AssignmentKind, assessment, billing, classroom, schedule } from "@/lib/api";
+import { academic, type Assignment, type AssignmentKind, assessment, billing, classroom, type GradeScale, schedule } from "@/lib/api";
 import { fmtDateTime, fromInputs } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -32,6 +32,66 @@ const ATTEMPTS: { value: string; title: string }[] = [
   { value: "5", title: "Пять" },
   { value: "", title: "Без ограничений" },
 ];
+
+const DEFAULT_SCALE: GradeScale = { five: 85, four: 65, three: 45 };
+const SCALE_PRESETS: { title: string; scale: GradeScale }[] = [
+  { title: "Обычные", scale: DEFAULT_SCALE },
+  { title: "Строгие", scale: { five: 90, four: 75, three: 50 } },
+  { title: "Мягкие", scale: { five: 80, four: 60, three: 40 } },
+];
+
+/** Критерии оценивания: с какого процента ставится 5, 4 и 3 (ниже — 2). */
+function GradeCriteria({ scale, onChange, maxScore }: { scale: GradeScale; onChange: (s: GradeScale) => void; maxScore?: number }) {
+  const valid = scale.five > scale.four && scale.four > scale.three && scale.three >= 1 && scale.five <= 100;
+  const points = (p: number) => Math.ceil((p / 100) * (maxScore ?? 0) - 1e-9);
+  const row = (grade: "five" | "four" | "three", label: string) => (
+    <label className="flex items-center gap-2 text-sm">
+      <span className="w-6 text-center text-base font-semibold">{label}</span>
+      <span className="text-fg-soft">от</span>
+      <input
+        type="number"
+        min={1}
+        max={100}
+        value={scale[grade]}
+        onChange={(e) => onChange({ ...scale, [grade]: Math.min(100, Math.max(1, Number(e.target.value) || 1)) })}
+        className="h-9 w-16 rounded-lg border border-line bg-surface px-2"
+        aria-label={`Оценка ${label}: от скольких процентов`}
+      />
+      <span className="text-fg-soft">%</span>
+    </label>
+  );
+  return (
+    <fieldset className="space-y-2">
+      <legend className="mb-1.5 text-sm font-medium">Критерии оценивания</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {SCALE_PRESETS.map((p) => {
+          const active = p.scale.five === scale.five && p.scale.four === scale.four && p.scale.three === scale.three;
+          return (
+            <button
+              key={p.title}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(p.scale)}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${active ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+            >
+              {p.title}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        {row("five", "5")}
+        {row("four", "4")}
+        {row("three", "3")}
+      </div>
+      <p className={`text-xs ${valid ? "text-fg-soft" : "text-danger"}`}>
+        {valid
+          ? `Ниже ${scale.three}% — 2.${maxScore ? ` В баллах (всего ${maxScore}): 5 — от ${points(scale.five)}, 4 — от ${points(scale.four)}, 3 — от ${points(scale.three)}.` : ""} Оценку любой работы можно потом исправить вручную.`
+          : "Границы должны убывать: для «5» больше, чем для «4», для «4» — больше, чем для «3»."}
+      </p>
+    </fieldset>
+  );
+}
 
 /** Дата и время одной парой полей; пусто — не задано. */
 function When({ label, date, time, onDate, onTime }: { label: string; date: string; time: string; onDate: (v: string) => void; onTime: (v: string) => void }) {
@@ -70,10 +130,12 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
   const [toJournal, setToJournal] = useState(false);
   const [proctoring, setProctoring] = useState(false);
   const [gradeTypeId, setGradeTypeId] = useState("");
+  const [scale, setScale] = useState<GradeScale>(DEFAULT_SCALE);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
   const withLesson = kind !== "test";
+  const selectedTest = tests.data?.find((t) => t.id === testId);
   const targetLessons = (lessons.data ?? []).filter(
     (l) =>
       l.status !== "cancelled" &&
@@ -96,8 +158,9 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
           opens_at: openDate ? fromInputs(openDate, openTime).toISOString() : null,
           deadline: closeDate ? fromInputs(closeDate, closeTime).toISOString() : null,
           max_attempts: attempts ? Number(attempts) : null,
-          grade_to_journal: toJournal && !!lesson,
-          grade_type_id: toJournal && lesson ? gradeTypeId || null : null,
+          grade_scale: scale,
+          grade_to_journal: toJournal,
+          grade_type_id: toJournal ? gradeTypeId || null : null,
           proctoring,
         }),
       );
@@ -216,24 +279,19 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
         {attempts !== "1" && <p className="mt-1.5 text-xs text-fg-soft">В итог и в журнал идёт лучшая из попыток.</p>}
       </fieldset>
 
-      {withLesson && (
-        <label className={`flex items-start gap-3 ${lessonId ? "" : "opacity-50"}`}>
-          <input
-            type="checkbox"
-            checked={toJournal && !!lessonId}
-            disabled={!lessonId}
-            onChange={(e) => setToJournal(e.target.checked)}
-            className="mt-1 h-4 w-4 accent-brand"
-          />
-          <span className="text-sm">
-            <span className="font-medium">Поставить оценку в журнал</span>
-            <span className="block text-fg-soft">
-              Когда работа проверена: от 85% — 5, от 65% — 4, от 45% — 3, ниже — 2. Оценка появится в колонке выбранного урока.
-            </span>
+      <GradeCriteria scale={scale} onChange={setScale} maxScore={selectedTest?.max_score} />
+
+      <label className="flex items-start gap-3">
+        <input type="checkbox" checked={toJournal} onChange={(e) => setToJournal(e.target.checked)} className="mt-1 h-4 w-4 accent-brand" />
+        <span className="text-sm">
+          <span className="font-medium">Выставить оценку в журнал</span>
+          <span className="block text-fg-soft">
+            Когда работа проверена, оценка появится в журнале {targetType === "group" ? "группы" : "ученика"} отдельной колонкой с названием
+            работы — не в колонке урока.
           </span>
-        </label>
-      )}
-      {withLesson && toJournal && lessonId && (
+        </span>
+      </label>
+      {toJournal && (
         <Select label="Тип оценки" value={gradeTypeId} required onChange={(e) => setGradeTypeId(e.target.value)}>
           <option value="">Выберите</option>
           {gradeTypes.data?.map((t) => (
@@ -271,7 +329,12 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
         </span>
       </label>
 
-      <Button type="submit" loading={busy} disabled={!testId || !targetId || (withLesson && !lessonId)} className="w-full">
+      <Button
+        type="submit"
+        loading={busy}
+        disabled={!testId || !targetId || (withLesson && !lessonId) || !(scale.five > scale.four && scale.four > scale.three)}
+        className="w-full"
+      >
         {kind === "live" && !openDate ? "Запустить тест" : "Назначить"}
       </Button>
     </form>
