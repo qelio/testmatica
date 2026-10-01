@@ -107,7 +107,7 @@ async def _send(session: AsyncSession, user: User, challenge: OtpChallenge, code
             "to": challenge.destination,
             "template": challenge.purpose,
             "params": {
-                "name": user.full_name,
+                "name": user.first_name or user.full_name,
                 "code": code,
                 "ttl_minutes": settings.otp_ttl_seconds // 60,
             },

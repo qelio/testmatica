@@ -75,7 +75,7 @@ export function StudentHome({ user }: { user: UserInfo }) {
     <div className="space-y-5">
       {game.data ? (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          <LevelCard game={game.data} name={user.full_name.split(" ")[0]} />
+          <LevelCard game={game.data} name={user.first_name || user.full_name} />
           <StreakCard game={game.data} />
         </div>
       ) : (

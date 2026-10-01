@@ -20,7 +20,7 @@ async def make_tasks(client, teacher):
 
 
 async def make_test(client, teacher, tasks, **settings):
-    body = {"title": "Контрольная", "items": [{"task_id": t["id"], "points": p} for t, p in zip(tasks, (1, 1, 2, 2), strict=False)]}
+    body = {"title": "Контрольная", "grade_level": 9, "items": [{"task_id": t["id"], "points": p} for t, p in zip(tasks, (1, 1, 2, 2), strict=False)]}
     resp = await client.post("/tests", json=body | settings, headers=bearer(teacher))
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -212,7 +212,7 @@ async def test_test_editing_rules(client, fakes):
     teacher, other = uuid4(), uuid4()
     tasks = await make_tasks(client, teacher)
     foreign = (await client.post("/tasks", json=CHOICE, headers=bearer(other))).json()  # чужая приватная
-    bad = await client.post("/tests", json={"title": "Т", "items": [{"task_id": foreign["id"]}]}, headers=bearer(teacher))
+    bad = await client.post("/tests", json={"title": "Т", "grade_level": 7, "items": [{"task_id": foreign["id"]}]}, headers=bearer(teacher))
     assert bad.json()["error"]["code"] == "task_not_available"
     test = await make_test(client, teacher, tasks[:1])
     await link(teacher, uuid4())
@@ -224,7 +224,13 @@ async def test_test_editing_rules(client, fakes):
     assert (await client.delete(f"/tests/{test['id']}", headers=bearer(teacher))).json()["error"]["code"] == "test_assigned"
     assert (await client.get(f"/tests/{test['id']}", headers=bearer(other))).status_code == 404
     listed = (await client.get("/tests", headers=bearer(teacher))).json()
-    assert listed[0]["assignments_count"] == 1 and listed[0]["tasks_count"] == 1
+    assert listed[0]["assignments_count"] == 1 and listed[0]["tasks_count"] == 1 and listed[0]["grade_level"] == 9
+    # Класс теста обязателен (1–11) и копируется в назначение — по нему фильтруют.
+    no_grade = await client.post("/tests", json={"title": "Без класса", "items": []}, headers=bearer(teacher))
+    assert no_grade.status_code == 422
+    assert (await client.post("/tests", json={"title": "Т", "grade_level": 12, "items": []}, headers=bearer(teacher))).status_code == 422
+    given = (await client.get("/assignments", params={"role": "teacher"}, headers=bearer(teacher))).json()
+    assert given[0]["grade_level"] == 9
 
 
 
@@ -380,7 +386,7 @@ async def test_admin_removes_task_but_issued_tests_keep_working(client, fakes):
     assert len(view["tasks"]) == 2
     assert (await client.get(f"/tasks/{tasks[0]['id']}", headers=student(pupil))).status_code == 404
     # В новый тест не добавить, копию не сделать.
-    bad = await client.post("/tests", json={"title": "Новый", "items": [{"task_id": tasks[0]["id"], "points": 1}]}, headers=bearer(teacher))
+    bad = await client.post("/tests", json={"title": "Новый", "grade_level": 7, "items": [{"task_id": tasks[0]["id"], "points": 1}]}, headers=bearer(teacher))
     assert bad.json()["error"]["code"] == "task_not_available"
     assert (await client.post(f"/tasks/{tasks[0]['id']}/copy", headers=bearer(teacher))).status_code == 404
 
@@ -396,9 +402,9 @@ async def test_solution_files_teacher_review_and_grade_scale(client, fakes):
     tasks = await make_tasks(client, teacher)
     choice, short, long = tasks[0], tasks[1], tasks[3]
     # Файл с решением — только к короткому ответу и выбору.
-    bad = await client.post("/tests", json={"title": "Т", "items": [{"task_id": long["id"], "solution_file": True}]}, headers=bearer(teacher))
+    bad = await client.post("/tests", json={"title": "Т", "grade_level": 7, "items": [{"task_id": long["id"], "solution_file": True}]}, headers=bearer(teacher))
     assert bad.json()["error"]["code"] == "solution_file_not_allowed"
-    test = (await client.post("/tests", json={"title": "Проверочная", "items": [
+    test = (await client.post("/tests", json={"title": "Проверочная", "grade_level": 7, "items": [
         {"task_id": choice["id"], "points": 1}, {"task_id": short["id"], "points": 1, "solution_file": True}]}, headers=bearer(teacher))).json()
     assert [i["solution_file"] for i in test["items"]] == [False, True]
 
@@ -461,7 +467,7 @@ async def test_teacher_overrides_auto_checked_tasks(client, fakes):
     await link(teacher, pupil)
     tasks = await make_tasks(client, teacher)
     choice, short = tasks[0], tasks[1]
-    test = (await client.post("/tests", json={"title": "Т", "items": [
+    test = (await client.post("/tests", json={"title": "Т", "grade_level": 7, "items": [
         {"task_id": choice["id"], "points": 1}, {"task_id": short["id"], "points": 1}]}, headers=bearer(teacher))).json()
     a = await assign(client, teacher, test, target_type="student", target_id=str(pupil))
     assert not a["needs_review"]

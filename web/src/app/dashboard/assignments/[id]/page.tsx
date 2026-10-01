@@ -128,13 +128,40 @@ function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
           </Button>
         )}
       </div>
-      <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
-        {a.students.map((row) => (
-          <StudentRow key={row.student_id} a={a} row={row} onChanged={reload} onError={setError} />
-        ))}
-      </ul>
+      <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs text-fg-soft">
+              <th className="px-4 py-2.5 font-medium">Ученик</th>
+              <th className="px-3 py-2.5 font-medium">Статус</th>
+              <th className="px-3 py-2.5 text-center font-medium">Решено верно</th>
+              <th className="px-3 py-2.5 text-center font-medium">Баллы</th>
+              <th className="px-3 py-2.5 text-center font-medium">Оценка</th>
+              <th className="px-3 py-2.5 font-medium">Сдано</th>
+              <th className="px-3 py-2.5 font-medium">Попытки</th>
+              <th className="px-3 py-2.5" aria-label="Действия" />
+            </tr>
+          </thead>
+          <tbody>
+            {a.students.map((row) => (
+              <StudentRow key={row.student_id} a={a} row={row} onChanged={reload} onError={setError} />
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
+}
+
+/** Короткий статус для таблицы: оценка и баллы — в своих колонках. */
+function rowStatus(a: Assignment, row: Assignment["students"][number]): { text: string; tone: "ok" | "warn" | "neutral" | "brand" } {
+  const last = lastAttempt(row);
+  if (last?.status === "in_progress") return { text: "Решает", tone: "brand" };
+  if (row.attempts.some((t) => t.status === "submitted" && !t.checked)) return { text: "Ждёт проверки", tone: "warn" };
+  if (bestAttempt(row)) return { text: "Проверено", tone: "ok" };
+  if (a.not_open_yet) return { text: "Ещё не открыт", tone: "neutral" };
+  if (a.closed || a.overdue) return { text: "Не сдал", tone: "warn" };
+  return { text: "Не начал", tone: "neutral" };
 }
 
 function StudentRow({
@@ -148,79 +175,112 @@ function StudentRow({
   onChanged: () => void;
   onError: (e: string) => void;
 }) {
-  const st = studentStatus(a, row);
+  const st = rowStatus(a, row);
   const last = lastAttempt(row);
-  const best = bestAttempt(row);
+  // В колонках — засчитанная (лучшая проверенная) попытка, а пока её нет — последняя.
+  const shown = bestAttempt(row) ?? last;
   const [reassigning, setReassigning] = useState(false);
   const [date, setDate] = useState("");
   const [time, setTime] = useState("20:00");
   // Без лимита попыток переназначать нечего — разве что продлить срок.
   const canReassign =
     last?.status !== "in_progress" && (!!last || a.overdue || a.closed) && (a.max_attempts === null ? a.overdue || a.closed : row.attempts.length >= row.allowed_attempts);
+  const cell = "px-3 py-2.5 align-middle";
 
   return (
-    <li className="px-5 py-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Link href={`/dashboard/students/${row.student_id}`} className="min-w-0 flex-1 font-medium hover:underline">
-          {row.full_name}
-        </Link>
-        {last?.status === "in_progress" && (
-          <span className="h-2 w-28 overflow-hidden rounded-full bg-muted" aria-hidden>
-            <span className="block h-full bg-brand" style={{ width: `${(last.answered / Math.max(1, last.total)) * 100}%` }} />
-          </span>
-        )}
-        {best?.score != null && (
-          <span className="text-sm text-fg-soft tabular-nums">
-            {best.score} из {best.max_score}
-            {row.attempts.length > 1 && " (лучшая)"}
-          </span>
-        )}
-        <Badge tone={st.tone}>{st.text}</Badge>
-        {a.proctoring && row.proctor_alerts > 0 && <Badge tone="warn">нарушений прокторинга: {row.proctor_alerts}</Badge>}
-        {row.attempts.map((t) => (
-          <Link key={t.id} href={`/dashboard/attempts/${t.id}`} className="text-sm text-brand hover:underline">
-            {row.attempts.length > 1 ? `попытка ${t.number}` : "открыть"}
+    <>
+      <tr className="border-b border-line/70 last:border-0 hover:bg-muted/40">
+        <td className="px-4 py-2.5 align-middle">
+          <Link href={`/dashboard/students/${row.student_id}`} className="font-medium whitespace-nowrap hover:underline">
+            {row.full_name}
           </Link>
-        ))}
-        {last?.finished_by_teacher && <span className="text-xs text-fg-soft">завершили вы</span>}
-        {last?.status === "in_progress" && (
-          <FinishButton attemptId={last.id} name={row.full_name} onDone={onChanged} onError={onError} />
-        )}
-        {canReassign && !reassigning && (
-          <button className="text-sm text-fg-soft hover:text-fg" onClick={() => setReassigning(true)}>
-            Переназначить
-          </button>
-        )}
-      </div>
+          {a.proctoring && row.proctor_alerts > 0 && (
+            <span className="mt-0.5 block">
+              <Badge tone="warn">нарушений: {row.proctor_alerts}</Badge>
+            </span>
+          )}
+        </td>
+        <td className={cell}>
+          <Badge tone={st.tone}>{st.text}</Badge>
+          {last?.status === "in_progress" && (
+            <span className="mt-1 flex items-center gap-2 text-xs text-fg-soft">
+              <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted" aria-hidden>
+                <span className="block h-full bg-brand" style={{ width: `${(last.answered / Math.max(1, last.total)) * 100}%` }} />
+              </span>
+              {last.answered} из {last.total}
+            </span>
+          )}
+        </td>
+        <td className={`${cell} text-center whitespace-nowrap tabular-nums`}>
+          {shown?.status === "submitted" && shown.correct != null ? `${shown.correct} из ${shown.total}` : "—"}
+        </td>
+        <td className={`${cell} text-center whitespace-nowrap tabular-nums`}>
+          {shown?.status === "submitted" && shown.score != null ? `${shown.score} из ${shown.max_score}` : "—"}
+        </td>
+        <td className={`${cell} text-center`}>
+          {shown?.checked && shown.grade ? (
+            <span className={`text-base font-semibold ${(shown.grade ?? 0) >= 4 ? "text-ok" : (shown.grade ?? 0) === 3 ? "" : "text-danger"}`}>{shown.grade}</span>
+          ) : (
+            "—"
+          )}
+        </td>
+        <td className={`${cell} whitespace-nowrap text-fg-soft`}>
+          {shown?.submitted_at ? fmtDateTime(shown.submitted_at) : "—"}
+          {shown?.auto_submitted && <span className="block text-xs">время вышло</span>}
+          {shown?.finished_by_teacher && <span className="block text-xs">завершили вы</span>}
+        </td>
+        <td className={cell}>
+          <span className="flex gap-x-2 whitespace-nowrap">
+            {row.attempts.map((t) => (
+              <Link key={t.id} href={`/dashboard/attempts/${t.id}`} className="text-brand hover:underline">
+                {row.attempts.length > 1 ? `№${t.number}` : "открыть"}
+              </Link>
+            ))}
+            {!row.attempts.length && <span className="text-fg-soft">—</span>}
+          </span>
+        </td>
+        <td className={`${cell} text-right whitespace-nowrap`}>
+          {last?.status === "in_progress" && <FinishButton attemptId={last.id} name={row.full_name} onDone={onChanged} onError={onError} />}
+          {canReassign && !reassigning && (
+            <button className="text-sm text-fg-soft hover:text-fg" onClick={() => setReassigning(true)}>
+              Переназначить
+            </button>
+          )}
+        </td>
+      </tr>
       {reassigning && (
-        <form
-          className="mt-2 flex flex-wrap items-end gap-2"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            try {
-              await assessment.reassign(a.id, row.student_id, date ? fromInputs(date, time).toISOString() : null);
-              setReassigning(false);
-              onChanged();
-            } catch (err) {
-              onError(errorText(err));
-            }
-          }}
-        >
-          <p className="w-full text-sm text-fg-soft">
-            {a.max_attempts === null ? "Ученик снова сможет проходить тест;" : "Ученик сможет пройти ещё раз;"} прошлые попытки сохранятся.
-            {a.deadline && " Если общий срок прошёл — задайте новый."}
-          </p>
-          <Field label="Новый срок" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <Field label="Время" type="time" value={time} disabled={!date} onChange={(e) => setTime(e.target.value)} />
-          <Button type="submit" className="h-11">
-            Переназначить
-          </Button>
-          <Button type="button" variant="ghost" className="h-11" onClick={() => setReassigning(false)}>
-            Отмена
-          </Button>
-        </form>
+        <tr className="border-b border-line/70">
+          <td colSpan={8} className="px-4 py-3">
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await assessment.reassign(a.id, row.student_id, date ? fromInputs(date, time).toISOString() : null);
+                  setReassigning(false);
+                  onChanged();
+                } catch (err) {
+                  onError(errorText(err));
+                }
+              }}
+            >
+              <p className="w-full text-sm text-fg-soft">
+                {row.full_name}: {a.max_attempts === null ? "снова сможет проходить тест;" : "сможет пройти ещё раз;"} прошлые попытки сохранятся.
+                {a.deadline && " Если общий срок прошёл — задайте новый."}
+              </p>
+              <Field label="Новый срок" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Field label="Время" type="time" value={time} disabled={!date} onChange={(e) => setTime(e.target.value)} />
+              <Button type="submit" className="h-11">
+                Переназначить
+              </Button>
+              <Button type="button" variant="ghost" className="h-11" onClick={() => setReassigning(false)}>
+                Отмена
+              </Button>
+            </form>
+          </td>
+        </tr>
       )}
-    </li>
+    </>
   );
 }
 

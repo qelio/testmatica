@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
+from testmatica_common.names import PersonName, parse_line
 
 from .. import cards, logic, people
 from ..config import settings
@@ -81,11 +82,12 @@ async def list_students(principal: Principal = Depends(teacher), session: AsyncS
 
 
 async def _create_managed(
-    session: AsyncSession, teacher_id: UUID, full_name: str, group: Group | None, login: str | None = None, password: str | None = None
+    session: AsyncSession, teacher_id: UUID, name: PersonName, group: Group | None, login: str | None = None, password: str | None = None
 ) -> StudentCredentials:
     created = await identity.post(
         "/internal/managed-students",
-        json={"teacher_id": str(teacher_id), "full_name": full_name, "login": login, "password": password},
+        json={"teacher_id": str(teacher_id), **name.model_dump(include={"last_name", "first_name", "middle_name"}),
+              "login": login, "password": password},
     )
     student_id = UUID(created["user"]["id"])
     await people.upsert_from_identity(session, created["user"])
@@ -102,7 +104,7 @@ async def create_manual(
 ) -> StudentCredentials:
     """Педагог создаёт аккаунт ученика сам. Пароль показывается один раз — его надо передать ученику."""
     group = await logic.owned_group(session, body.group_id, principal.user_id) if body.group_id else None
-    return await _create_managed(session, principal.user_id, body.full_name, group, body.login, body.password)
+    return await _create_managed(session, principal.user_id, body, group, body.login, body.password)
 
 
 @router.post("/manual/bulk", response_model=BulkStudentsOut, status_code=201)
@@ -113,14 +115,19 @@ async def create_manual_bulk(
     если с одним не вышло, остальные всё равно создаются, ошибки — в ответе."""
     teacher_id = principal.user_id
     created, errors = [], []
-    for name in body.full_names:
+    for line in body.full_names:
+        try:
+            name = parse_line(line)
+        except ValueError as e:
+            errors.append(BulkError(full_name=line, message=str(e)))
+            continue
         # Группу читаем заново для каждого: после отката неудачного ученика прежний объект недействителен.
         group = await logic.owned_group(session, body.group_id, teacher_id) if body.group_id else None
         try:
             created.append(await _create_managed(session, teacher_id, name, group))
         except ApiError as e:
             await session.rollback()
-            errors.append(BulkError(full_name=name, message=e.message))
+            errors.append(BulkError(full_name=name.full_name, message=e.message))
     return BulkStudentsOut(created=created, errors=errors)
 
 
@@ -172,7 +179,7 @@ async def update_student(
     await _require_managed(session, principal.user_id, student_id)
     updated = await identity.patch(
         f"/internal/managed-students/{student_id}",
-        json={"teacher_id": str(principal.user_id), "full_name": body.full_name},
+        json={"teacher_id": str(principal.user_id), "name": body.name.model_dump()},
     )
     await people.upsert_from_identity(session, updated["user"])
     await session.commit()

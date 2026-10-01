@@ -34,11 +34,11 @@ async def test_users_search_edit_roles(client):
     assert page["total"] == 2 and {u["email"] for u in page["items"]} == {"boss@example.com", "petr@example.com"}
     assert (await client.get("/admin/users", params={"q": "ANNA"}, headers=boss)).json()["items"][0]["id"] == anna
 
-    edited = (await client.patch(f"/admin/users/{anna}", json={"full_name": "  Анна   Смирнова ", "login": "Anna.S"}, headers=boss)).json()
-    assert edited["full_name"] == "Анна Смирнова" and edited["login"] == "anna.s"
+    edited = (await client.patch(f"/admin/users/{anna}", json={"name": {"last_name": " Смирнова", "first_name": "Анна "}, "login": "Anna.S"}, headers=boss)).json()
+    assert edited["full_name"] == "Смирнова Анна" and edited["login"] == "anna.s"
     taken = await client.patch(f"/admin/users/{anna}", json={"email": "petr@example.com"}, headers=boss)
     assert taken.json()["error"]["code"] == "email_taken"
-    assert (await events("identity.user.updated"))[-1]["data"]["full_name"] == "Анна Смирнова"
+    assert (await events("identity.user.updated"))[-1]["data"]["full_name"] == "Смирнова Анна"
 
     roles = (await client.put(f"/admin/users/{anna}/roles", json={"roles": ["student", "moderator"]}, headers=boss)).json()
     assert roles["roles"] == ["moderator", "student"]
