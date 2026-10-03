@@ -483,3 +483,45 @@ async def test_teacher_overrides_auto_checked_tasks(client, fakes):
     assert results == {choice["id"]: "correct", short["id"]: "correct"}
     unknown = await client.post(f"/attempts/{attempt['id']}/review", json={"tasks": {str(uuid4()): True}}, headers=bearer(teacher))
     assert unknown.status_code == 422
+
+
+async def test_remove_assignment_and_students(client, fakes):
+    """Убрать работу у одного ученика, у всех несдавших, удалить целиком — вместе с попытками."""
+    teacher, olya, petya, vasya = uuid4(), uuid4(), uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:2])
+    gid = await group_of(fakes, teacher, olya, petya, vasya)
+    a = await assign(client, teacher, test, target_type="group", target_id=gid, max_attempts=None)
+    done = (await client.post(f"/assignments/{a['id']}/start", headers=student(olya))).json()
+    await client.post(f"/attempts/{done['id']}/submit", headers=student(olya))
+    started = (await client.post(f"/assignments/{a['id']}/start", headers=student(petya))).json()
+    assert started["status"] == "in_progress"
+
+    # Только педагог-автор.
+    assert (await client.post(f"/assignments/{a['id']}/remove-students", json={"not_submitted": True},
+                              headers=student(olya))).status_code in (403, 404)
+    assert (await client.delete(f"/assignments/{a['id']}", headers=bearer(uuid4()))).status_code == 404
+
+    # У несдавших (Петя решает, Вася не начал) — убрать; у Оли остаётся.
+    res = (await client.post(f"/assignments/{a['id']}/remove-students", json={"not_submitted": True}, headers=bearer(teacher))).json()
+    assert res == {"removed": 2, "deleted": False}
+    left = (await client.get(f"/assignments/{a['id']}", headers=bearer(teacher))).json()
+    assert [s["student_id"] for s in left["students"]] == [str(olya)]
+    assert (await client.get(f"/attempts/{started['id']}", headers=student(petya))).status_code == 404
+    removed = (await outbox("assessment.assignment.students_removed"))[-1]["data"]
+    assert sorted(removed["student_ids"]) == sorted([str(petya), str(vasya)])
+    assert (await client.get(f"/assignments/{a['id']}", headers=student(vasya))).status_code == 404
+
+    # Убрали последнего — назначение удалено целиком.
+    last = (await client.post(f"/assignments/{a['id']}/remove-students", json={"student_ids": [str(olya)]}, headers=bearer(teacher))).json()
+    assert last == {"removed": 1, "deleted": True}
+    assert (await client.get(f"/assignments/{a['id']}", headers=bearer(teacher))).status_code == 404
+    assert (await outbox("assessment.assignment.deleted"))[-1]["data"]["student_ids"] == [str(olya)]
+
+    # Удалить целиком сразу.
+    b = await assign(client, teacher, test, target_type="group", target_id=gid)
+    t = (await client.post(f"/assignments/{b['id']}/start", headers=student(olya))).json()
+    await client.post(f"/attempts/{t['id']}/submit", headers=student(olya))
+    assert (await client.delete(f"/assignments/{b['id']}", headers=bearer(teacher))).status_code == 204
+    assert (await client.get(f"/assignments/{b['id']}", headers=bearer(teacher))).status_code == 404
+    assert (await client.get(f"/attempts/{t['id']}", headers=student(olya))).status_code == 404

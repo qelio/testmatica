@@ -458,6 +458,8 @@ class AttemptBrief(BaseModel):
     screen_sharing: bool = Field(False, description="Прокторинг: показывает экран (по данным сервера видеосвязи)")
     answered: int = Field(description="Сколько заданий с ответом (для прогресса на уроке)")
     correct: int | None = Field(None, description="Сколько заданий решено верно (после сдачи)")
+    ends_at: datetime | None = Field(None, description="Таймер на весь тест: когда время выйдет")
+    current_ends_at: datetime | None = Field(None, description="Таймер на задание: когда выйдет время текущего")
     total: int
     score: float | None
     max_score: float
@@ -506,6 +508,7 @@ class AssignmentOut(BaseModel):
     # Педагогу — сводка по ученикам, ученику — только его строка.
     students: list[AssignmentStudentOut]
     can_start: bool = Field(False, description="Ученику: можно начать новую попытку")
+    server_time: datetime | None = Field(None, description="Для точного таймера на клиенте")
     attempts_left: int | None = Field(None, description="Ученику: сколько попыток осталось; null — без ограничений")
 
 
@@ -558,6 +561,18 @@ class AttemptStatusOut(BaseModel):
     status: str
     screen_ok: bool
     finished_by_teacher: bool
+
+
+class RemoveStudentsIn(BaseModel):
+    """Убрать работу у части учеников: перечисленных или у всех, кто её не сдал."""
+
+    student_ids: list[UUID] = Field(default_factory=list, max_length=500)
+    not_submitted: bool = Field(False, description="У всех, у кого нет сданной попытки")
+
+
+class RemovedOut(BaseModel):
+    removed: int = Field(description="У скольких учеников работа убрана")
+    deleted: bool = Field(description="Учеников не осталось — назначение удалено целиком")
 
 
 class AttemptReviewIn(BaseModel):

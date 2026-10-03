@@ -87,6 +87,7 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
 function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
   const [error, setError] = useState<string>();
   const [closing, setClosing] = useState(false);
+  const router = useRouter();
   const s = summary(a);
   return (
     <div className="space-y-4">
@@ -106,10 +107,46 @@ function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
             Наблюдение{s.inProgress ? ` · решают ${s.inProgress}` : ""}
           </Link>
         )}
+        <span className="ml-auto flex flex-wrap gap-2">
+          {s.total - s.submitted > 0 && (
+            <Button
+              variant="ghost"
+              className="h-9"
+              onClick={async () => {
+                const n = s.total - s.submitted;
+                if (!window.confirm(`Убрать тест у всех, кто его не сдал (${n})? Начатые ими попытки будут удалены.`)) return;
+                try {
+                  const res = await assessment.removeStudents(a.id, { not_submitted: true });
+                  if (res.deleted) router.replace("/dashboard/assignments");
+                  else reload();
+                } catch (e) {
+                  setError(errorText(e));
+                }
+              }}
+            >
+              Убрать у не сдавших
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            className="h-9 text-danger"
+            onClick={async () => {
+              if (!window.confirm(`Удалить тест «${a.title}» у всех учеников? Попытки и оценки в журнале за него будут удалены.`)) return;
+              try {
+                await assessment.deleteAssignment(a.id);
+                router.replace("/dashboard/assignments");
+              } catch (e) {
+                setError(errorText(e));
+              }
+            }}
+          >
+            Удалить тест
+          </Button>
+        </span>
         {a.kind === "live" && !a.closed && (
           <Button
             variant="secondary"
-            className="ml-auto h-9"
+            className="h-9"
             loading={closing}
             onClick={async () => {
               if (!window.confirm("Завершить тест? Незавершённые работы сдадутся с тем, что ученики успели ответить.")) return;
@@ -134,7 +171,6 @@ function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
             <tr className="border-b border-line text-left text-xs text-fg-soft">
               <th className="px-4 py-2.5 font-medium">Ученик</th>
               <th className="px-3 py-2.5 font-medium">Статус</th>
-              <th className="px-3 py-2.5 text-center font-medium">Решено верно</th>
               <th className="px-3 py-2.5 text-center font-medium">Баллы</th>
               <th className="px-3 py-2.5 text-center font-medium">Оценка</th>
               <th className="px-3 py-2.5 font-medium">Сдано</th>
@@ -150,6 +186,23 @@ function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
         </table>
       </div>
     </div>
+  );
+}
+
+/** Обратный отсчёт в строке ученика: сколько осталось на тест (или на текущее задание). */
+function RowTimer({ until, offset, perTask }: { until: string; offset: number; perTask: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const left = Math.max(0, Math.ceil((new Date(until).getTime() - (now + offset)) / 1000));
+  const text = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  return (
+    <span className={`mt-1 block font-mono text-xs tabular-nums ${left < 60 ? "text-danger" : "text-fg-soft"}`} title={perTask ? "Осталось на задание" : "Осталось времени"}>
+      ⏱ {text}
+      {perTask && " на задание"}
+    </span>
   );
 }
 
@@ -176,6 +229,9 @@ function StudentRow({
   onError: (e: string) => void;
 }) {
   const st = rowStatus(a, row);
+  const router = useRouter();
+  // Поправка на расхождение часов педагога и сервера — для таймера.
+  const [offset] = useState(() => (a.server_time ? new Date(a.server_time).getTime() - Date.now() : 0));
   const last = lastAttempt(row);
   // В колонках — засчитанная (лучшая проверенная) попытка, а пока её нет — последняя.
   const shown = bestAttempt(row) ?? last;
@@ -203,16 +259,16 @@ function StudentRow({
         <td className={cell}>
           <Badge tone={st.tone}>{st.text}</Badge>
           {last?.status === "in_progress" && (
-            <span className="mt-1 flex items-center gap-2 text-xs text-fg-soft">
+            <span className="mt-1 flex items-center gap-2 text-xs whitespace-nowrap text-fg-soft">
               <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted" aria-hidden>
                 <span className="block h-full bg-brand" style={{ width: `${(last.answered / Math.max(1, last.total)) * 100}%` }} />
               </span>
               {last.answered} из {last.total}
             </span>
           )}
-        </td>
-        <td className={`${cell} text-center whitespace-nowrap tabular-nums`}>
-          {shown?.status === "submitted" && shown.correct != null ? `${shown.correct} из ${shown.total}` : "—"}
+          {last?.status === "in_progress" && (last.ends_at || last.current_ends_at) && (
+            <RowTimer until={(last.current_ends_at ?? last.ends_at)!} offset={offset} perTask={!!last.current_ends_at} />
+          )}
         </td>
         <td className={`${cell} text-center whitespace-nowrap tabular-nums`}>
           {shown?.status === "submitted" && shown.score != null ? `${shown.score} из ${shown.max_score}` : "—"}
@@ -246,11 +302,28 @@ function StudentRow({
               Переназначить
             </button>
           )}
+          <button
+            className="ml-3 text-sm text-fg-soft hover:text-danger"
+            title="Убрать тест у этого ученика"
+            onClick={async () => {
+              const warn = row.attempts.length ? " Его попытки и оценка за этот тест будут удалены." : "";
+              if (!window.confirm(`Убрать тест у ученика ${row.full_name}?${warn}`)) return;
+              try {
+                const res = await assessment.removeStudents(a.id, { student_ids: [row.student_id] });
+                if (res.deleted) router.replace("/dashboard/assignments");
+                else onChanged();
+              } catch (e) {
+                onError(errorText(e));
+              }
+            }}
+          >
+            Убрать
+          </button>
         </td>
       </tr>
       {reassigning && (
         <tr className="border-b border-line/70">
-          <td colSpan={8} className="px-4 py-3">
+          <td colSpan={7} className="px-4 py-3">
             <form
               className="flex flex-wrap items-end gap-2"
               onSubmit={async (e) => {
