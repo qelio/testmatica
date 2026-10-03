@@ -57,3 +57,30 @@ async def test_grade_from_test_goes_to_journal(client, world):
     world.links.add((str(teacher), str(pupil)))
     personal = (await client.get("/journal", params={"student_id": str(pupil), **period()}, headers=bearer(teacher))).json()
     assert [w["title"] for w in personal["works"]] == ["Лично"]
+
+
+async def test_grade_removed_with_assignment(client, world):
+    """Работу удалили или убрали у ученика — оценка за неё из журнала тоже уходит."""
+    teacher, pupil, other = uuid4(), uuid4(), uuid4()
+    await add_person(teacher, "Иванова Мария", ("teacher",))
+    group = world.group(teacher, [pupil, other])
+    type_id = await grade_type_id(client, teacher, "Контрольная работа")
+    assignment = str(uuid4())
+    base = {"attempt_id": str(uuid4()), "assignment_id": assignment, "teacher_id": str(teacher), "title": "Дроби", "kind": "test",
+            "score": 5, "max_score": 6, "percent": 83.3, "grade": 4, "to_journal": True, "group_id": str(group),
+            "grade_type_id": type_id, "assigned_at": datetime.now(UTC).isoformat()}
+    await graded(**base | {"student_id": str(pupil)})
+    await graded(**base | {"student_id": str(other)})
+    journal = lambda: client.get("/journal", params={"group_id": str(group), **period()}, headers=bearer(teacher))  # noqa: E731
+    assert len((await journal()).json()["grades"]) == 2
+
+    async with db.sessionmaker() as s, s.begin():
+        await test_grades.on_assessment_event(make_envelope("assessment.assignment.students_removed", {
+            "assignment_id": assignment, "teacher_id": str(teacher), "title": "Дроби", "student_ids": [str(pupil)]}), s)
+    assert [g["student_id"] for g in (await journal()).json()["grades"]] == [str(other)]
+    async with db.sessionmaker() as s, s.begin():
+        await test_grades.on_assessment_event(make_envelope("assessment.assignment.deleted", {
+            "assignment_id": assignment, "teacher_id": str(teacher), "title": "Дроби", "student_ids": [str(other)]}), s)
+    body = (await journal()).json()
+    assert body["grades"] == [] and body["works"] == []
+    assert len(await outbox("academic.grade.deleted")) == 2

@@ -222,7 +222,7 @@ export function ProctorLog({ attemptId }: { attemptId: string }) {
   if (!events.data) return null;
   const alerts = events.data.filter((e) => EVENT_LABELS[e.kind]?.alert).length;
   return (
-    <details className="rounded-2xl border border-line bg-surface p-4 text-sm" open={alerts > 0}>
+    <details className="rounded-2xl border border-line bg-surface p-4 text-sm">
       <summary className="cursor-pointer font-medium">
         Прокторинг: {alerts ? `нарушений — ${alerts}` : "нарушений нет"}
       </summary>
