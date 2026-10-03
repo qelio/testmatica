@@ -10,6 +10,7 @@ import {
   setSessionLostHandler,
   type UserInfo,
 } from "./api";
+import { setDisplayTimezone } from "./dates";
 
 type AuthState =
   | { status: "loading"; user: null }
@@ -28,15 +29,23 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading", user: null });
 
-  const setUser = useCallback((user: UserInfo) => setState({ status: "authenticated", user }), []);
+  // Даты везде показываются в часовом поясе из профиля — выставляем его до отрисовки (lib/dates).
+  const setUser = useCallback((user: UserInfo) => {
+    setDisplayTimezone(user.timezone);
+    setState({ status: "authenticated", user });
+  }, []);
 
   const signIn = useCallback((session: Authenticated) => {
     setAccessToken(session.access_token);
+    setDisplayTimezone(session.user.timezone);
     setState({ status: "authenticated", user: session.user });
     // Фото профиля в токене нет — подтягиваем полные данные.
     identity
       .me()
-      .then((user) => setState((s) => (s.status === "authenticated" && s.user.id === user.id ? { status: "authenticated", user } : s)))
+      .then((user) => {
+        setDisplayTimezone(user.timezone);
+        setState((s) => (s.status === "authenticated" && s.user.id === user.id ? { status: "authenticated", user } : s));
+      })
       .catch(() => {});
   }, []);
 
@@ -45,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await identity.logout();
     } finally {
       setAccessToken(null);
+      setDisplayTimezone(null);
       setState({ status: "anonymous", user: null });
     }
   }, []);

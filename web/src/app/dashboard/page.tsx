@@ -8,7 +8,7 @@ import { TrialFollowups } from "@/components/trial-followups";
 import { Alert } from "@/components/ui";
 import { ApiError, type NotificationItem, notifications } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { fmtDateTime } from "@/lib/dates";
+import { fmtDate, fmtDateTime, fmtTime } from "@/lib/dates";
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -117,7 +117,7 @@ export default function DashboardPage() {
                     Открыть тест
                   </Link>
                 )}
-                <p className="mt-1 text-xs text-fg-soft">{new Date(n.created_at).toLocaleString("ru-RU")}</p>
+                <p className="mt-1 text-xs text-fg-soft">{fmtDate(n.created_at, { day: "numeric", month: "long" })}, {fmtTime(n.created_at)}</p>
               </div>
             </li>
           ))}

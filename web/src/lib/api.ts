@@ -160,6 +160,7 @@ export function saveFile(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+import { timezone } from "@/lib/dates";
 import type { Landing, LandingOut, NewsFull, NewsSummary } from "@/lib/server-api";
 
 // ---- identity ----
@@ -538,8 +539,8 @@ export type Plan = {
 };
 export type LessonKtp = { plan_id: string; plan_title: string; lesson: PlanLesson };
 
-const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Moscow";
-const tzParam = () => `tz=${encodeURIComponent(browserTz())}`;
+// Пояс пользователя из профиля (lib/dates) — по нему сервер считает дни и недели.
+const tzParam = () => `tz=${encodeURIComponent(timezone())}`;
 
 export const planning = {
   templates: (scope: "mine" | "public", q = "") =>
@@ -567,7 +568,7 @@ export const planning = {
     api<Plan>(`${AC}/plans/${id}`, { method: "PATCH", body: data }),
   deletePlan: (id: string) => api<void>(`${AC}/plans/${id}`, { method: "DELETE" }),
   distribute: (id: string, fromDate?: string | null) =>
-    api<{ placed: number; left: number }>(`${AC}/plans/${id}/distribute`, { method: "POST", body: { from_date: fromDate || null, tz: browserTz() } }),
+    api<{ placed: number; left: number }>(`${AC}/plans/${id}/distribute`, { method: "POST", body: { from_date: fromDate || null, tz: timezone() } }),
   addLesson: (planId: string, data: PlanLessonInput, after?: string) =>
     api<PlanLesson>(`${AC}/plans/${planId}/lessons${after ? `?after=${after}` : ""}`, { method: "POST", body: data }),
   updateLesson: (planId: string, lessonId: string, data: Partial<PlanLessonInput> & { planned_date?: string | null; schedule_lesson_id?: string | null; done?: boolean }) =>
@@ -887,6 +888,8 @@ export type TaskStatus = CourseStatus;
 
 export type TaskSummary = {
   id: string;
+  /** Короткий номер задачи: «(100345) Задание 6». */
+  number: number;
   title: string;
   type: TaskType;
   difficulty: 1 | 2 | 3;
@@ -1729,7 +1732,7 @@ export type Summary = {
 };
 
 function periodQs(p: AnalyticsPeriod, extra: Record<string, string> = {}): string {
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tz = timezone();
   return new URLSearchParams({ from: p.from, to: p.to, tz, ...(p.subject ? { subject: p.subject } : {}), ...extra }).toString();
 }
 
@@ -1760,6 +1763,7 @@ export type AdminUser = PersonName & {
   last_seen_at: string | null;
   deleted_at: string | null;
   restore_until: string | null;
+  timezone: string;
 };
 export type UserStats = {
   total: number;
@@ -1807,7 +1811,7 @@ export const admin = {
   users: (p: { q?: string; role?: string; status?: string; ids?: string[]; limit?: number; offset?: number }) =>
     api<{ items: AdminUser[]; total: number }>(`${ID}/admin/users?${qs(p)}`),
   user: (id: string) => api<AdminUser>(`${ID}/admin/users/${id}`),
-  editUser: (id: string, data: { name?: PersonName; email?: string; login?: string }) =>
+  editUser: (id: string, data: { name?: PersonName; email?: string; login?: string; timezone?: string }) =>
     api<AdminUser>(`${ID}/admin/users/${id}`, { method: "PATCH", body: data }),
   setRoles: (id: string, roles: string[]) => api<AdminUser>(`${ID}/admin/users/${id}/roles`, { method: "PUT", body: { roles } }),
   ban: (id: string, reason: string) => api<AdminUser>(`${ID}/admin/users/${id}/ban`, { method: "POST", body: { reason } }),

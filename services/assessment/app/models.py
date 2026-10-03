@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, SmallInteger, String, Text, UniqueConstraint, Uuid, false, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, Sequence, SmallInteger, String, Text, UniqueConstraint, Uuid, false, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from testmatica_common.ids import uuid7
@@ -124,6 +124,9 @@ class ExamMark(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+TASK_NUMBER_SEQ = Sequence("task_number_seq", start=100001)
+
+
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
@@ -139,6 +142,8 @@ class Task(Base):
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    # Короткий номер задачи для людей: «(100345) Задание 6» в банке, поиск по номеру (решение №40).
+    number: Mapped[int] = mapped_column(BigInteger, TASK_NUMBER_SEQ, server_default=TASK_NUMBER_SEQ.next_value(), unique=True)
     owner_id: Mapped[UUID]
     subject_id: Mapped[UUID | None]
     subject_name: Mapped[str | None] = mapped_column(String(80))

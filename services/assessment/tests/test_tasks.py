@@ -63,6 +63,15 @@ async def test_search_bank(client):
     mine = (await client.get("/tasks", params={"scope": "mine"}, headers=bearer(b))).json()
     assert [i["title"] for i in mine["items"]] == ["Черновик"] and mine["items"][0]["status"] == "private"
 
+    # Короткий номер задачи: уникальный, шестизначный, по нему находится задача (решение №40).
+    numbers = [i["number"] for i in public["items"]]
+    assert len(set(numbers)) == 4 and all(n >= 100001 for n in numbers)
+    code = next(i for i in public["items"] if i["type"] == "code")
+    for q in (str(code["number"]), f"({code['number']})", f"№{code['number']}"):
+        found = (await client.get("/tasks", params={"q": q}, headers=bearer(b))).json()
+        assert [i["id"] for i in found["items"]] == [code["id"]], q
+    assert (await client.get(f"/tasks/{code['id']}", headers=bearer(b))).json()["number"] == code["number"]
+
 
 async def test_edit_lifecycle_and_moderation(client):
     owner, moderator = uuid4(), uuid4()

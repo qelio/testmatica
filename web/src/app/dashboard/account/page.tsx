@@ -8,24 +8,8 @@ import { Alert, Badge, Button, CodeStep, Field, Select, Spinner } from "@/compon
 import { identity, uploadFile, type UserInfo } from "@/lib/api";
 import { ROLE_LABELS, useAuth } from "@/lib/auth";
 import { errorText } from "@/lib/hooks";
+import { zonesWith } from "@/lib/timezones";
 
-// Часовые пояса России и соседей — чаще всего нужные; текущий пользователя добавляется, если его нет в списке.
-const ZONES: [string, string][] = [
-  ["Europe/Kaliningrad", "Калининград (UTC+2)"],
-  ["Europe/Moscow", "Москва (UTC+3)"],
-  ["Europe/Samara", "Самара (UTC+4)"],
-  ["Asia/Yekaterinburg", "Екатеринбург (UTC+5)"],
-  ["Asia/Omsk", "Омск (UTC+6)"],
-  ["Asia/Novosibirsk", "Новосибирск (UTC+7)"],
-  ["Asia/Krasnoyarsk", "Красноярск (UTC+7)"],
-  ["Asia/Irkutsk", "Иркутск (UTC+8)"],
-  ["Asia/Yakutsk", "Якутск (UTC+9)"],
-  ["Asia/Vladivostok", "Владивосток (UTC+10)"],
-  ["Asia/Magadan", "Магадан (UTC+11)"],
-  ["Asia/Kamchatka", "Камчатка (UTC+12)"],
-  ["Europe/Minsk", "Минск (UTC+3)"],
-  ["Asia/Almaty", "Алматы (UTC+5)"],
-];
 
 /** Личный кабинет: фото, имя и часовой пояс, email, пароль, вход с кодом. Есть у всех ролей. */
 export default function AccountPage() {
@@ -141,7 +125,7 @@ function ProfileBlock({ user, onChanged }: { user: UserInfo; onChanged: (u: User
   const [name, setName] = useState(() => nameOf(user));
   const [tz, setTz] = useState(user.timezone);
   const { run, busy, feedback } = useAction();
-  const zones = ZONES.some(([z]) => z === user.timezone) ? ZONES : [[user.timezone, user.timezone] as [string, string], ...ZONES];
+  const zones = zonesWith(user.timezone);
   return (
     <Block title="Данные">
       {feedback}

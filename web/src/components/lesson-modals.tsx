@@ -21,7 +21,9 @@ import {
   toDateInput,
   toTimeInput,
   WEEKDAYS_SHORT,
+  unzoned,
   weekdayIndex,
+  zoned,
 } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -82,10 +84,11 @@ export function CreateLessonModal({
   );
 }
 
+/** Начало следующего часа по часам пользователя (момент времени). */
 function nextHour(): Date {
-  const d = new Date();
+  const d = zoned(new Date());
   d.setHours(d.getHours() + 1, 0, 0, 0);
-  return d;
+  return unzoned(d);
 }
 
 function CreateLessonForm({ initial, preset, onCreated }: { initial: Date; preset?: LessonPreset; onCreated: (message: string) => void }) {
@@ -106,7 +109,7 @@ function CreateLessonForm({ initial, preset, onCreated }: { initial: Date; prese
   const [repeat, setRepeat] = useState(!!preset?.weekdays?.length);
   // null — пользователь дни не выбирал: повторяем в день недели выбранной даты.
   const [pickedWeekdays, setWeekdays] = useState<number[] | null>(preset?.weekdays?.length ? preset.weekdays : null);
-  const weekdays = pickedWeekdays ?? (date ? [weekdayIndex(fromInputs(date, "00:00"))] : []);
+  const weekdays = pickedWeekdays ?? (date ? [weekdayIndex(zoned(fromInputs(date, "00:00")))] : []);
   const [intervalWeeks, setIntervalWeeks] = useState(1);
   const [endMode, setEndMode] = useState<"count" | "until">("count");
   const [count, setCount] = useState(preset?.count ?? 10);
@@ -421,9 +424,6 @@ function LessonDetails({
               </Button>
             </div>
           )}
-          {!req.requested_by_me && isTeacher === false && (
-            <p className="text-xs text-fg-soft">Если отказаться от переноса, предложенного педагогом, занятие будет отменено.</p>
-          )}
         </div>
       )}
 
@@ -442,7 +442,7 @@ function LessonDetails({
 
       {!cancelled && !past && (
         <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-          {(isTeacher || canPropose) && !req && (
+          {(isTeacher || (canPropose && !req)) && (
             <Button variant="secondary" onClick={() => setMode("move")}>
               {isTeacher ? "Перенести" : "Предложить перенос"}
             </Button>
@@ -491,7 +491,8 @@ function MoveForm({
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
-  const needsConfirmation = lesson.kind === "individual";
+  // Педагог переносит сразу (ученик получает уведомление), ученик только предлагает новое время (решение №40).
+  const needsConfirmation = !isTeacher;
 
   return (
     <form
@@ -513,9 +514,7 @@ function MoveForm({
       {error && <Alert>{error}</Alert>}
       <p className="text-sm text-fg-soft">
         {needsConfirmation
-          ? isTeacher
-            ? "Ученик получит уведомление и должен подтвердить новое время."
-            : "Педагог получит уведомление и должен подтвердить новое время."
+          ? "Педагог получит уведомление и подтвердит новое время или откажет."
           : "Занятие будет перенесено сразу, ученики получат уведомление."}
       </p>
       <div className="grid grid-cols-2 gap-3">

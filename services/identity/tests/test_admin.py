@@ -88,3 +88,15 @@ async def test_stats_dau_mau(client):
     assert s["total"] == 2 and s["by_role"] == {"admin": 1, "student": 1, "teacher": 1}
     assert s["dau"] == 2 and s["mau"] == 2 and len(s["series"]) == 7
     assert s["series"][-1]["registrations"] == 2 and s["series"][-1]["active"] == 2
+
+
+async def test_admin_changes_timezone(client):
+    """Администратор меняет часовой пояс пользователя — по нему показывается расписание."""
+    boss = await make_admin(client)
+    await register(client, "pupil@example.com")
+    pupil = await user_id("pupil@example.com")
+    assert (await client.patch(f"/admin/users/{pupil}", json={"timezone": "Mars/Base"}, headers=boss)).status_code == 422
+    ok = (await client.patch(f"/admin/users/{pupil}", json={"timezone": "Asia/Yekaterinburg"}, headers=boss)).json()
+    assert ok["timezone"] == "Asia/Yekaterinburg"
+    me = {"Authorization": f"Bearer {(await login(client, 'pupil@example.com'))['access_token']}"}
+    assert (await client.get("/me", headers=me)).json()["timezone"] == "Asia/Yekaterinburg"

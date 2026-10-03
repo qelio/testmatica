@@ -1,4 +1,5 @@
 import type { Student } from "./api";
+import { fmtDate, fmtTime, zoned } from "@/lib/dates";
 
 export const SOURCE_LABELS: Record<Student["source"], string> = {
   invite: "по приглашению",
@@ -76,12 +77,10 @@ export const FORMAT_LABELS = { individual: "Индивидуально", group: 
 export function presenceText(p: { online: boolean; last_seen_at: string | null }): string {
   if (p.online) return "онлайн";
   if (!p.last_seen_at) return "давно не в сети";
-  const seen = new Date(p.last_seen_at);
-  const now = new Date();
-  if (seen.toDateString() === now.toDateString()) {
-    return `в сети сегодня в ${seen.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+  if (zoned(p.last_seen_at).toDateString() === zoned(new Date()).toDateString()) {
+    return `в сети сегодня в ${fmtTime(p.last_seen_at)}`;
   }
-  return `в сети ${seen.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}`;
+  return `в сети ${fmtDate(p.last_seen_at, { day: "numeric", month: "long" })}`;
 }
 
 export function fmtRub(n: number): string {

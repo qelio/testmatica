@@ -7,7 +7,7 @@ import { DistributionBars, Heatmap, Sparkline, TrendChart } from "@/components/c
 import { SubjectSelect } from "@/components/subject-select";
 import { Alert, Badge, Button, Field, Select, Spinner } from "@/components/ui";
 import { analytics, type AnalyticsPeriod, classroom, saveFile, type Stats } from "@/lib/api";
-import { toDateInput } from "@/lib/dates";
+import { fmtDate, toDateInput } from "@/lib/dates";
 import { fmtAverage, fmtRate, gradeTone } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -335,7 +335,7 @@ function StudentTab({ period }: { period: AnalyticsPeriod }) {
                 {[...r.grades].reverse().map((g, i) => (
                   <li key={i} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
                     <span className={`w-5 text-lg font-semibold ${gradeTone(g.value)}`}>{g.value}</span>
-                    <span className="text-fg-soft tabular-nums">{new Date(g.at).toLocaleDateString("ru-RU")}</span>
+                    <span className="text-fg-soft tabular-nums">{fmtDate(g.at, { day: "2-digit", month: "2-digit", year: "numeric" })}</span>
                     <span>{g.subject ?? "—"}</span>
                     <span className="text-fg-soft">{g.grade_type}</span>
                     <span className="min-w-0 flex-1 truncate text-fg-soft">{g.comment}</span>
