@@ -10,7 +10,7 @@
 - Веб: `docker compose exec -T web sh -c "npx tsc --noEmit && npm run lint"`.
 - Коды из писем при ручной проверке — в Mailpit: `http://localhost:8025`.
 - Прод: `compose.prod.yaml` + `infra/terraform` + `.github/workflows/deploy.yml`, порядок — `docs/deploy.md`.
-  Новый сервис или переменная окружения — добавить и туда (и в `infra/prod/env.example`); новая база — в `local.services` Terraform.
+  Новый сервис или переменная окружения — добавить и туда (и в `infra/prod/env.example`); новая база — в сервис `postgres` в `compose.prod.yaml` (решение №38, порядок — `docs/deploy.md`).
 
 ## Изменения и выкладка (решение №30)
 
