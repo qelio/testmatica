@@ -1,24 +1,24 @@
 # Выкладка в Яндекс Облако
 
-Схема (решение №28): одна ВМ с Docker Compose (`compose.prod.yaml`) + Managed PostgreSQL + Object Storage + Container Registry + Cloud DNS + Postbox (почта). Инфраструктура описана в `infra/terraform`, сборка и выкладка — GitHub Actions (`.github/workflows/deploy.yml`).
+Схема (решения №28 и №38): одна ВМ с Docker Compose (`compose.prod.yaml`, в том числе PostgreSQL) + Object Storage + Container Registry + Cloud DNS + Postbox (почта). Инфраструктура описана в `infra/terraform`, сборка и выкладка — GitHub Actions (`.github/workflows/deploy.yml`).
 
 ```
                  ┌────────────── ВМ testmatica-app (Ubuntu 24.04, Docker) ───────────────┐
  браузер ─443──▶ │ Traefik (HTTPS, Let's Encrypt) ─▶ web, /api/<сервис> ─▶ 14 сервисов   │
  браузер ─UDP──▶ │ LiveKit (7881/tcp, 7882/udp, TURN 3478/udp) ◀─ egress (запись)       │
-                 │ RabbitMQ, Redis, code-runner (изолированная сеть)                     │
-                 └───────┬────────────────────────────┬─────────────────────────────────┘
-                         │ 6432 (SSL)                 │ HTTPS
-              Managed PostgreSQL              Object Storage (файлы, записи)
+                 │ PostgreSQL (14 баз), RabbitMQ, Redis, code-runner (изолированная сеть)│
+                 └──────────────────────────────┬──────────────────────────────────────┘
+                                                │ HTTPS
+                          Object Storage (файлы, записи, копии баз)
 ```
 
 ## Размеры на старт
 
 Рассчитано примерно на 10 пользователей (не одновременно), значения — в `infra/terraform/variables.tf`:
 - ВМ: 2 vCPU с гарантированной долей 50%, 4 ГБ памяти + 2 ГБ подкачки, диск 30 ГБ SSD. Все контейнеры в боевом режиме занимают около 1,6 ГБ, запись занятия (Chrome) — ещё до 0,5 ГБ;
-- Managed PostgreSQL: `b2.micro` (2 vCPU с долей 20%, 2 ГБ), диск 10 ГБ SSD.
+- PostgreSQL — контейнер на той же ВМ (решение №38: Managed PostgreSQL обходился дороже ВМ), данные — в томе `pg-data`, русская сортировка (ICU `ru-RU`).
 
-Когда станет тесно (медленные страницы, заикается видео или запись) — поднять `vm_core_fraction` до 100, `vm_memory_gb` до 8, `pg_preset` до `b2.medium` и выполнить `terraform apply`: ВМ и база перезапустятся с новыми ресурсами, данные сохранятся.
+Когда станет тесно (медленные страницы, заикается видео или запись) — поднять `vm_core_fraction` до 100, `vm_memory_gb` до 8 и выполнить `terraform apply`: ВМ перезапустится с новыми ресурсами, данные сохранятся.
 
 ## Что нужно один раз
 
@@ -93,7 +93,15 @@ docker compose -f compose.prod.yaml exec identity python -m app.cli create-user 
 - **Обновление** — пуш в `main`. Тег образов = коммит.
 - **Откат** — `ssh deploy@<vm_ip> sh /opt/testmatica/deploy.sh <предыдущий коммит>`.
 - **Логи** — `docker compose -f compose.prod.yaml logs -f <сервис>`.
-- **Резервные копии** — Managed PostgreSQL сам хранит 14 дней (восстановление на момент времени в консоли). Файлы — в Object Storage.
+- **Резервные копии баз** — контейнер `postgres-backup` (`infra/prod/postgres-backup.sh`) раз в сутки около 01:00 UTC делает `pg_dump` каждой базы: на диск ВМ (том `pg-backups`, 7 дней) и в Object Storage `s3://testmatica-files/backups/postgres/<дата>/` (30 дней). Восстановить базу:
+  ```
+  docker compose -f compose.prod.yaml stop <сервис>
+  docker compose -f compose.prod.yaml cp <svc>.dump postgres:/tmp/<svc>.dump
+  docker compose -f compose.prod.yaml exec postgres sh -c "pg_restore -l /tmp/<svc>.dump | grep -v ' EXTENSION ' > /tmp/l && pg_restore -U postgres -d <svc> --clean --if-exists --no-owner --role=<svc> -L /tmp/l /tmp/<svc>.dump"
+  docker compose -f compose.prod.yaml start <сервис>
+  ```
+  Файлы — в Object Storage.
+- **Новая база** (новый сервис) — в `SERVICE_DATABASES` и `PG_PASSWORD_*` сервиса `postgres` в `compose.prod.yaml`, пароль — в `.env` и `gen-secrets.sh`. Скрипт `postgres-init.sh` работает только на пустом томе — на живом сервере базу и пользователя создать вручную (`CREATE ROLE … LOGIN PASSWORD …; CREATE DATABASE … OWNER …;`).
 - **Изменить инфраструктуру** — правка `infra/terraform`, `terraform plan`, `terraform apply`.
 
 ## Известные ограничения первого этапа
