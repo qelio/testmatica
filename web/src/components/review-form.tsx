@@ -6,10 +6,12 @@ import { Alert, Button, Field } from "@/components/ui";
 import { assessment, type Submission } from "@/lib/api";
 import { errorText } from "@/lib/hooks";
 
-/** Проверка развёрнутого ответа педагогом: процент выполнения и комментарий ученику. */
-export function ReviewForm({ sub, onChanged }: { sub: Submission; onChanged: () => void }) {
+/** Проверка развёрнутого ответа педагогом: результат и комментарий ученику.
+ *  points — сколько баллов стоит задание в работе: тогда результат вводится в баллах, иначе — в процентах. */
+export function ReviewForm({ sub, onChanged, points }: { sub: Submission; onChanged: () => void; points?: number }) {
   const [open, setOpen] = useState(sub.status === "pending_review");
-  const [score, setScore] = useState(Math.round((sub.score ?? 1) * 100));
+  const max = points ?? 100;
+  const [score, setScore] = useState(Math.round((sub.score ?? 1) * max * 2) / 2);
   const [comment, setComment] = useState(sub.teacher_comment ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -29,7 +31,7 @@ export function ReviewForm({ sub, onChanged }: { sub: Submission; onChanged: () 
         setBusy(true);
         setError(undefined);
         try {
-          await assessment.review(sub.id, score / 100, comment);
+          await assessment.review(sub.id, Math.min(1, Math.max(0, score / max)), comment);
           setOpen(false);
           onChanged();
         } catch (err) {
@@ -41,7 +43,15 @@ export function ReviewForm({ sub, onChanged }: { sub: Submission; onChanged: () 
     >
       {error && <Alert>{error}</Alert>}
       <div className="grid gap-2 sm:grid-cols-[8rem_1fr]">
-        <Field label="Результат, %" type="number" min={0} max={100} value={score} onChange={(e) => setScore(Number(e.target.value))} />
+        <Field
+          label={points ? `Баллы (из ${points})` : "Результат, %"}
+          type="number"
+          min={0}
+          max={max}
+          step={points ? 0.5 : 1}
+          value={score}
+          onChange={(e) => setScore(Number(e.target.value))}
+        />
         <Field label="Комментарий ученику" value={comment} maxLength={2000} onChange={(e) => setComment(e.target.value)} />
       </div>
       <Button type="submit" loading={busy}>

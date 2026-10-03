@@ -29,7 +29,23 @@ def _comment(d: dict) -> str:
     return text
 
 
+async def _remove(envelope: Envelope, session: AsyncSession) -> None:
+    """Педагог удалил работу целиком или убрал её у учеников — оценки за неё из журнала тоже убираются."""
+    d = envelope.data
+    grades = (await session.execute(
+        select(Grade).where(Grade.source == "test", Grade.source_ref == UUID(d["assignment_id"]),
+                            Grade.student_id.in_([UUID(s) for s in d["student_ids"]]))
+    )).scalars().all()
+    for grade in grades:
+        grade_type = await session.get(GradeType, grade.grade_type_id)
+        await _grade_event(session, "academic.grade.deleted", grade, grade_type, UUID(d["teacher_id"]))
+        await session.delete(grade)
+
+
 async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None:
+    if envelope.type in ("assessment.assignment.deleted", "assessment.assignment.students_removed"):
+        await _remove(envelope, session)
+        return
     if envelope.type != "assessment.attempt.graded":
         return
     d = envelope.data

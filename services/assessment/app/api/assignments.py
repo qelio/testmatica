@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
@@ -46,6 +46,8 @@ from ..schemas import (
     FileRef,
     ProctorEventIn,
     ProctorEventOut,
+    RemovedOut,
+    RemoveStudentsIn,
     StartIn,
     SubmissionOut,
 )
@@ -134,12 +136,14 @@ async def _correct(session: AsyncSession, attempt_ids: list[UUID]) -> dict[UUID,
     return dict(rows.all())
 
 
-def _brief(t: Attempt, answered: int, correct: dict[UUID, int] | None = None) -> AttemptBrief:
+def _brief(t: Attempt, answered: int, correct: dict[UUID, int] | None = None, a: Assignment | None = None) -> AttemptBrief:
     return AttemptBrief(
         id=t.id, number=t.number, status=t.status, started_at=t.started_at, submitted_at=t.submitted_at,
         auto_submitted=t.auto_submitted, finished_by_teacher=t.finished_by_teacher, screen_sharing=t.screen_sharing,
         answered=answered, total=len(t.task_order),
-        correct=correct.get(t.id, 0) if correct is not None and t.status == SUBMITTED else None, score=t.score, max_score=t.max_score,
+        correct=correct.get(t.id, 0) if correct is not None and t.status == SUBMITTED else None,
+        ends_at=t.ends_at if t.status == IN_PROGRESS else None,
+        current_ends_at=attempts.current_ends_at(t, a) if a is not None and t.status == IN_PROGRESS else None, score=t.score, max_score=t.max_score,
         percent=t.percent, grade=t.grade, checked=t.checked,
     )
 
@@ -175,7 +179,7 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
         (
             AssignmentStudentOut(
                 student_id=r.student_id, full_name=names.get(r.student_id, "Ученик"), allowed_attempts=r.allowed_attempts,
-                attempts=[_brief(t, answered.get(t.id, 0), correct if teacher_view or t.checked else None)
+                attempts=[_brief(t, answered.get(t.id, 0), correct if teacher_view or t.checked else None, a)
                           for t in all_attempts if t.student_id == r.student_id],
                 proctor_alerts=alerts.get(r.student_id, 0),
             )
@@ -207,7 +211,7 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
         max_attempts=a.max_attempts, attempts_left=attempts_left, settings=a.settings,
         tasks_count=len(a.items), max_score=sum(i["points"] for i in a.items), grade_scale=a.grade_scale,
         needs_review=attempts.needs_review(a), grade_to_journal=a.grade_to_journal,
-        grade_type_id=a.grade_type_id, created_at=a.created_at, students=students, can_start=can_start,
+        grade_type_id=a.grade_type_id, created_at=a.created_at, students=students, can_start=can_start, server_time=now,
     )
 
 
@@ -292,6 +296,72 @@ async def reassign(
     )
     await session.commit()
     return await assignment_out(session, a, principal, teacher_view=True)
+
+
+async def _drop_attempts(session: AsyncSession, a: Assignment, student_ids: set[UUID] | None) -> None:
+    """Удалить попытки (с ответами и отправками) — всех учеников или перечисленных."""
+    query = select(Attempt).where(Attempt.assignment_id == a.id)
+    if student_ids is not None:
+        query = query.where(Attempt.student_id.in_(student_ids))
+    tried = (await session.execute(query)).scalars().all()
+    if tried:
+        await session.execute(delete(Submission).where(Submission.context_type == "assignment",
+                                                       Submission.context_id.in_([t.id for t in tried])))
+        for t in tried:
+            await session.delete(t)
+
+
+@router.delete("/assignments/{assignment_id}", status_code=204)
+async def delete_assignment(assignment_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> None:
+    """Удалить назначенный тест целиком: у всех учеников, с попытками и оценками в журнале (academic — по событию)."""
+    a, is_teacher = await _assignment(session, assignment_id, principal)
+    if not is_teacher:
+        raise ApiError(404, "assignment_not_found", "Задание не найдено")
+    await _delete(session, a, principal)
+    await session.commit()
+
+
+async def _delete(session: AsyncSession, a: Assignment, principal: Principal) -> None:
+    student_ids = [str(r.student_id) for r in a.students]
+    await _drop_attempts(session, a, None)
+    await session.delete(a)
+    await outbox.event(
+        session, "assessment.assignment.deleted",
+        {"assignment_id": str(a.id), "title": a.title, "teacher_id": str(a.teacher_id), "student_ids": student_ids},
+        actor_id=principal.user_id,
+    )
+
+
+@router.post("/assignments/{assignment_id}/remove-students", response_model=RemovedOut)
+async def remove_students(
+    assignment_id: UUID, body: RemoveStudentsIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> RemovedOut:
+    """Убрать работу у конкретных учеников или у всех, кто её не сдал. Их попытки и оценки в журнале удаляются.
+    Если учеников не осталось — назначение удаляется целиком."""
+    a, is_teacher = await _assignment(session, assignment_id, principal)
+    if not is_teacher:
+        raise ApiError(404, "assignment_not_found", "Задание не найдено")
+    targets = {r.student_id for r in a.students if r.student_id in set(body.student_ids)}
+    if body.not_submitted:
+        done = set((await session.execute(
+            select(Attempt.student_id).where(Attempt.assignment_id == a.id, Attempt.status == SUBMITTED)
+        )).scalars())
+        targets |= {r.student_id for r in a.students if r.student_id not in done}
+    if not targets:
+        return RemovedOut(removed=0, deleted=False)
+    if targets == {r.student_id for r in a.students}:
+        await _delete(session, a, principal)
+        await session.commit()
+        return RemovedOut(removed=len(targets), deleted=True)
+    await _drop_attempts(session, a, targets)
+    a.students = [r for r in a.students if r.student_id not in targets]
+    await outbox.event(
+        session, "assessment.assignment.students_removed",
+        {"assignment_id": str(a.id), "title": a.title, "teacher_id": str(a.teacher_id), "student_ids": [str(s) for s in targets]},
+        actor_id=principal.user_id,
+    )
+    await session.commit()
+    return RemovedOut(removed=len(targets), deleted=False)
 
 
 @router.post("/assignments/{assignment_id}/close", response_model=AssignmentOut)

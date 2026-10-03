@@ -1054,6 +1054,9 @@ export type AttemptBrief = {
   answered: number;
   /** Сколько заданий решено верно (после сдачи). */
   correct?: number | null;
+  /** Таймер на весь тест / на текущее задание — когда выйдет время. */
+  ends_at?: string | null;
+  current_ends_at?: string | null;
   total: number;
   score: number | null;
   max_score: number;
@@ -1098,6 +1101,8 @@ export type Assignment = {
   created_at: string;
   students: { student_id: string; full_name: string; allowed_attempts: number; attempts: AttemptBrief[]; proctor_alerts: number }[];
   can_start: boolean;
+  /** Время сервера — для точных таймеров. */
+  server_time?: string;
 };
 export type AssignmentKind = "test" | "homework" | "live";
 export type GradeScale = { five: number; four: number; three: number };
@@ -1269,6 +1274,11 @@ export const assessment = {
     api<Attempt>(`${AS}/attempts/${attemptId}/answers/${taskId}`, { method: "PUT", body: { answer, file_ids: fileIds } }),
   nextTask: (attemptId: string) => api<Attempt>(`${AS}/attempts/${attemptId}/next`, { method: "POST" }),
   submitAttempt: (attemptId: string) => api<Attempt>(`${AS}/attempts/${attemptId}/submit`, { method: "POST" }),
+  /** Удалить назначенный тест целиком (попытки и оценки в журнале — тоже). */
+  deleteAssignment: (id: string) => api<void>(`${AS}/assignments/${id}`, { method: "DELETE" }),
+  /** Убрать работу у учеников: перечисленных и/или у всех несдавших. */
+  removeStudents: (id: string, body: { student_ids?: string[]; not_submitted?: boolean }) =>
+    api<{ removed: number; deleted: boolean }>(`${AS}/assignments/${id}/remove-students`, { method: "POST", body }),
   recheck: (submissionId: string) => api<Submission>(`${AS}/submissions/${submissionId}/recheck`, { method: "POST" }),
   /** Проверка работы педагогом: засчитать задания (только изменённые) и оценка (null — по критериям). */
   reviewAttempt: (attemptId: string, tasks: Record<string, boolean>, grade: number | null) =>
