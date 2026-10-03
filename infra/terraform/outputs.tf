@@ -8,15 +8,6 @@ output "registry" {
   value       = "cr.yandex/${yandex_container_registry.main.id}"
 }
 
-output "pg_host" {
-  value = "c-${yandex_mdb_postgresql_cluster.main.id}.rw.mdb.yandexcloud.net"
-}
-
-output "pg_passwords" {
-  value     = { for s in local.services : s => random_password.pg[s].result }
-  sensitive = true
-}
-
 output "s3_access_key" {
   value     = yandex_iam_service_account_static_access_key.storage.access_key
   sensitive = true

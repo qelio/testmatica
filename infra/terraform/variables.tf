@@ -73,17 +73,6 @@ variable "vm_disk_gb" {
   default = 30
 }
 
-variable "pg_preset" {
-  description = "Класс хостов Managed PostgreSQL: b2.medium — 2 vCPU (50%), 4 ГБ, самый маленький из доступных (b2.micro снят с продажи); дальше s3-c2-m8 (100%, 8 ГБ). Список: yc managed-postgresql resource-preset list"
-  type        = string
-  default     = "b2.medium"
-}
-
-variable "pg_disk_gb" {
-  type    = number
-  default = 10
-}
-
 variable "bucket_files" {
   description = "Бакет файлов (имена бакетов уникальны во всём Object Storage)"
   type        = string

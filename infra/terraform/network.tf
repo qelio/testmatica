@@ -73,16 +73,3 @@ resource "yandex_vpc_security_group" "app" {
     v4_cidr_blocks = ["0.0.0.0/0"]
   }
 }
-
-# База: только с ВМ, через пулер соединений (6432).
-resource "yandex_vpc_security_group" "pg" {
-  name       = "testmatica-pg"
-  network_id = yandex_vpc_network.main.id
-
-  ingress {
-    description       = "PostgreSQL с ВМ"
-    protocol          = "TCP"
-    port              = 6432
-    security_group_id = yandex_vpc_security_group.app.id
-  }
-}
