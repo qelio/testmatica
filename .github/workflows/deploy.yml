@@ -106,5 +106,5 @@ jobs:
         env:
           TARGET: ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}
         run: |
-          scp compose.prod.yaml infra/prod/deploy.sh "$TARGET:/opt/testmatica/"
+          scp compose.prod.yaml infra/prod/deploy.sh infra/prod/postgres-init.sh infra/prod/postgres-backup.sh "$TARGET:/opt/testmatica/"
           ssh "$TARGET" "sh /opt/testmatica/deploy.sh ${{ github.sha }}"

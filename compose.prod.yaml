@@ -1,5 +1,6 @@
 # Боевое окружение ТестМатики: одна ВМ в Яндекс Облаке, те же образы, что локально (решение №28).
-# База — Managed PostgreSQL, файлы и записи — Object Storage, почта — Yandex Cloud Postbox.
+# База — PostgreSQL в контейнере на этой же ВМ (решение №38, раньше — Managed PostgreSQL) с ежедневной копией
+# в Object Storage; файлы и записи — Object Storage, почта — Yandex Cloud Postbox.
 #
 #   Запуск на сервере (переменные — в .env рядом, образец: infra/prod/env.example):
 #     docker compose -f compose.prod.yaml pull && docker compose -f compose.prod.yaml up -d
@@ -22,6 +23,8 @@ x-python-env: &python-env
   INTERNAL_TOKEN: ${INTERNAL_TOKEN:?}
 
 x-python-depends: &python-depends
+  postgres:
+    condition: service_healthy
   rabbitmq:
     condition: service_healthy
 
@@ -74,7 +77,66 @@ services:
       - traefik.http.middlewares.to-apex.redirectregex.replacement=https://$${1}
       - traefik.http.middlewares.to-apex.redirectregex.permanent=true
 
-  # ---------- Очереди и кэш — только внутри сети ----------
+  # ---------- База, очереди и кэш — только внутри сети ----------
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    logging: *logging
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD:?}
+      # Русская сортировка (как ru_RU.UTF-8 в Managed PostgreSQL): «Ё» после «Е», строчные вместе с заглавными.
+      POSTGRES_INITDB_ARGS: --locale-provider=icu --icu-locale=ru-RU --encoding=UTF8
+      SERVICE_DATABASES: &pg-databases identity notification audit classroom schedule academic chat media content moderation assessment marketplace billing video
+      PG_PASSWORD_IDENTITY: ${PG_PASSWORD_IDENTITY:?}
+      PG_PASSWORD_NOTIFICATION: ${PG_PASSWORD_NOTIFICATION:?}
+      PG_PASSWORD_AUDIT: ${PG_PASSWORD_AUDIT:?}
+      PG_PASSWORD_CLASSROOM: ${PG_PASSWORD_CLASSROOM:?}
+      PG_PASSWORD_SCHEDULE: ${PG_PASSWORD_SCHEDULE:?}
+      PG_PASSWORD_ACADEMIC: ${PG_PASSWORD_ACADEMIC:?}
+      PG_PASSWORD_CHAT: ${PG_PASSWORD_CHAT:?}
+      PG_PASSWORD_MEDIA: ${PG_PASSWORD_MEDIA:?}
+      PG_PASSWORD_CONTENT: ${PG_PASSWORD_CONTENT:?}
+      PG_PASSWORD_MODERATION: ${PG_PASSWORD_MODERATION:?}
+      PG_PASSWORD_ASSESSMENT: ${PG_PASSWORD_ASSESSMENT:?}
+      PG_PASSWORD_MARKETPLACE: ${PG_PASSWORD_MARKETPLACE:?}
+      PG_PASSWORD_BILLING: ${PG_PASSWORD_BILLING:?}
+      PG_PASSWORD_VIDEO: ${PG_PASSWORD_VIDEO:?}
+    # ВМ на 4 ГБ, рядом ещё 15 сервисов: память — скромно, соединений — на пулы всех сервисов (14 × до 10).
+    command: >-
+      postgres -c shared_buffers=256MB -c effective_cache_size=1GB -c work_mem=4MB -c maintenance_work_mem=64MB
+      -c max_connections=200 -c wal_compression=on -c checkpoint_timeout=15min
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/10-services.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      retries: 30
+      start_period: 60s
+
+  # Копия баз раз в сутки: на диск ВМ (7 дней) и в Object Storage (30 дней) — infra/prod/postgres-backup.sh.
+  postgres-backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    logging: *logging
+    entrypoint: ["sh", "/postgres-backup.sh"]
+    environment:
+      PGPASSWORD: ${PG_ADMIN_PASSWORD:?}
+      SERVICE_DATABASES: *pg-databases
+      S3_BUCKET: ${S3_BUCKET_FILES:?}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+    volumes:
+      - pg-backups:/backups
+      - ./postgres-backup.sh:/postgres-backup.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------- Очереди и кэш ----------
 
   rabbitmq:
     image: rabbitmq:4-alpine
@@ -107,7 +169,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/identity
-      DATABASE_URL: postgresql+asyncpg://identity:${PG_PASSWORD_IDENTITY:?}@${PG_HOST:?}:6432/identity?ssl=require
+      DATABASE_URL: postgresql+asyncpg://identity:${PG_PASSWORD_IDENTITY:?}@postgres:5432/identity
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${IDENTITY_SECRET_KEY:?}
       REFRESH_COOKIE_SECURE: "true"
@@ -132,7 +194,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/notification
-      DATABASE_URL: postgresql+asyncpg://notification:${PG_PASSWORD_NOTIFICATION:?}@${PG_HOST:?}:6432/notification?ssl=require
+      DATABASE_URL: postgresql+asyncpg://notification:${PG_PASSWORD_NOTIFICATION:?}@postgres:5432/notification
       SMTP_HOST: ${SMTP_HOST:-postbox.cloud.yandex.net}
       SMTP_PORT: "${SMTP_PORT:-587}"
       SMTP_USERNAME: ${SMTP_USERNAME:-}
@@ -153,7 +215,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/audit
-      DATABASE_URL: postgresql+asyncpg://audit:${PG_PASSWORD_AUDIT:?}@${PG_HOST:?}:6432/audit?ssl=require
+      DATABASE_URL: postgresql+asyncpg://audit:${PG_PASSWORD_AUDIT:?}@postgres:5432/audit
     labels:
       - traefik.enable=true
       - traefik.http.routers.audit.rule=PathPrefix(`/api/audit`) && !PathPrefix(`/api/audit/internal`)
@@ -167,7 +229,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/classroom
-      DATABASE_URL: postgresql+asyncpg://classroom:${PG_PASSWORD_CLASSROOM:?}@${PG_HOST:?}:6432/classroom?ssl=require
+      DATABASE_URL: postgresql+asyncpg://classroom:${PG_PASSWORD_CLASSROOM:?}@postgres:5432/classroom
       WEB_BASE_URL: https://${DOMAIN:?}
     labels:
       - traefik.enable=true
@@ -182,7 +244,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/schedule
-      DATABASE_URL: postgresql+asyncpg://schedule:${PG_PASSWORD_SCHEDULE:?}@${PG_HOST:?}:6432/schedule?ssl=require
+      DATABASE_URL: postgresql+asyncpg://schedule:${PG_PASSWORD_SCHEDULE:?}@postgres:5432/schedule
     labels:
       - traefik.enable=true
       - traefik.http.routers.schedule.rule=PathPrefix(`/api/schedule`) && !PathPrefix(`/api/schedule/internal`)
@@ -196,7 +258,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/academic
-      DATABASE_URL: postgresql+asyncpg://academic:${PG_PASSWORD_ACADEMIC:?}@${PG_HOST:?}:6432/academic?ssl=require
+      DATABASE_URL: postgresql+asyncpg://academic:${PG_PASSWORD_ACADEMIC:?}@postgres:5432/academic
     labels:
       - traefik.enable=true
       - traefik.http.routers.academic.rule=PathPrefix(`/api/academic`) && !PathPrefix(`/api/academic/internal`)
@@ -210,7 +272,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/chat
-      DATABASE_URL: postgresql+asyncpg://chat:${PG_PASSWORD_CHAT:?}@${PG_HOST:?}:6432/chat?ssl=require
+      DATABASE_URL: postgresql+asyncpg://chat:${PG_PASSWORD_CHAT:?}@postgres:5432/chat
       REDIS_URL: redis://redis:6379/0
     depends_on:
       <<: *python-depends
@@ -229,7 +291,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/media
-      DATABASE_URL: postgresql+asyncpg://media:${PG_PASSWORD_MEDIA:?}@${PG_HOST:?}:6432/media?ssl=require
+      DATABASE_URL: postgresql+asyncpg://media:${PG_PASSWORD_MEDIA:?}@postgres:5432/media
       S3_ENDPOINT: https://storage.yandexcloud.net
       S3_PUBLIC_ENDPOINT: https://storage.yandexcloud.net
       S3_BUCKET: ${S3_BUCKET_FILES:?}
@@ -248,7 +310,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/content
-      DATABASE_URL: postgresql+asyncpg://content:${PG_PASSWORD_CONTENT:?}@${PG_HOST:?}:6432/content?ssl=require
+      DATABASE_URL: postgresql+asyncpg://content:${PG_PASSWORD_CONTENT:?}@postgres:5432/content
     labels:
       - traefik.enable=true
       - traefik.http.routers.content.rule=PathPrefix(`/api/content`) && !PathPrefix(`/api/content/internal`)
@@ -262,7 +324,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/moderation
-      DATABASE_URL: postgresql+asyncpg://moderation:${PG_PASSWORD_MODERATION:?}@${PG_HOST:?}:6432/moderation?ssl=require
+      DATABASE_URL: postgresql+asyncpg://moderation:${PG_PASSWORD_MODERATION:?}@postgres:5432/moderation
     labels:
       - traefik.enable=true
       - traefik.http.routers.moderation.rule=PathPrefix(`/api/moderation`) && !PathPrefix(`/api/moderation/internal`)
@@ -276,7 +338,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/assessment
-      DATABASE_URL: postgresql+asyncpg://assessment:${PG_PASSWORD_ASSESSMENT:?}@${PG_HOST:?}:6432/assessment?ssl=require
+      DATABASE_URL: postgresql+asyncpg://assessment:${PG_PASSWORD_ASSESSMENT:?}@postgres:5432/assessment
     networks: [default, sandbox]
     labels:
       - traefik.enable=true
@@ -291,7 +353,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/marketplace
-      DATABASE_URL: postgresql+asyncpg://marketplace:${PG_PASSWORD_MARKETPLACE:?}@${PG_HOST:?}:6432/marketplace?ssl=require
+      DATABASE_URL: postgresql+asyncpg://marketplace:${PG_PASSWORD_MARKETPLACE:?}@postgres:5432/marketplace
       WEB_BASE_URL: https://${DOMAIN:?}
     labels:
       - traefik.enable=true
@@ -306,7 +368,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/billing
-      DATABASE_URL: postgresql+asyncpg://billing:${PG_PASSWORD_BILLING:?}@${PG_HOST:?}:6432/billing?ssl=require
+      DATABASE_URL: postgresql+asyncpg://billing:${PG_PASSWORD_BILLING:?}@postgres:5432/billing
       WEB_BASE_URL: https://${DOMAIN:?}
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-disabled}
     labels:
@@ -322,7 +384,7 @@ services:
     environment:
       <<: *python-env
       ROOT_PATH: /api/video
-      DATABASE_URL: postgresql+asyncpg://video:${PG_PASSWORD_VIDEO:?}@${PG_HOST:?}:6432/video?ssl=require
+      DATABASE_URL: postgresql+asyncpg://video:${PG_PASSWORD_VIDEO:?}@postgres:5432/video
       LIVEKIT_URL: http://livekit:7880
       LIVEKIT_PUBLIC_URL: wss://${LIVEKIT_DOMAIN:?}
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?}
@@ -456,6 +518,8 @@ networks:
     internal: true
 
 volumes:
+  pg-data:
+  pg-backups:
   letsencrypt:
   rabbitmq-data:
   redis-data:
