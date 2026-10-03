@@ -336,7 +336,10 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
             {item.result && (
               <div className="space-y-2 border-t border-line pt-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={resultText(item.result).tone}>{resultText(item.result).text}</Badge>
+                  <Badge tone={resultText(item.result).tone}>
+                    {/* В работе результат — в баллах (рядом), а не в процентах. */}
+                    {item.result.status === "reviewed" ? "Проверено" : resultText(item.result).text}
+                  </Badge>
                   {item.earned !== null && (
                     <span className="text-sm text-fg-soft">
                       {item.earned} из {item.points} б.
@@ -358,7 +361,7 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
                 </div>
                 {item.result.teacher_comment && <p className="text-sm">Комментарий педагога: {item.result.teacher_comment}</p>}
                 {teacher && <RunLog sub={item.result} />}
-                {teacher && item.task.type === "long" && <ReviewForm sub={item.result} onChanged={reload} />}
+                {teacher && item.task.type === "long" && <ReviewForm sub={item.result} points={item.points} onChanged={reload} />}
               </div>
             )}
             {!item.result && !inProgress && <p className="border-t border-line pt-3 text-sm text-fg-soft">Без ответа — 0 баллов</p>}
@@ -452,7 +455,7 @@ function TeacherReview({ attempt, marks, onSaved }: { attempt: Attempt; marks: R
   }
 
   return (
-    <div className="sticky top-16 z-10 space-y-3 rounded-2xl border border-brand/40 bg-surface px-5 py-4 shadow-sm">
+    <div className="space-y-3 rounded-2xl border border-brand/40 bg-surface px-5 py-4">
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
         <div className="min-w-0 flex-1 text-sm">

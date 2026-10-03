@@ -16,7 +16,12 @@ configure_logging(settings.service_name, settings.log_level)
 runtime = ServiceRuntime(settings, db)
 runtime.consumer("academic.subjects", [(EVENTS_EXCHANGE, "content.subject.updated")], subjects_sync.on_subject_updated)
 runtime.consumer("academic.identity", [(EVENTS_EXCHANGE, "identity.user.*")], people.on_identity_event)
-runtime.consumer("academic.assessment", [(EVENTS_EXCHANGE, "assessment.attempt.graded")], test_grades.on_assessment_event)
+runtime.consumer(
+    "academic.assessment",
+    [(EVENTS_EXCHANGE, "assessment.attempt.graded"), (EVENTS_EXCHANGE, "assessment.assignment.deleted"),
+     (EVENTS_EXCHANGE, "assessment.assignment.students_removed")],
+    test_grades.on_assessment_event,
+)
 runtime.consumer("academic.moderation", [(EVENTS_EXCHANGE, "moderation.decision.made")], moderation.on_moderation_decision)
 
 
