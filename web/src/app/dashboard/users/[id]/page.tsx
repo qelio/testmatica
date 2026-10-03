@@ -7,13 +7,14 @@ import { useState } from "react";
 import { History } from "@/components/audit-list";
 import { NameFields, nameOf } from "@/components/name-fields";
 import { ReasonModal } from "@/components/reviews";
-import { Alert, Badge, Button, Field, Modal, Spinner } from "@/components/ui";
+import { Alert, Badge, Button, Field, Modal, Select, Spinner } from "@/components/ui";
 import { admin, type AdminUser } from "@/lib/api";
 import { USER_STATUS } from "@/lib/admin";
 import { ROLE_LABELS, useAuth } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 import { fmtRub } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
+import { zonesWith } from "@/lib/timezones";
 
 /** Карточка пользователя: данные, роли, блокировка, удаление, сброс пароля, подписка, история действий. */
 export default function UserPage() {
@@ -174,7 +175,7 @@ function UserCard({ initial }: { initial: AdminUser }) {
 }
 
 function EditForm({ u, onSaved }: { u: AdminUser; onSaved: (u: AdminUser) => void }) {
-  const [form, setForm] = useState({ name: nameOf(u), email: u.email ?? "", login: u.login ?? "" });
+  const [form, setForm] = useState({ name: nameOf(u), email: u.email ?? "", login: u.login ?? "", timezone: u.timezone });
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   return (
@@ -189,6 +190,7 @@ function EditForm({ u, onSaved }: { u: AdminUser; onSaved: (u: AdminUser) => voi
             name: form.name,
             ...(form.email && form.email !== u.email ? { email: form.email } : {}),
             ...(form.login && form.login !== u.login ? { login: form.login } : {}),
+            ...(form.timezone !== u.timezone ? { timezone: form.timezone } : {}),
           }));
         } catch (err) {
           setError(errorText(err));
@@ -203,7 +205,19 @@ function EditForm({ u, onSaved }: { u: AdminUser; onSaved: (u: AdminUser) => voi
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <Field label="Логин" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} />
+        <Select
+          label="Часовой пояс"
+          value={form.timezone}
+          onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+        >
+          {zonesWith(u.timezone).map(([z, title]) => (
+            <option key={z} value={z}>
+              {title}
+            </option>
+          ))}
+        </Select>
       </div>
+      <p className="text-xs text-fg-soft">По часовому поясу пользователю показываются занятия, сроки тестов и уведомления.</p>
       <Button type="submit" variant="secondary" loading={busy}>
         Сохранить
       </Button>

@@ -11,6 +11,7 @@ import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from 
 import { classroom, type Group, type Invitation, type Student, type StudentCredentials } from "@/lib/api";
 import { pluralStudents, SOURCE_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
+import { fmtDate } from "@/lib/dates";
 
 type Tab = "groups" | "students" | "invitations";
 
@@ -389,7 +390,7 @@ function InvitationsTab({
         <li key={inv.id} className="flex items-center gap-3 px-5 py-3.5">
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{inv.email}</p>
-            <p className="text-sm text-fg-soft">действует до {new Date(inv.expires_at).toLocaleDateString("ru-RU")}</p>
+            <p className="text-sm text-fg-soft">действует до {fmtDate(inv.expires_at, { day: "numeric", month: "long", year: "numeric" })}</p>
           </div>
           <Button
             variant="ghost"

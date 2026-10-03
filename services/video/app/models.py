@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Uuid, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Uuid, false, func
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
@@ -44,6 +44,8 @@ class Room(Base):
     end_reason: Mapped[str | None] = mapped_column(String(20))  # teacher / time_limit / empty
     # Ученики, которым педагог разрешил показывать экран.
     screen_share: Mapped[list[UUID]] = mapped_column(ARRAY(Uuid), default=list, server_default="{}")
+    # Запись включается сама, когда в комнату входит участник (решение №40); педагог остановил вручную — больше не включается.
+    auto_record_off: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     @property

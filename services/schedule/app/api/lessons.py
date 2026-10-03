@@ -196,7 +196,7 @@ async def update_lesson(
     if delta or duration or data:
         await logic.publish(session, "schedule.lesson.updated", targets, principal.user_id, {"scope": body.scope})
 
-    # Перенос одного занятия — отдельная логика: у индивидуального нужно согласие ученика.
+    # Перенос одного занятия — отдельная логика (отмена ожидающих предложений, уведомление ученикам).
     if new_start and body.scope == "this" and new_start != lesson.starts_at:
         await _reschedule(session, lesson, new_start, principal, comment=None)
 
@@ -229,8 +229,8 @@ async def reschedule(
     principal: Principal = Depends(auth.principal),
     session: AsyncSession = Depends(db.session),
 ) -> LessonOut:
-    """Перенос одного занятия. Педагог переносит групповое занятие сразу; индивидуальное —
-    после подтверждения ученика. Ученик может только предложить перенос индивидуального занятия."""
+    """Перенос одного занятия. Педагог переносит любое своё занятие сразу — ученикам приходит уведомление (решение №40).
+    Ученик может только предложить перенос индивидуального занятия — педагог подтверждает или отклоняет."""
     lesson = await logic.visible_lesson(session, lesson_id, principal, lock=True)
     await _reschedule(session, lesson, body.starts_at, principal, body.comment)
     await session.commit()
@@ -245,11 +245,12 @@ async def _reschedule(
     if new_start.tzinfo is None:
         raise ApiError(422, "invalid_time", "Время нужно передавать с часовым поясом")
     is_teacher = lesson.teacher_id == principal.user_id
-    if lesson.kind == KIND_GROUP:
-        if not is_teacher:
-            raise ApiError(403, "forbidden", "Групповое занятие переносит педагог")
+    if is_teacher:
+        # Педагогу согласие ученика не нужно: переносит сразу, ученик получает уведомление.
         await logic.move(session, lesson, new_start, principal.user_id)
         return
+    if lesson.kind == KIND_GROUP:
+        raise ApiError(403, "forbidden", "Групповое занятие переносит педагог")
 
     new_end = new_start + (lesson.ends_at - lesson.starts_at)
     # Время педагога должно быть свободно уже на этапе предложения.

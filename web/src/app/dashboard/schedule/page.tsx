@@ -8,7 +8,7 @@ import { CreateLessonModal, LessonModal, type LessonPreset } from "@/components/
 import { Alert, Button, Spinner } from "@/components/ui";
 import { type Lesson, schedule } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { addDays, fmtDate, fmtDateTime, fromInputs } from "@/lib/dates";
+import { addDays, fmtDateTime, fmtDay, fromInputs, unzoned, zoned } from "@/lib/dates";
 import { useLoad } from "@/lib/hooks";
 
 const VIEWS: { value: View; label: string }[] = [
@@ -18,16 +18,16 @@ const VIEWS: { value: View; label: string }[] = [
 ];
 
 function title(view: View, anchor: Date, days: Date[]): string {
-  if (view === "day") return fmtDate(anchor, { weekday: "long", day: "numeric", month: "long" });
+  if (view === "day") return fmtDay(anchor, { weekday: "long", day: "numeric", month: "long" });
   if (view === "month") {
-    const s = fmtDate(anchor, { month: "long", year: "numeric" });
+    const s = fmtDay(anchor, { month: "long", year: "numeric" });
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
   const first = days[0];
   const last = days[6];
   return first.getMonth() === last.getMonth()
-    ? `${first.getDate()}–${fmtDate(last)}`
-    : `${fmtDate(first)} – ${fmtDate(last)}`;
+    ? `${first.getDate()}–${fmtDay(last)}`
+    : `${fmtDay(first)} – ${fmtDay(last)}`;
 }
 
 export default function SchedulePage() {
@@ -62,13 +62,14 @@ function Schedule() {
   const [fromLink] = useState(() => presetFrom(params));
   const isTeacher = !!user?.roles.includes("teacher");
   const [view, setView] = useState<View>("week");
-  const [anchor, setAnchor] = useState(() => fromLink?.at ?? new Date());
+  // Якорь и дни сетки — «настенное» время пользователя (lib/dates), занятия запрашиваем по моментам времени.
+  const [anchor, setAnchor] = useState(() => zoned(fromLink?.at ?? new Date()));
   const [open, setOpen] = useState<Lesson | null>(null);
   const [creating, setCreating] = useState<Date | null | false>(fromLink?.at ?? false);
   const [notice, setNotice] = useState<string>();
 
   const { from, to, days } = rangeFor(view, anchor);
-  const lessons = useLoad(() => schedule.lessons(from, to), [from.toISOString(), to.toISOString()]);
+  const lessons = useLoad(() => schedule.lessons(unzoned(from), unzoned(to)), [from.toISOString(), to.toISOString()]);
   const requests = useLoad(() => schedule.requests(), []);
 
   function shift(dir: -1 | 1) {
@@ -119,7 +120,7 @@ function Schedule() {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" className="h-9" onClick={() => setAnchor(new Date())}>
+        <Button variant="secondary" className="h-9" onClick={() => setAnchor(zoned(new Date()))}>
           Сегодня
         </Button>
         <div className="flex">

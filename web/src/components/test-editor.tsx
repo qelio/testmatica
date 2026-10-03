@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ExamChips } from "@/components/exams";
+import { TaskNumber } from "@/components/task-number";
 import { TaskPicker } from "@/components/task-picker";
 import { PreviewToggle, TaskPreview } from "@/components/task-preview";
 import { Alert, Badge, Button, Field, Select } from "@/components/ui";
@@ -153,7 +154,10 @@ export function TestEditor({ test }: { test?: Quiz }) {
               <li key={item.task_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
                 <span className="w-6 text-right text-sm text-fg-soft tabular-nums">{i + 1}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{item.title}</span>
+                  <span className="block truncate font-medium">
+                    {item.task && <TaskNumber n={item.task.number} />}
+                    {item.title}
+                  </span>
                   {item.task && (
                     <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                       <Badge>{TASK_TYPE_LABELS[item.task.type]}</Badge>

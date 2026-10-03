@@ -6,7 +6,7 @@ import { Suspense, useState } from "react";
 
 import { Alert, Badge, Button, EmptyState, Modal, Select, Spinner } from "@/components/ui";
 import { academic, type AttendanceStatus, classroom, type Grade, type Journal } from "@/lib/api";
-import { fmtDate, fmtTime, WEEKDAYS_SHORT } from "@/lib/dates";
+import { fmtDate, fmtDay, fmtTime, unzoned, WEEKDAYS_SHORT, zoned } from "@/lib/dates";
 import { ATTENDANCE_LABELS, fmtAverage, fmtRate, gradeTone } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -24,7 +24,7 @@ function JournalScreen() {
   const groupId = params.get("group") ?? undefined;
   const studentId = params.get("student") ?? undefined;
   const [month, setMonth] = useState(() => {
-    const d = new Date();
+    const d = zoned(new Date());
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [cell, setCell] = useState<{ lessonId: string; studentId: string } | null>(null);
@@ -38,8 +38,9 @@ function JournalScreen() {
     };
   }, []);
 
-  const from = month;
-  const to = new Date(month.getFullYear(), month.getMonth() + 1, 1);
+  // Месяц — «настенный» по часам пользователя; на сервер — моменты времени.
+  const from = unzoned(month);
+  const to = unzoned(new Date(month.getFullYear(), month.getMonth() + 1, 1));
   const hasTarget = !!(groupId || studentId);
   const journal = useLoad(
     () =>
@@ -54,7 +55,7 @@ function JournalScreen() {
     router.replace(id ? `/dashboard/journal?${kind}=${id}` : "/dashboard/journal");
   }
 
-  const monthTitle = fmtDate(month, { month: "long", year: "numeric" });
+  const monthTitle = fmtDay(month, { month: "long", year: "numeric" });
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -161,11 +162,11 @@ function JournalTable({
           <tr className="border-b border-line">
             <th className="sticky left-0 z-10 min-w-44 bg-surface px-3 py-2 text-left font-medium">{journal.title}</th>
             {journal.lessons.map((l) => {
-              const d = new Date(l.starts_at);
+              const d = zoned(l.starts_at);
               return (
                 <th key={l.id} className={`min-w-14 border-l border-line px-1 py-1.5 text-center font-normal ${l.started ? "" : "text-fg-soft/50"}`}>
                   <span className="block text-[11px] text-fg-soft">{WEEKDAYS_SHORT[(d.getDay() + 6) % 7]}</span>
-                  <span className="block font-medium">{fmtDate(d, { day: "2-digit", month: "2-digit" })}</span>
+                  <span className="block font-medium">{fmtDate(l.starts_at, { day: "2-digit", month: "2-digit" })}</span>
                   {l.started && (
                     <button
                       onClick={() => onAllPresent(l.id)}

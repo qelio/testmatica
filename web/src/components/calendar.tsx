@@ -1,7 +1,9 @@
 "use client";
 
 import type { Lesson } from "@/lib/api";
-import { addDays, fmtTime, sameDay, startOfWeek, WEEKDAYS_SHORT } from "@/lib/dates";
+import { addDays, fmtTime, sameDay, startOfWeek, unzoned, WEEKDAYS_SHORT, zoned } from "@/lib/dates";
+
+// Дни и часы сетки — «настенное» время пользователя (lib/dates): занятия ставятся по zoned(начало).
 
 export type View = "day" | "week" | "month";
 
@@ -54,7 +56,7 @@ export function TimeGrid({
   onSlot?: (at: Date) => void;
 }) {
   const hours = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i);
-  const today = new Date();
+  const today = zoned(new Date());
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
       <div className="min-w-[640px]" style={{ minWidth: days.length === 1 ? 0 : undefined }}>
@@ -80,7 +82,7 @@ export function TimeGrid({
             ))}
           </div>
           {days.map((day) => {
-            const dayLessons = lessons.filter((l) => sameDay(new Date(l.starts_at), day));
+            const dayLessons = lessons.filter((l) => sameDay(zoned(l.starts_at), day));
             return (
               <div key={day.toISOString()} className="relative border-l border-line">
                 {hours.map((h) => (
@@ -89,13 +91,13 @@ export function TimeGrid({
                     type="button"
                     aria-label={onSlot ? `Новое занятие ${h}:00` : undefined}
                     disabled={!onSlot}
-                    onClick={() => onSlot?.(new Date(day.getFullYear(), day.getMonth(), day.getDate(), h))}
+                    onClick={() => onSlot?.(unzoned(new Date(day.getFullYear(), day.getMonth(), day.getDate(), h)))}
                     className="block w-full border-b border-line/60 enabled:hover:bg-muted/60"
                     style={{ height: HOUR_PX }}
                   />
                 ))}
                 {layout(dayLessons).map(({ lesson, col, cols }) => {
-                  const start = new Date(lesson.starts_at);
+                  const start = zoned(lesson.starts_at);
                   const minutes = (start.getHours() - DAY_START) * 60 + start.getMinutes();
                   const top = Math.max(0, (minutes / 60) * HOUR_PX);
                   const height = Math.max(22, (lesson.duration_min / 60) * HOUR_PX - 2);
@@ -106,7 +108,7 @@ export function TimeGrid({
                       className={`absolute overflow-hidden rounded-lg border-l-4 px-1.5 py-1 text-left text-xs transition-colors ${lessonColors(lesson)}`}
                       style={{ top, height, left: `calc(${(col / cols) * 100}% + 2px)`, width: `calc(${100 / cols}% - 4px)` }}
                     >
-                      <span className="block font-semibold">{fmtTime(start)} {lesson.title}</span>
+                      <span className="block font-semibold">{fmtTime(lesson.starts_at)} {lesson.title}</span>
                       {height > 36 && lesson.subject && <span className="block truncate text-fg-soft">{lesson.subject}</span>}
                       {lesson.pending_reschedule && <span className="block text-tutor">перенос?</span>}
                     </button>
@@ -134,7 +136,7 @@ export function MonthGrid({
 }) {
   const first = startOfWeek(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
   const days = Array.from({ length: 42 }, (_, i) => addDays(first, i));
-  const today = new Date();
+  const today = zoned(new Date());
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-surface">
       <div className="grid grid-cols-7 border-b border-line text-center text-xs text-fg-soft">
@@ -148,7 +150,7 @@ export function MonthGrid({
         {days.map((day) => {
           const inMonth = day.getMonth() === anchor.getMonth();
           const dayLessons = lessons
-            .filter((l) => sameDay(new Date(l.starts_at), day))
+            .filter((l) => sameDay(zoned(l.starts_at), day))
             .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at));
           return (
             <div key={day.toISOString()} className={`min-h-24 border-b border-r border-line p-1 ${inMonth ? "" : "bg-muted/40"}`}>
@@ -182,6 +184,7 @@ export function MonthGrid({
   );
 }
 
+/** Видимый период: from/to — «настенные» (для запроса к серверу — unzoned), days — дни сетки. */
 export function rangeFor(view: View, anchor: Date): { from: Date; to: Date; days: Date[] } {
   if (view === "day") {
     const from = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());

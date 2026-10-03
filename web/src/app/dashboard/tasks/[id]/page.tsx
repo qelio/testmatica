@@ -10,6 +10,7 @@ import { STATUS_LABELS } from "@/components/course-view";
 import { ExamChips } from "@/components/exams";
 import { Markdown } from "@/components/markdown";
 import { TaskEditor } from "@/components/task-editor";
+import { TaskNumber } from "@/components/task-number";
 import { buildRubric, topicLabel, TopicSelect } from "@/components/topics";
 import { Alert, Badge, Button, Spinner } from "@/components/ui";
 import { assessment } from "@/lib/api";
@@ -76,7 +77,10 @@ export default function TaskPage() {
             <AdminContentActions kind="task" id={t.id} removed={t.status === "removed"} onChanged={task.reload} />
           </span>
         </div>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">{t.title}</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+          <TaskNumber n={t.number} />
+          {t.title}
+        </h1>
         <p className="mt-1 text-sm text-fg-soft">
           {[t.topic_path.length ? topicLabel(t.topic_path, t.subject_name) : "Без темы", t.author_name, t.tags.join(", ")]
             .filter(Boolean)

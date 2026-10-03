@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ExamChips } from "@/components/exams";
 import { TaskEditor } from "@/components/task-editor";
+import { TaskNumber } from "@/components/task-number";
 import { PreviewToggle, TaskPreview } from "@/components/task-preview";
 import { buildRubric, topicFilter, topicLabel, TopicSelect } from "@/components/topics";
 import { Badge, Button, Modal, Spinner } from "@/components/ui";
@@ -69,7 +70,7 @@ export function TaskPicker({
               setSearch(q.trim());
             }
           }}
-          placeholder="Поиск по задачам…"
+          placeholder="Поиск: название, текст или номер"
           aria-label="Поиск по задачам"
           className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
         />
@@ -98,7 +99,10 @@ export function TaskPicker({
                 className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-sm hover:bg-muted"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{t.title}</span>
+                  <span className="block truncate font-medium">
+                    <TaskNumber n={t.number} />
+                    {t.title}
+                  </span>
                   {t.topic_path.length > 0 && <span className="block truncate text-xs text-fg-soft">{topicLabel(t.topic_path)}</span>}
                 </span>
                 <ExamChips labels={t.exam_items} />
