@@ -24,20 +24,22 @@ router = APIRouter(prefix="/me", tags=["me"])
 STAFF = {"moderator", "admin"}  # им 2FA обязательна без исключений (решение №6)
 
 
+def check_timezone(v: str | None) -> str | None:
+    """Часовой пояс из базы IANA (Europe/Moscow, Asia/Yekaterinburg…)."""
+    if v is None:
+        return v
+    try:
+        ZoneInfo(v)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError("Неизвестный часовой пояс") from None
+    return v
+
+
 class ProfileIn(BaseModel):
     name: PersonName | None = Field(None, description="Фамилия, имя, отчество")
     timezone: str | None = Field(None, min_length=1, max_length=64)
 
-    @field_validator("timezone")
-    @classmethod
-    def _tz(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        try:
-            ZoneInfo(v)
-        except (ZoneInfoNotFoundError, ValueError):
-            raise ValueError("Неизвестный часовой пояс") from None
-        return v
+    _tz = field_validator("timezone")(check_timezone)
 
 
 class AvatarIn(BaseModel):

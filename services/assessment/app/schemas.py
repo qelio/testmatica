@@ -126,6 +126,7 @@ class ExamLabel(BaseModel):
 
 class TaskSummary(BaseModel):
     id: UUID
+    number: int = Field(0, description="Короткий номер задачи: «(100345) Задание 6»")
     title: str
     type: str
     difficulty: int

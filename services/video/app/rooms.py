@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import proctoring, storage
 from .config import settings
+from testmatica_common.ids import uuid7
 from testmatica_common.plans import BASIC, FREE
 
-from .deps import db, livekit, outbox, plans
+from .deps import db, livekit, outbox, plans, schedule
 from .lk import WebhookEvent
 from .models import EXPIRED, FAILED, READY, RECORDING, Connection, Recording, Room
 
@@ -66,6 +67,33 @@ def _user_id(identity: str | None) -> UUID | None:
         return None
 
 
+async def start_recording(session: AsyncSession, room: Room, lesson: dict) -> Recording:
+    """Включить запись всей комнаты (MP4 в S3). Ошибку LiveKit отдаёт вызывающему."""
+    rec_id = uuid7()
+    key = f"lessons/{room.lesson_id}/{rec_id}.mp4"
+    egress_id = await livekit.start_recording(room.livekit_name, key)
+    rec = Recording(
+        id=rec_id, room_id=room.id, lesson_id=room.lesson_id, teacher_id=room.teacher_id, egress_id=egress_id, key=key,
+        title=f"{room.title} · {datetime.fromisoformat(lesson['starts_at']).strftime('%d.%m.%Y')}",
+        viewer_ids=[UUID(s) for s in lesson["participant_ids"]], started_at=datetime.now(UTC),
+    )
+    session.add(rec)
+    return rec
+
+
+async def _auto_record(session: AsyncSession, room: Room) -> None:
+    """Занятие записывается само, как только в комнату вошёл участник (решение №40) — если педагог не выключил запись."""
+    if room.auto_record_off or room.ended_at:
+        return
+    if await session.scalar(select(Recording.id).where(Recording.room_id == room.id, Recording.status == RECORDING)):
+        return
+    try:
+        lesson = await schedule.get(f"/internal/lessons/{room.lesson_id}/room")
+        await start_recording(session, room, lesson)
+    except Exception:  # запись — не повод ломать вход в комнату; педагог может включить её сам
+        log.warning("auto recording failed", extra={"room": room.livekit_name}, exc_info=True)
+
+
 async def on_webhook(session: AsyncSession, ev: WebhookEvent) -> None:
     now = datetime.now(UTC)
     if ev.event.startswith("egress_"):
@@ -89,6 +117,7 @@ async def on_webhook(session: AsyncSession, ev: WebhookEvent) -> None:
             insert(Connection).values(room_id=room.id, user_id=user, livekit_sid=ev.participant_sid, joined_at=now)
             .on_conflict_do_nothing(index_elements=["livekit_sid"])
         )
+        await _auto_record(session, room)
     elif ev.event == "participant_left" and user:
         await session.execute(
             update(Connection).where(Connection.livekit_sid == ev.participant_sid, Connection.left_at.is_(None)).values(left_at=now)

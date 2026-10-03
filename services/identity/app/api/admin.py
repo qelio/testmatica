@@ -17,6 +17,7 @@ from ..models import ROLES, STATUS_ACTIVE, STATUS_BANNED, STATUS_DELETED, User, 
 from ..security import hash_password
 from ..users import find_by_identifier, normalize, person_data
 from .internal import _generate_password
+from .me import check_timezone
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 admin = auth.require(ROLE_ADMIN)
@@ -44,6 +45,7 @@ class AdminUser(BaseModel):
     last_seen_at: datetime | None
     deleted_at: datetime | None
     restore_until: datetime | None = Field(None, description="До какого момента удалённый аккаунт можно восстановить")
+    timezone: str = "Europe/Moscow"
 
     @classmethod
     def of(cls, u: User) -> "AdminUser":
@@ -51,7 +53,7 @@ class AdminUser(BaseModel):
             id=u.id, full_name=u.full_name, last_name=u.last_name, first_name=u.first_name, middle_name=u.middle_name,
             email=u.email, login=u.login, phone=u.phone, roles=u.role_names, status=u.status,
             status_reason=u.status_reason, two_factor_method=u.two_factor_method, managed_by_teacher_id=u.managed_by_teacher_id,
-            email_verified=u.email_verified_at is not None, created_at=u.created_at, last_seen_at=u.last_seen_at,
+            email_verified=u.email_verified_at is not None, created_at=u.created_at, last_seen_at=u.last_seen_at, timezone=u.timezone,
             deleted_at=u.deleted_at,
             restore_until=u.deleted_at + timedelta(days=RESTORE_DAYS) if u.deleted_at and not u.anonymized_at else None,
         )
@@ -66,6 +68,9 @@ class UserEdit(BaseModel):
     name: PersonName | None = None
     email: EmailStr | None = None
     login: str | None = Field(None, min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9._-]+$")
+    timezone: str | None = Field(None, min_length=1, max_length=64, description="Часовой пояс — по нему показывается расписание")
+
+    _tz = field_validator("timezone")(check_timezone)
 
 
 class RolesIn(BaseModel):
@@ -169,6 +174,8 @@ async def edit(user_id: UUID, body: UserEdit, principal: Principal = Depends(adm
             raise ApiError(409, f"{field}_taken", "Такой email уже занят" if field == "email" else "Такой логин уже занят")
         setattr(u, field, normalize(value))
         changes[field] = normalize(value)
+    if body.timezone is not None and body.timezone != u.timezone:
+        u.timezone = changes["timezone"] = body.timezone
     if changes:
         await _changed(session, u, principal, "edited_by_admin", {"fields": sorted(changes)})
         await session.commit()

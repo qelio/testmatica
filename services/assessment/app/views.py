@@ -45,7 +45,7 @@ async def exam_labels(session: AsyncSession, ids) -> dict[UUID, ExamLabel]:
 
 def summary(t: Task, authors: dict[UUID, str], paths: dict[UUID, list[str]], labels: dict[UUID, ExamLabel] | None = None) -> TaskSummary:
     return TaskSummary(
-        id=t.id, title=t.title, type=t.type, difficulty=t.difficulty, subject_id=t.subject_id, subject_name=t.subject_name,
+        id=t.id, number=t.number, title=t.title, type=t.type, difficulty=t.difficulty, subject_id=t.subject_id, subject_name=t.subject_name,
         topic_id=t.topic_id, topic_path=paths.get(t.topic_id, []), tags=t.tags,
         exam_items=[labels[i] for i in t.exam_item_ids if labels and i in labels], status=t.status, owner_id=t.owner_id, author_name=authors.get(t.owner_id, "Автор"), updated_at=t.updated_at,
     )

@@ -55,8 +55,11 @@ async def search(
     if tag:
         query = query.where(Task.tags.contains([tag.strip().lower()]))
     if q:
+        text = q.strip().strip("()#№ ")
         like = f"%{q.strip()}%"
-        query = query.where(or_(Task.title.ilike(like), Task.statement.ilike(like)))
+        # Номер задачи («100345», «(100345)», «№100345») — точное совпадение; иначе — поиск по тексту.
+        by_number = [Task.number == int(text)] if text.isdigit() and len(text) <= 12 else []
+        query = query.where(or_(Task.title.ilike(like), Task.statement.ilike(like), *by_number))
     total = await session.scalar(select(func.count()).select_from(query.subquery()))
     rows = (await session.execute(query.order_by(Task.updated_at.desc()).limit(limit).offset(offset))).scalars().all()
     return TaskPage(items=await views.summaries(session, rows), total=total or 0)

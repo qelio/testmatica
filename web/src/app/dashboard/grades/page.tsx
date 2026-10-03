@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { Alert, EmptyState, Spinner } from "@/components/ui";
 import { academic, type Stats } from "@/lib/api";
-import { fmtDate } from "@/lib/dates";
+import { fmtDate, unzoned, zoned } from "@/lib/dates";
 import { fmtAverage, fmtRate, gradeTone } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
 
@@ -30,9 +30,9 @@ function StatLine({ stats }: { stats: Stats }) {
 export default function MyGradesPage() {
   const [period, setPeriod] = useState<Period>("month");
   const months = PERIODS.find((p) => p.value === period)!.months;
-  const [range] = useState(() => new Date());
-  const to = new Date(range.getFullYear(), range.getMonth(), range.getDate() + 1);
-  const from = new Date(to.getFullYear(), to.getMonth() - months, to.getDate());
+  const [range] = useState(() => zoned(new Date()));
+  const to = unzoned(new Date(range.getFullYear(), range.getMonth(), range.getDate() + 1));
+  const from = unzoned(new Date(range.getFullYear(), range.getMonth() - months, range.getDate() + 1));
   const data = useLoad(() => academic.myGrades(from, to), [period]);
 
   return (
