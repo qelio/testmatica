@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 import type { NewsSummary } from "@/lib/server-api";
+import { fmtDate } from "@/lib/dates";
 
 export function fmtNewsDate(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) : "";
+  return iso ? fmtDate(iso, { day: "numeric", month: "long", year: "numeric" }) : "";
 }
 
 export function NewsCard({ news }: { news: NewsSummary }) {

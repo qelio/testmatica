@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { STATUS_LABELS } from "@/components/course-view";
 import { ExamChips, ExamItemSelect } from "@/components/exams";
+import { TaskNumber } from "@/components/task-number";
 import { buildRubric, topicFilter, topicLabel, TopicTree } from "@/components/topics";
 import { Alert, Badge, EmptyState, Select, Spinner } from "@/components/ui";
 import { assessment, type TaskType } from "@/lib/api";
@@ -175,7 +176,10 @@ export default function TaskBankPage() {
                 {tasks.data.items.map((t) => (
                   <li key={t.id}>
                     <Link href={`/dashboard/tasks/${t.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 hover:bg-muted">
-                      <span className="min-w-0 flex-1 font-medium">{t.title}</span>
+                      <span className="min-w-0 flex-1 font-medium">
+                        <TaskNumber n={t.number} />
+                        {t.title}
+                      </span>
                       <ExamChips labels={t.exam_items} />
                       <Badge tone="brand">{TASK_TYPE_LABELS[t.type]}</Badge>
                       <Badge>{DIFFICULTY_LABELS[t.difficulty]}</Badge>

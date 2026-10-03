@@ -168,38 +168,33 @@ async def test_update_following_and_cancel_following(client, teacher, fake_class
     assert len(cancelled) == 1 and cancelled[0]["data"]["count"] == 3
 
 
-async def test_teacher_reschedule_needs_student_confirmation(client, teacher, fake_classroom):
+async def test_teacher_reschedules_without_confirmation(client, teacher, fake_classroom):
+    """Педагог переносит индивидуальное занятие сразу — ученику уведомление (решение №40)."""
     student, lesson = await individual(client, teacher, fake_classroom, start=at(5, 10))
-    resp = await client.post(
-        f"/lessons/{lesson['id']}/reschedule", json={"starts_at": iso(at(6, 16))}, headers=bearer(teacher)
-    )
+    # Ученик успел предложить своё время — перенос педагога это предложение снимает.
+    proposed = (await client.post(f"/lessons/{lesson['id']}/reschedule", json={"starts_at": iso(at(5, 18))},
+                                  headers=student_bearer(student))).json()["pending_reschedule"]
+    assert proposed["requested_by_me"] is True
+
+    resp = await client.post(f"/lessons/{lesson['id']}/reschedule", json={"starts_at": iso(at(6, 16))}, headers=bearer(teacher))
     assert resp.status_code == 200
-    pending = resp.json()["pending_reschedule"]
-    assert pending["requested_by_me"] is True
-    assert resp.json()["starts_at"] == lesson["starts_at"]  # время пока прежнее
-
-    incoming = (await client.get("/reschedule-requests", headers=student_bearer(student))).json()
-    assert incoming[0]["requested_by_me"] is False and incoming[0]["lesson"]["id"] == lesson["id"]
-    # Автор запроса не может сам его подтвердить.
-    assert (await client.post(f"/reschedule-requests/{pending['id']}/accept", headers=bearer(teacher))).status_code == 403
-
-    ok = await client.post(f"/reschedule-requests/{pending['id']}/accept", headers=student_bearer(student))
-    assert ok.status_code == 204
-    moved = (await client.get(f"/lessons/{lesson['id']}", headers=bearer(teacher))).json()
-    assert datetime.fromisoformat(moved["starts_at"]) == at(6, 16)
-    assert moved["pending_reschedule"] is None
-    assert len(await outbox("schedule.lesson.rescheduled")) == 1
+    assert datetime.fromisoformat(resp.json()["starts_at"]) == at(6, 16) and resp.json()["pending_reschedule"] is None
+    [moved] = await outbox("schedule.lesson.rescheduled")
+    assert moved["data"]["student_ids"] == [str(student)]  # ученику — уведомление о переносе
+    assert (await client.get("/reschedule-requests", headers=student_bearer(student))).json() == []
 
 
-async def test_student_declines_teacher_reschedule_cancels_lesson(client, teacher, fake_classroom):
+async def test_student_proposes_teacher_accepts(client, teacher, fake_classroom):
     student, lesson = await individual(client, teacher, fake_classroom, start=at(5, 10))
-    req = (
-        await client.post(f"/lessons/{lesson['id']}/reschedule", json={"starts_at": iso(at(6, 16))}, headers=bearer(teacher))
-    ).json()["pending_reschedule"]
-    assert (await client.post(f"/reschedule-requests/{req['id']}/decline", headers=student_bearer(student))).status_code == 204
-    after = (await client.get(f"/lessons/{lesson['id']}", headers=bearer(teacher))).json()
-    assert after["status"] == "cancelled"
-    assert after["cancel_reason"] == "Ученик не согласился с переносом"
+    req = (await client.post(f"/lessons/{lesson['id']}/reschedule", json={"starts_at": iso(at(6, 16))},
+                             headers=student_bearer(student))).json()["pending_reschedule"]
+    incoming = (await client.get("/reschedule-requests", headers=bearer(teacher))).json()
+    assert incoming[0]["requested_by_me"] is False and incoming[0]["lesson"]["id"] == lesson["id"]
+    # Автор предложения не может сам его подтвердить.
+    assert (await client.post(f"/reschedule-requests/{req['id']}/accept", headers=student_bearer(student))).status_code == 403
+    assert (await client.post(f"/reschedule-requests/{req['id']}/accept", headers=bearer(teacher))).status_code == 204
+    moved = (await client.get(f"/lessons/{lesson['id']}", headers=bearer(teacher))).json()
+    assert datetime.fromisoformat(moved["starts_at"]) == at(6, 16) and moved["pending_reschedule"] is None
 
 
 async def test_student_proposes_teacher_declines(client, teacher, fake_classroom):
@@ -284,8 +279,6 @@ async def test_reminders(client, teacher, fake_classroom):
 
     # Занятие перенесли — старое напоминание за 2 часа не отправляется.
     await client.post(f"/lessons/{lesson['id']}/reschedule", json={"starts_at": iso(at(20, 10))}, headers=bearer(teacher))
-    req = (await client.get("/reschedule-requests", headers=student_bearer(student))).json()[0]
-    await client.post(f"/reschedule-requests/{req['id']}/accept", headers=student_bearer(student))
     old_start = datetime.fromisoformat(lesson["starts_at"])
     async with db.sessionmaker() as s, s.begin():
         await s.execute(
