@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { StudentHome } from "@/components/game";
+import { TeacherHome } from "@/components/teacher-home";
 import { TrialFollowups } from "@/components/trial-followups";
 import { Alert } from "@/components/ui";
 import { ApiError, type NotificationItem, notifications } from "@/lib/api";
@@ -35,9 +36,10 @@ export default function DashboardPage() {
   if (!user) return null;
   const firstName = user.first_name || user.full_name;
   const student = user.roles.includes("student");
+  const teacher = user.roles.includes("teacher");
 
   return (
-    <div className={`mx-auto space-y-6 ${student ? "max-w-6xl" : "max-w-4xl"}`}>
+    <div className={`mx-auto space-y-6 ${student || teacher ? "max-w-6xl" : "max-w-4xl"}`}>
       {student ? (
         <StudentHome user={user} />
       ) : (
@@ -45,6 +47,7 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Здравствуйте, {firstName}!</h1>
         </div>
       )}
+      {teacher && <TeacherHome />}
       {student && <TrialFollowups />}
 
       <section className="rounded-2xl border border-line bg-surface">
