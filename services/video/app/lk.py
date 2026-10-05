@@ -138,6 +138,9 @@ class LiveKit:
             try:
                 info = await lk.egress.start_room_composite_egress(api.RoomCompositeEgressRequest(
                     room_name=room, layout="grid",
+                    # Облегчённая запись для ВМ на 2 vCPU: 720p, 15 кадров/с (доска и презентации читаются,
+                    # Chrome в egress не задыхается), битрейт ниже — файлы меньше.
+                    advanced=api.EncodingOptions(width=1280, height=720, framerate=15, video_bitrate=1500, audio_bitrate=96),
                     file_outputs=[api.EncodedFileOutput(file_type=api.EncodedFileType.MP4, filepath=filepath)],
                 ))
             except api.TwirpError as e:
