@@ -157,3 +157,20 @@ class Consent(Base):
     # Кто подтвердил: сам пользователь 14+ или родитель (законный представитель) — для учеников.
     by_representative: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ApiKey(Base):
+    """Личный ключ доступа (решение №41): подключение Claude (MCP) и других программ от имени пользователя.
+    Хранится только хеш; сам ключ показывается один раз при выпуске."""
+
+    __tablename__ = "api_keys"
+    __table_args__ = (Index("ix_api_keys_user", "user_id", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(80))
+    prefix: Mapped[str] = mapped_column(String(12))  # «tm_ab12cd34» — чтобы узнать ключ в списке
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)  # sha256
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
