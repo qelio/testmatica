@@ -567,6 +567,34 @@ services:
       - traefik.http.middlewares.video-strip.stripprefix.prefixes=/api/video
       - traefik.http.services.video.loadbalancer.server.port=8000
 
+  # Подключение Claude (MCP, решение №41): без своей базы — вызывает API сервисов от имени владельца ключа.
+  mcp:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: mcp, DEV: "1" }
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      --reload-dir /app/app --reload-dir /libs/platform-common/src
+      --proxy-headers --forwarded-allow-ips='*'
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/mcp
+      WEB_BASE_URL: http://localhost:8080
+      ALLOWED_HOSTS: localhost:*,127.0.0.1:*,mcp:*
+    volumes:
+      - ./services/mcp:/app
+      - *libs-volume
+    depends_on:
+      identity:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mcp.rule=PathPrefix(`/api/mcp`)
+      - traefik.http.routers.mcp.middlewares=mcp-strip,api-ratelimit@docker
+      - traefik.http.middlewares.mcp-strip.stripprefix.prefixes=/api/mcp
+      - traefik.http.services.mcp.loadbalancer.server.port=8000
+
   # ---------- Веб-клиент ----------
 
   web:

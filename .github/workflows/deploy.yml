@@ -43,6 +43,7 @@ jobs:
       matrix:
         include:
           - { name: identity, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: mcp, context: ., file: infra/docker/python-service.Dockerfile }
           - { name: notification, context: ., file: infra/docker/python-service.Dockerfile }
           - { name: audit, context: ., file: infra/docker/python-service.Dockerfile }
           - { name: classroom, context: ., file: infra/docker/python-service.Dockerfile }

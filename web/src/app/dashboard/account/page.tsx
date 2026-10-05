@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { AvatarUploadButton } from "@/components/avatar-cropper";
+import { ClaudeConnect } from "@/components/claude-connect";
 import { NameFields, nameOf, sameName } from "@/components/name-fields";
 import { Alert, Badge, Button, CodeStep, Field, Select, Spinner } from "@/components/ui";
 import { identity, uploadFile, type UserInfo } from "@/lib/api";
@@ -31,6 +32,7 @@ export default function AccountPage() {
       <EmailBlock user={user} onChanged={setUser} />
       <PasswordBlock />
       <TwoFactorBlock user={user} onChanged={setUser} />
+      {user.roles.some((r) => r === "teacher" || r === "moderator" || r === "admin") && <ClaudeConnect />}
     </div>
   );
 }

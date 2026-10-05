@@ -405,6 +405,27 @@ services:
       - traefik.http.middlewares.video-strip.stripprefix.prefixes=/api/video
       - traefik.http.services.video.loadbalancer.server.port=8000
 
+  # Подключение Claude (MCP, решение №41): https://<домен>/api/mcp, ключ педагога — в заголовке Authorization.
+  mcp:
+    image: ${REGISTRY:?}/mcp:${TAG:-latest}
+    restart: unless-stopped
+    logging: *logging
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/mcp
+      WEB_BASE_URL: https://${DOMAIN:?}
+      ALLOWED_HOSTS: ${DOMAIN:?}
+    depends_on:
+      identity:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mcp.rule=PathPrefix(`/api/mcp`)
+      - traefik.http.routers.mcp.middlewares=mcp-strip,api-ratelimit@docker
+      - traefik.http.middlewares.mcp-strip.stripprefix.prefixes=/api/mcp
+      - traefik.http.services.mcp.loadbalancer.server.port=8000
+
   # Песочница для кода учеников: внутренняя сеть без выхода наружу, только чтение, без привилегий.
   code-runner:
     image: ${REGISTRY:?}/code-runner:${TAG:-latest}
