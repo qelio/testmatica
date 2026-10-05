@@ -384,3 +384,14 @@ async def test_trial_lesson_followup(client, teacher, fake_classroom):
                         .values(run_at=datetime.now(UTC)))
     await handlers.run_due_jobs()
     assert len(await outbox("schedule.lesson.trial_finished")) == 1
+
+
+async def test_any_lesson_duration(client, teacher, fake_classroom):
+    """Продолжительность — любая, от 5 минут до 8 часов (не только 30/45/60/90/120)."""
+    _, lesson = await individual(client, teacher, fake_classroom, duration=50)
+    assert lesson["duration_min"] == 50
+    changed = await client.patch(f"/lessons/{lesson['id']}", json={"duration_min": 135}, headers=bearer(teacher))
+    assert changed.json()["duration_min"] == 135
+    for bad in (4, 481):
+        resp = await create(client, teacher, kind="individual", student_id=str(uuid4()), starts_at=iso(at(9)), duration_min=bad)
+        assert resp.status_code == 422, bad
