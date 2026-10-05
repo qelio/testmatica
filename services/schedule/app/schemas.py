@@ -46,7 +46,7 @@ class LessonCreate(BaseModel):
     group_id: UUID | None = None
     student_id: UUID | None = None
     starts_at: datetime
-    duration_min: int = Field(ge=15, le=300)
+    duration_min: int = Field(ge=5, le=480, description="Любая продолжительность: от 5 минут до 8 часов")
     subject: str | None = Field(None, max_length=80)
     topic: str | None = Field(None, max_length=300)
     exam_item_ids: list[UUID] | None = Field(None, max_length=10, description="Задания ЕГЭ/ОГЭ на занятии")
@@ -78,7 +78,7 @@ class LessonCreate(BaseModel):
 class LessonUpdate(BaseModel):
     scope: Scope = "this"
     starts_at: datetime | None = None
-    duration_min: int | None = Field(None, ge=15, le=300)
+    duration_min: int | None = Field(None, ge=5, le=480)
     subject: str | None = Field(None, max_length=80)
     topic: str | None = Field(None, max_length=300)
     exam_item_ids: list[UUID] | None = Field(None, max_length=10, description="Задания ЕГЭ/ОГЭ на занятии")
