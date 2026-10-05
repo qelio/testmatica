@@ -23,6 +23,8 @@ export type UserInfo = PersonName & {
   email_codes?: boolean;
 };
 
+export type ApiKey = { id: string; name: string; prefix: string; created_at: string; last_used_at: string | null };
+
 export type Authenticated = {
   status: "authenticated";
   access_token: string;
@@ -178,6 +180,10 @@ export const identity = {
     api<UserInfo>(`${ID}/me/email/confirm`, { method: "POST", body: { challenge_id, code } }),
   changePassword: (current_password: string, new_password: string) =>
     api<void>(`${ID}/me/password`, { method: "POST", body: { current_password, new_password } }),
+  /** Личные ключи доступа — подключение Claude (MCP, решение №41). Сам ключ показывается один раз. */
+  apiKeys: () => api<ApiKey[]>(`${ID}/me/api-keys`),
+  createApiKey: (name: string) => api<ApiKey & { key: string }>(`${ID}/me/api-keys`, { method: "POST", body: { name } }),
+  revokeApiKey: (id: string) => api<void>(`${ID}/me/api-keys/${id}`, { method: "DELETE" }),
   setTwoFactor: (enabled: boolean, password: string) => api<UserInfo>(`${ID}/me/2fa`, { method: "PUT", body: { enabled, password } }),
   giveConsents: (byRepresentative: boolean) =>
     api<UserInfo>(`${ID}/me/consents`, { method: "POST", body: { accept_terms: true, consent_pdn: true, by_representative: byRepresentative } }),

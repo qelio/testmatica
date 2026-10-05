@@ -2,6 +2,7 @@
 
 import re
 import secrets
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -13,10 +14,10 @@ from testmatica_common.errors import ApiError
 from testmatica_common.internal import internal_guard
 from testmatica_common.names import PersonName
 
-from .. import avatars, sessions
+from .. import api_keys, avatars, sessions
 from ..config import settings
-from ..deps import db, outbox
-from ..models import STATUS_ACTIVE, User
+from ..deps import db, issuer, outbox
+from ..models import STATUS_ACTIVE, ApiKey, User
 from ..security import hash_password
 from ..users import create_user, find_by_identifier, normalize, person_data
 
@@ -199,3 +200,29 @@ async def set_avatar(user_id: UUID, body: AvatarIn, session: AsyncSession = Depe
         raise ApiError(404, "user_not_found", "Пользователь не найден")
     await avatars.set_avatar(session, user, body.file_id)
     await session.commit()
+
+
+class KeyExchangeIn(BaseModel):
+    key: str = Field(min_length=10, max_length=100)
+
+
+class KeyExchangeOut(BaseModel):
+    access_token: str
+    expires_in: int
+    user_id: UUID
+    full_name: str
+
+
+@router.post("/api-keys/exchange", response_model=KeyExchangeOut)
+async def exchange_api_key(body: KeyExchangeIn, session: AsyncSession = Depends(db.session)) -> KeyExchangeOut:
+    """Личный ключ → обычный access-токен пользователя (сервис mcp, решение №41): права — как в интерфейсе."""
+    key = await session.scalar(select(ApiKey).where(ApiKey.key_hash == api_keys.digest(body.key), ApiKey.revoked_at.is_(None)))
+    user = await session.get(User, key.user_id) if key else None
+    if key is None or user is None or user.status != STATUS_ACTIVE or not api_keys.ALLOWED_ROLES & set(user.role_names):
+        raise ApiError(401, "invalid_api_key", "Ключ доступа недействителен — выпустите новый в личном кабинете")
+    now = datetime.now(UTC)
+    if key.last_used_at is None or now - key.last_used_at > timedelta(minutes=5):
+        key.last_used_at = now
+        await session.commit()
+    return KeyExchangeOut(access_token=issuer.access_token(user), expires_in=settings.access_token_ttl_seconds,
+                          user_id=user.id, full_name=user.full_name)
