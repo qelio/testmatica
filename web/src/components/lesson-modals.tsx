@@ -29,6 +29,37 @@ import { errorText, useLoad } from "@/lib/hooks";
 
 const DURATIONS = [30, 45, 60, 90, 120];
 
+/** Продолжительность занятия: любое число минут вручную (5–480) и быстрый выбор частых значений. */
+function DurationField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <Field
+        label="Продолжительность, мин"
+        type="number"
+        required
+        min={5}
+        max={480}
+        step={1}
+        value={value || ""}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {DURATIONS.map((d) => (
+          <button
+            key={d}
+            type="button"
+            aria-pressed={value === d}
+            onClick={() => onChange(d)}
+            className={`rounded-lg border px-2.5 py-1 text-xs ${value === d ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+          >
+            {d} мин
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string }) {
   const { label, ...rest } = props;
   return (
@@ -199,13 +230,7 @@ function CreateLessonForm({ initial, preset, onCreated }: { initial: Date; prese
         <Field label="Дата" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
         <Field label="Начало" type="time" required value={time} onChange={(e) => setTime(e.target.value)} />
       </div>
-      <Select label="Продолжительность" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-        {DURATIONS.map((d) => (
-          <option key={d} value={d}>
-            {d} мин
-          </option>
-        ))}
-      </Select>
+      <DurationField value={duration} onChange={setDuration} />
       {target && (
         <div>
           <BillingSelect label="Оплата" value={paid} free="Бесплатное занятие" paid="Платное занятие" onChange={setPaidOverride} />
@@ -545,7 +570,6 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
   const [videoUrl, setVideoUrl] = useState(lesson.video_url ?? "");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
-  const durations = DURATIONS.includes(lesson.duration_min) ? DURATIONS : [...DURATIONS, lesson.duration_min].sort((a, b) => a - b);
 
   return (
     <form
@@ -575,13 +599,7 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
     >
       {error && <Alert>{error}</Alert>}
       {lesson.series_id && <ScopeChoice value={scope} onChange={setScope} />}
-      <Select label="Продолжительность" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-        {durations.map((d) => (
-          <option key={d} value={d}>
-            {d} мин
-          </option>
-        ))}
-      </Select>
+      <DurationField value={duration} onChange={setDuration} />
       <SubjectSelect value={subject} onChange={setSubject} />
       <Field label="Тема урока" value={topic} onChange={(e) => setTopic(e.target.value)} />
       <ExamItemsField value={examItems} onChange={setExamItems} />
