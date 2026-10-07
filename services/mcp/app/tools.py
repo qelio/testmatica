@@ -19,6 +19,9 @@ INSTRUCTIONS = """Ты работаешь с образовательной пл
 Перед созданием задачи найди тему рубрикатора (list_topics) и при необходимости задания ЕГЭ/ОГЭ (list_exam_items),
 проверь, нет ли похожей задачи (search_tasks). У каждой задачи короткий номер — «(100345)»; по нему её можно найти
 и исправить. Теория: курс → раздел → модуль → материалы (текст, карточка теории, задача из банка).
+Тесты собираются из задач банка; тест можно привязать к модулю курса (свой курс или опубликованный —
+search_library_courses): тогда он виден в модуле и оформлен как курс. shared=true («для всех, кто проходит курс») —
+только у автора курса: такой тест ученики проходят сами; без него — личный тест педагога (проверочная, контрольная).
 Всё создаётся как личные материалы педагога; в публичный банк — через модерацию в интерфейсе.
 После работы перечисли созданное со ссылками."""
 
@@ -327,3 +330,122 @@ async def update_material(ctx: Context, material_id: UUID, title: str | None = N
     m = await call(key, "content", "PATCH", f"/materials/{material_id}", json=payload)
     return {"id": m["id"], "kind": m["kind"], "title": m["title"], "url": link(f"/dashboard/library/module/{m['module_id']}")}
 
+
+
+# ---------- тесты (решения №43, 44) ----------
+
+
+class TestItem(BaseModel):
+    task: str = Field(description="Номер задачи (100345) или id")
+    points: int = Field(1, ge=1, le=100, description="Баллы за задание")
+    solution_file: bool = Field(False, description="Ученик прикладывает файл с решением (только short и choice); проверяет педагог")
+
+
+class TestFields(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    grade_level: int = Field(ge=1, le=11, description="Для какого класса (1–11)")
+    description: str = Field("", description="Описание для учеников")
+    items: list[TestItem] = Field(default_factory=list, description="Задания в порядке теста")
+    module_id: UUID | None = Field(None, description="Модуль курса (get_course), к которому относится тест; оформление — как у курса")
+    shared: bool = Field(False, description="«Для всех, кто проходит курс» — только автор курса; иначе тест личный")
+    order_mode: Literal["fixed", "random"] = Field("fixed", description="fixed — как в списке; random — у каждого свой порядок")
+    shuffle_options: bool = Field(False, description="Перемешивать варианты ответа")
+    time_mode: Literal["none", "total", "per_task"] = Field("none", description="Таймер: нет, на весь тест, на каждое задание")
+    time_limit_min: float | None = Field(None, gt=0, le=360, description="Минут на тест или на задание (если есть таймер)")
+
+
+def _test_brief(t: dict) -> dict:
+    module = t.get("module")
+    return {
+        "id": t["id"], "title": t["title"], "grade_level": t.get("grade_level"),
+        "tasks_count": t.get("tasks_count", len(t.get("items") or [])), "max_score": t.get("max_score"),
+        "module": {"id": module["id"], "title": module["title"], "course_title": module.get("course_title")} if module else None,
+        "shared": t.get("shared", False), "url": link(f"/dashboard/tests/{t['id']}"),
+    }
+
+
+async def _test_body(key: str, fields: TestFields) -> dict:
+    items = []
+    for item in fields.items:
+        task = await _resolve_task(key, item.task)
+        items.append({"task_id": task["id"], "points": item.points, "solution_file": item.solution_file})
+    body = fields.model_dump(mode="json", exclude={"items", "time_limit_min"})
+    body["items"] = items
+    body["time_limit_s"] = round(fields.time_limit_min * 60) if fields.time_mode != "none" and fields.time_limit_min else None
+    if fields.time_mode != "none" and body["time_limit_s"] is None:
+        raise ToolError("Для таймера укажите time_limit_min")
+    return body
+
+
+@mcp.tool()
+async def search_library_courses(ctx: Context, query: str = "", subject_id: UUID | None = None) -> list[dict]:
+    """Опубликованные курсы публичной библиотеки — к их модулям можно привязать свой тест (get_course — модули)."""
+    params = {k: v for k, v in {"q": query.strip(), "subject_id": str(subject_id) if subject_id else ""}.items() if v}
+    rows = await call(_key(ctx), "content", "GET", "/catalog", params=params)
+    return [{"id": c["id"], "title": c["title"], "author": c["author_name"], "subject": (c.get("subject") or {}).get("name"),
+             "url": link(f"/dashboard/library/course/{c['id']}")} for c in rows]
+
+
+@mcp.tool()
+async def list_my_tests(ctx: Context, module_id: Annotated[UUID | None, Field(description="Только привязанные к модулю")] = None) -> list[dict]:
+    """Мои тесты (с привязкой к модулю курса и признаком «для всех»)."""
+    rows = await call(_key(ctx), "assessment", "GET", "/tests", params={"module_id": str(module_id)} if module_id else None)
+    return [_test_brief(t) for t in rows]
+
+
+@mcp.tool()
+async def list_module_tests(ctx: Context, module_id: UUID) -> dict:
+    """Тесты модуля курса: общие («для всех», видны ученикам курса) и мои личные к нему."""
+    key = _key(ctx)
+    shared = await call(key, "assessment", "GET", "/course-tests", params={"module_id": str(module_id)})
+    mine = await call(key, "assessment", "GET", "/tests", params={"module_id": str(module_id)})
+    shared_ids = {t["id"] for t in shared}
+    return {
+        "shared": [{"id": t["id"], "title": t["title"], "tasks_count": t["tasks_count"], "url": link(f"/dashboard/tests/{t['id']}")} for t in shared],
+        "mine": [_test_brief(t) for t in mine if t["id"] not in shared_ids],
+    }
+
+
+async def _get_test(key: str, test_id: UUID) -> dict:
+    t = await call(key, "assessment", "GET", f"/tests/{test_id}")
+    return _test_brief(t) | {
+        "description": t["description"], "order_mode": t["order_mode"], "shuffle_options": t["shuffle_options"],
+        "time_mode": t["time_mode"], "time_limit_min": t["time_limit_s"] / 60 if t["time_limit_s"] else None,
+        "items": [{"task": str(i["task"]["number"]), "title": i["task"]["title"], "points": i["points"],
+                   "solution_file": i["solution_file"]} for i in t["items"]],
+    }
+
+
+@mcp.tool()
+async def get_test(ctx: Context, test_id: UUID) -> dict:
+    """Свой тест целиком: настройки и задания (номер задачи, баллы)."""
+    return await _get_test(_key(ctx), test_id)
+
+
+@mcp.tool()
+async def create_test(ctx: Context, test: TestFields) -> dict:
+    """Создать тест из задач банка (свои или опубликованные). Назначает его ученикам педагог в интерфейсе."""
+    key = _key(ctx)
+    created = await call(key, "assessment", "POST", "/tests", json=await _test_body(key, test))
+    return _test_brief(created)
+
+
+@mcp.tool()
+async def update_test(
+    ctx: Context,
+    test_id: UUID,
+    changes: Annotated[dict[str, Any], Field(description="Что поменять — поля как у create_test; items заменяются целиком")],
+) -> dict:
+    """Исправить свой тест: передайте только изменённые поля. Выданные работы не меняются.
+    Тест «для всех» в опубликованном курсе меняется только после снятия курса с публикации."""
+    key = _key(ctx)
+    current = await _get_test(key, test_id)
+    unknown = set(changes) - set(TestFields.model_fields)
+    if unknown:
+        raise ToolError(f"Неизвестные поля: {', '.join(sorted(unknown))}")
+    base = {f: current.get(f) for f in TestFields.model_fields if f not in ("items", "module_id")}
+    base["items"] = [{k: i[k] for k in ("task", "points", "solution_file")} for i in current["items"]]
+    base["module_id"] = current["module"]["id"] if current["module"] else None
+    merged = TestFields.model_validate(base | changes)
+    updated = await call(key, "assessment", "PUT", f"/tests/{test_id}", json=await _test_body(key, merged))
+    return _test_brief(updated)

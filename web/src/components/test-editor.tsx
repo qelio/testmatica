@@ -284,7 +284,7 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
         <Button type="submit" loading={busy} disabled={!dirty && !!test}>
           {test ? (dirty ? "Сохранить" : "Сохранено") : "Создать тест"}
         </Button>
-        {test && !dirty && items.length > 0 && (
+        {test && !dirty && items.length > 0 && user?.roles.includes("teacher") && (
             <Link
               href={`/dashboard/assignments/new?test=${test.id}`}
               className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted"
