@@ -5,8 +5,10 @@ import { useState } from "react";
 
 import { UploadChips, useUploads } from "@/components/files";
 import { KIND_LABELS, MaterialView } from "@/components/material-view";
+import { ModuleWorks } from "@/components/module-works";
 import { RichEditor } from "@/components/rich-editor";
 import { TaskPicker } from "@/components/task-picker";
+import { ThemeScope } from "@/components/theme-scope";
 import { Alert, Button, Field, Select, Spinner } from "@/components/ui";
 import { content, type Material, type MaterialKind } from "@/lib/api";
 import { errorText, useLoad } from "@/lib/hooks";
@@ -37,8 +39,9 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
   if (!m) return <Spinner />;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <nav className="text-sm text-fg-soft">
+    <ThemeScope theme={m.course_theme} className="mx-auto max-w-3xl">
+    <div className="space-y-6">
+      <nav className="tm-eyebrow text-sm text-fg-soft">
         <Link href={`${base}/course/${m.course_id}`} className="hover:text-fg">
           {m.course_title}
         </Link>
@@ -51,7 +54,7 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
       {error && <Alert>{error}</Alert>}
 
       {m.materials.length === 0 && <p className="text-fg-soft">В модуле пока нет материалов.</p>}
-      {m.materials.map((mat) => (
+      {m.materials.map((mat, n) => (
         <div key={mat.id} className="space-y-2">
           {editingId === mat.id ? (
             <MaterialEditor
@@ -63,7 +66,7 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
               }}
             />
           ) : (
-            <MaterialView material={mat} />
+            <MaterialView material={mat} n={n + 1} />
           )}
           {m.can_edit && editingId !== mat.id && (
             <div className="flex justify-end gap-1 text-sm">
@@ -89,6 +92,8 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
 
       {m.can_edit && <NewMaterial moduleId={m.id} onAdded={() => mod.reload()} />}
 
+      <ModuleWorks moduleId={m.id} courseId={m.course_id} />
+
       <div className="flex justify-between gap-3 border-t border-line pt-4">
         {m.prev_module_id ? (
           <Link href={`${base}/module/${m.prev_module_id}`} className="font-medium text-brand hover:underline">
@@ -108,6 +113,7 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
         )}
       </div>
     </div>
+    </ThemeScope>
   );
 }
 

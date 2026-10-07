@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 
 import { AttemptView } from "@/components/attempt-view";
 import { ProctorGuard, ProctorLog } from "@/components/proctor-guard";
+import { ThemeScope } from "@/components/theme-scope";
 import { Alert, Spinner } from "@/components/ui";
 import { assessment } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -22,8 +23,10 @@ export default function AttemptPage() {
   if (attempt.error) return <Alert>{attempt.error}</Alert>;
   if (!attempt.data) return <Spinner />;
   const teacher = attempt.data.student_id !== user?.id;
+  // Оформление работы — из теста при назначении (решение №42); педагог видит работу так же, как ученик.
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <ThemeScope theme={attempt.data.settings.theme} className="mx-auto max-w-3xl">
+    <div className="space-y-5">
       <Link href={`/dashboard/assignments/${attempt.data.assignment_id}`} className="text-sm text-fg-soft hover:text-fg">
         ← К заданию
       </Link>
@@ -47,5 +50,6 @@ export default function AttemptPage() {
         </>
       )}
     </div>
+    </ThemeScope>
   );
 }

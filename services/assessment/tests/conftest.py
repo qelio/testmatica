@@ -14,7 +14,7 @@ from testmatica_common.testing import TestTokens, make_envelope  # noqa: E402
 
 from app import handlers, runner  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.deps import auth, billing, classroom, code_runner, db, media, plans, schedule  # noqa: E402
+from app.deps import auth, billing, classroom, code_runner, content, db, media, plans, schedule  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base, Topic  # noqa: E402
 
@@ -47,6 +47,7 @@ class Fakes:
         self.runs: list[dict] = []
         self.groups: dict[str, dict] = {}  # id группы → {"teacher_id", "member_ids"}
         self.lessons: dict[str, str] = {}  # id занятия → id педагога
+        self.modules: dict[str, dict] = {}  # id модуля курса → сведения из content (/internal/modules/lookup)
 
     def runner(self, request: httpx.Request) -> httpx.Response:
         if not self.runner_up:
@@ -72,6 +73,21 @@ class Fakes:
         if self.lessons.get(lesson_id) != request.url.params["teacher_id"]:
             return httpx.Response(404, json={"error": {"code": "lesson_not_found", "message": "Занятие не найдено"}})
         return httpx.Response(200, json={"id": lesson_id})
+
+    def content(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        out = []
+        for mid in body["module_ids"]:
+            m = self.modules.get(mid)
+            if m is not None:
+                out.append(m | {"id": mid, "usable": m["owner_id"] == body["user_id"] or m.get("published", False)})
+        return httpx.Response(200, json=out)
+
+    def module(self, owner: UUID, theme="comics", published=False) -> str:
+        mid = str(uuid4())
+        self.modules[mid] = {"title": "Уравнения", "section_title": "Алгебра", "course_id": str(uuid4()), "course_title": "Математика 7",
+                             "course_theme": theme, "owner_id": str(owner), "published": published}
+        return mid
 
     def file(self, owner: UUID, name="решение.pdf") -> str:
         fid = str(uuid4())
@@ -100,6 +116,7 @@ def fakes() -> Fakes:
     media.transport = httpx.MockTransport(f.media)
     classroom.transport = httpx.MockTransport(f.classroom)
     schedule.transport = httpx.MockTransport(f.schedule)
+    content.transport = httpx.MockTransport(f.content)
     billing.transport = httpx.MockTransport(
         lambda r: httpx.Response(200, json={u: "basic" if u in BASIC_TEACHERS else "free" for u in json.loads(r.content)["user_ids"]})
     )

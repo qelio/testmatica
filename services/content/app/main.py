@@ -7,7 +7,7 @@ from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
 from . import handlers
-from .api import admin, catalog, editor, learning, site, subjects
+from .api import admin, catalog, editor, internal, learning, site, subjects
 from .config import settings
 from .deps import db
 
@@ -37,3 +37,4 @@ app.include_router(learning.router)
 app.include_router(editor.router)
 app.include_router(admin.router)
 app.include_router(site.router)
+app.include_router(internal.router)

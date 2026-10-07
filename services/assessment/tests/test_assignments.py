@@ -525,3 +525,55 @@ async def test_remove_assignment_and_students(client, fakes):
     assert (await client.delete(f"/assignments/{b['id']}", headers=bearer(teacher))).status_code == 204
     assert (await client.get(f"/assignments/{b['id']}", headers=bearer(teacher))).status_code == 404
     assert (await client.get(f"/attempts/{t['id']}", headers=student(olya))).status_code == 404
+
+
+async def test_theme_copied_to_assignment(client, fakes):
+    """Оформление теста (решение №42) копируется в работу: ученик проходит её в нём, правка теста выданное не меняет."""
+    teacher, olya = uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:1], theme="comics")
+    assert test["theme"] == "comics"
+    assert (await client.post("/tests", json={"title": "Т", "grade_level": 7, "items": [], "theme": "neon"},
+                              headers=bearer(teacher))).status_code == 422
+    await link(teacher, olya)
+    a = await assign(client, teacher, test, target_type="student", target_id=str(olya))
+    assert a["settings"]["theme"] == "comics"
+
+    body = {"title": test["title"], "grade_level": 9, "items": [{"task_id": tasks[0]["id"]}]}
+    assert (await client.put(f"/tests/{test['id']}", json=body, headers=bearer(teacher))).json()["theme"] == "classic"
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(olya))).json()
+    assert attempt["settings"]["theme"] == "comics"
+
+
+async def test_test_linked_to_course_module(client, fakes):
+    """Привязка теста к модулю курса (решение №43): проверка в content, оформление «как у курса», работы видны по модулю."""
+    teacher, other, olya = uuid4(), uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    mine, foreign, public = fakes.module(teacher), fakes.module(other), fakes.module(other, theme="classic", published=True)
+    body = {"title": "К теме", "grade_level": 7, "items": [{"task_id": tasks[0]["id"]}]}
+
+    assert (await client.post("/tests", json=body | {"theme": "course"}, headers=bearer(teacher))).status_code == 422  # без модуля
+    for bad in (str(uuid4()), foreign):  # нет такого модуля или чужой черновик
+        resp = await client.post("/tests", json=body | {"module_id": bad}, headers=bearer(teacher))
+        assert resp.status_code == 422 and resp.json()["error"]["code"] == "module_not_available"
+    assert (await client.post("/tests", json=body | {"module_id": public}, headers=bearer(teacher))).status_code == 201
+
+    test = (await client.post("/tests", json=body | {"module_id": mine, "theme": "course"}, headers=bearer(teacher))).json()
+    assert test["module"]["title"] == "Уравнения" and test["module"]["course_title"] == "Математика 7"
+    listed = (await client.get("/tests", params={"module_id": mine}, headers=bearer(teacher))).json()
+    assert [t["id"] for t in listed] == [test["id"]] and listed[0]["module"]["id"] == mine
+
+    # При назначении «как у курса» превращается в тему курса; привязка к модулю — в работу.
+    await link(teacher, olya)
+    a = await assign(client, teacher, test, target_type="student", target_id=str(olya))
+    assert a["settings"]["theme"] == "comics" and a["module"]["id"] == mine
+    by_module = (await client.get("/assignments", params={"module_id": mine}, headers=student(olya))).json()
+    assert [x["id"] for x in by_module] == [a["id"]]
+    assert (await client.get("/assignments", params={"module_id": public}, headers=student(olya))).json() == []
+
+    # Курс сменил тему — новые работы её подхватят; отвязали — модуль пропал, у выданной работы остался.
+    fakes.modules[mine]["course_theme"] = "classic"
+    assert (await assign(client, teacher, test, target_type="student", target_id=str(olya)))["settings"]["theme"] == "classic"
+    unlinked = (await client.put(f"/tests/{test['id']}", json=body, headers=bearer(teacher))).json()
+    assert unlinked["module"] is None and unlinked["theme"] == "classic"
+    assert (await client.get(f"/assignments/{a['id']}", headers=student(olya))).json()["module"]["id"] == mine
