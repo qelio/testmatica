@@ -11,16 +11,17 @@ import { ReviewForm } from "@/components/review-form";
 import { resultText } from "@/components/task-solver";
 import { Alert, Badge, EmptyState, Spinner } from "@/components/ui";
 import { assessment, classroom, type Submission } from "@/lib/api";
+import { bestAttempt, studentStatus } from "@/lib/assignments";
 import { fmtDateTime } from "@/lib/dates";
 import { FAILURE_LABELS, TASK_TYPE_LABELS } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
 
-/** Ученик глазами педагога: подготовка к ЕГЭ/ОГЭ и история решений. */
+/** Ученик глазами педагога: подготовка к ЕГЭ/ОГЭ, история решений и что он проходил по курсам сам. */
 export default function StudentPage() {
   const { id } = useParams<{ id: string }>();
   const students = useLoad(() => classroom.students(), []);
   const name = students.data?.find((s) => s.student_id === id)?.full_name;
-  const [tab, setTab] = useState<"exams" | "history">("exams");
+  const [tab, setTab] = useState<"exams" | "history" | "self">("exams");
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -33,6 +34,7 @@ export default function StudentPage() {
           [
             ["exams", "ЕГЭ и ОГЭ"],
             ["history", "Решения"],
+            ["self", "По курсам сам"],
           ] as const
         ).map(([key, title]) => (
           <button
@@ -46,8 +48,50 @@ export default function StudentPage() {
           </button>
         ))}
       </div>
-      {tab === "exams" ? <ExamBoardView targetType="student" targetId={id} /> : <History studentId={id} />}
+      {tab === "exams" ? (
+        <ExamBoardView targetType="student" targetId={id} />
+      ) : tab === "self" ? (
+        <SelfWork studentId={id} />
+      ) : (
+        <History studentId={id} />
+      )}
     </div>
+  );
+}
+
+/** Самостоятельные прохождения общих тестов курсов (решение №44) — только просмотр. */
+function SelfWork({ studentId }: { studentId: string }) {
+  const work = useLoad(() => assessment.selfWork(studentId), [studentId]);
+  if (work.error) return <Alert>{work.error}</Alert>;
+  if (!work.data) return <Spinner />;
+  if (!work.data.length) {
+    return <EmptyState title="Ученик пока не проходил тесты курсов сам" text="Здесь появятся тесты «для всех» из курсов библиотеки, которые он прошёл самостоятельно." />;
+  }
+  return (
+    <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
+      {work.data.map((a) => {
+        const row = a.students[0];
+        const st = studentStatus(a, row);
+        const best = bestAttempt(row);
+        const shown = best ?? row?.attempts[row.attempts.length - 1];
+        return (
+          <li key={a.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">{a.title}</span>
+              <span className="block text-sm text-fg-soft">
+                {[a.module?.title, `попыток: ${row?.attempts.length ?? 0}`].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            <Badge tone={st.tone}>{st.text}</Badge>
+            {shown && (
+              <Link href={`/dashboard/attempts/${shown.id}`} className="text-sm text-brand hover:underline">
+                Открыть
+              </Link>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import { Nunito, Unbounded } from "next/font/google";
 
-import type { CourseTheme, TestTheme } from "@/lib/api";
+import type { CourseTheme } from "@/lib/api";
 import { COURSE_THEMES } from "@/lib/course-themes";
 
 // Шрифты «Комикса» — грузятся только на страницах в этом оформлении.
@@ -11,38 +11,35 @@ const body = Nunito({ variable: "--font-nunito-body", subsets: ["latin", "cyrill
 
 /** Оформление курса или теста (решение №42): переопределяет токены цветов и стили карточек, кнопок, вариантов
  *  внутри себя (globals.css, .tm-<тема>). Логика страниц та же; классика — без обёртки-сцены. */
-export function ThemeScope({ theme, className = "", children }: { theme?: CourseTheme | null; className?: string; children: React.ReactNode }) {
+export function ThemeScope({
+  theme,
+  page = false,
+  className = "",
+  children,
+}: {
+  theme?: CourseTheme | null;
+  /** Оформление всей страницы: фон темы — на всю рабочую область (main), содержимое — по центру. */
+  page?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
   if (!theme || theme === "classic") return <div className={className}>{children}</div>;
-  return <div className={`tm-theme tm-${theme} ${display.variable} ${body.variable} ${className}`}>{children}</div>;
+  return <div className={`tm-theme tm-${theme} ${page ? "tm-page" : ""} ${display.variable} ${body.variable} ${className}`}>{children}</div>;
 }
 
-/** Выбор оформления — плитки с мини-превью темы. course — «как у курса» привязанного модуля (только у тестов). */
-export function ThemePicker<T extends TestTheme>({
-  value,
-  onChange,
-  hint,
-  course,
-}: {
-  value: T;
-  onChange: (t: T) => void;
-  hint?: string;
-  course?: { title: string; theme: CourseTheme } | null;
-}) {
-  const options: { id: TestTheme; label: string; text: string; preview: CourseTheme }[] = [
-    ...(course ? [{ id: "course" as const, label: "Как у курса", text: `Как у курса «${course.title}» — меняется вместе с ним`, preview: course.theme }] : []),
-    ...COURSE_THEMES.map((t) => ({ ...t, preview: t.id })),
-  ];
+/** Выбор оформления курса — плитки с мини-превью темы. Тесты курса оформляются так же (решение №44). */
+export function ThemePicker({ value, onChange, hint }: { value: CourseTheme; onChange: (t: CourseTheme) => void; hint?: string }) {
   return (
     <fieldset>
       <legend className="mb-1.5 text-sm font-medium">Оформление для учеников</legend>
-      <div className={`grid gap-2 ${options.length > 2 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-        {options.map((t) => (
+      <div className="grid gap-2 sm:grid-cols-2">
+        {COURSE_THEMES.map((t) => (
           <label
             key={t.id}
             className={`flex cursor-pointer flex-col gap-2 rounded-xl border p-2.5 ${value === t.id ? "border-brand ring-2 ring-brand/20" : "border-line hover:bg-muted"}`}
           >
-            <input type="radio" name="course-theme" className="sr-only" checked={value === t.id} onChange={() => onChange(t.id as T)} />
-            <ThemePreview theme={t.preview} />
+            <input type="radio" name="course-theme" className="sr-only" checked={value === t.id} onChange={() => onChange(t.id)} />
+            <ThemePreview theme={t.id} />
             <span>
               <span className="block text-sm font-medium">{t.label}</span>
               <span className="block text-xs text-fg-soft">{t.text}</span>

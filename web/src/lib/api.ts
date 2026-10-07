@@ -1038,23 +1038,27 @@ export type QuizSettings = {
   theme?: CourseTheme;
 };
 export type QuizItemInput = { task_id: string; points: number; solution_file: boolean };
-/** Оформление теста: тема или «как у курса» привязанного модуля (решения №42, 43). */
-export type TestTheme = CourseTheme | "course";
+/** Оформление теста: «как у курса» у привязанного к модулю, иначе обычное (решение №44). */
+export type TestTheme = "classic" | "course";
 /** Модуль курса библиотеки, к которому привязан тест или работа (решение №43). */
 export type ModuleRef = { id: string; title: string; course_id: string; course_title: string | null };
-type TestSettings = Omit<QuizSettings, "theme"> & { theme: TestTheme };
+type TestSettings = Omit<QuizSettings, "theme">;
 export type QuizInput = TestSettings & {
   title: string;
   description: string;
   grade_level: number;
   module_id: string | null;
+  /** «Для всех, кто проходит курс» — только у автора курса (решение №44). */
+  shared: boolean;
   items: QuizItemInput[];
 };
 export type Quiz = TestSettings & {
   id: string;
   title: string;
   description: string;
+  theme: TestTheme;
   module: ModuleRef | null;
+  shared: boolean;
   /** Для какого класса (1–11); у старых тестов — null. */
   grade_level: number | null;
   items: { task_id: string; points: number; solution_file: boolean; task: TaskSummary }[];
@@ -1067,12 +1071,25 @@ export type QuizSummary = {
   title: string;
   grade_level: number | null;
   module: ModuleRef | null;
+  shared: boolean;
   tasks_count: number;
   max_score: number;
   time_mode: TimeMode;
   time_limit_s: number | null;
   assignments_count: number;
   updated_at: string;
+};
+
+export type CourseTest = {
+  id: string;
+  title: string;
+  description: string;
+  owner_id: string;
+  tasks_count: number;
+  max_score: number;
+  time_mode: TimeMode;
+  time_limit_s: number | null;
+  self_assignment: Assignment | null;
 };
 
 export type AttemptBrief = {
@@ -1139,7 +1156,8 @@ export type Assignment = {
   /** Время сервера — для точных таймеров. */
   server_time?: string;
 };
-export type AssignmentKind = "test" | "homework" | "live";
+/** self — самостоятельное прохождение общего теста курса (решение №44). */
+export type AssignmentKind = "test" | "homework" | "live" | "self";
 export type GradeScale = { five: number; four: number; three: number };
 export type GradeScaleStored = { "5": number; "4": number; "3": number };
 export type AssignInput = {
@@ -1170,6 +1188,8 @@ export type AttemptTask = {
 export type Attempt = {
   id: string;
   assignment_id: string;
+  /** Самостоятельное прохождение: без проверки педагогом. */
+  self_study: boolean;
   title: string;
   student_id: string;
   number: number;
@@ -1290,6 +1310,11 @@ export const assessment = {
     return api<Assignment[]>(`${AS}/assignments?${qs}`);
   },
   assignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}`),
+  /** Тесты «для всех» под модулем курса; ученику — с его самостоятельной работой (решение №44). */
+  courseTests: (moduleId: string, authed: boolean) =>
+    api<CourseTest[]>(`${AS}/course-tests?module_id=${moduleId}`, readOpts(authed)),
+  startSelf: (testId: string) => api<Attempt>(`${AS}/course-tests/${testId}/start`, { method: "POST" }),
+  selfWork: (studentId: string) => api<Assignment[]>(`${AS}/students/${studentId}/self-work`),
   reassign: (id: string, studentId: string, deadline?: string | null) => {
     const qs = new URLSearchParams({ student_id: studentId, ...(deadline ? { deadline } : {}) });
     return api<Assignment>(`${AS}/assignments/${id}/reassign?${qs}`, { method: "POST" });

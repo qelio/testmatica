@@ -244,6 +244,21 @@ body {
 }
 .tm-comics.tm-preview { padding: 10px; border-radius: 10px; background-size: 12px 12px; }
 
+/* Страница в оформлении: фон темы — на всю рабочую область, а не карточкой посередине. */
+.tm-comics.tm-page { background: none; border-radius: 0; padding: 0; }
+main:has(.tm-comics.tm-page) {
+  background-color: #e9f5ff;
+  background-image: radial-gradient(rgba(61, 123, 253, 0.16) 1.3px, transparent 1.6px);
+  background-size: 20px 20px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) main:has(.tm-comics.tm-page) {
+    background-color: #161727;
+    background-image: radial-gradient(rgba(61, 123, 253, 0.16) 1.3px, transparent 1.6px);
+  }
+}
+:root[data-theme="dark"] main:has(.tm-comics.tm-page) { background-color: #161727; }
+
 .tm-comics :is(h1, h2, h3, .tm-title) {
   font-family: var(--font-unbounded), "Nunito", system-ui, sans-serif;
   font-weight: 700;

@@ -37,7 +37,7 @@ export default function AssignmentPage() {
   if (!a.data) return <Spinner />;
   // Ученик видит работу в оформлении теста (решение №42); таблица результатов педагога — в обычном.
   return (
-    <ThemeScope theme={isTeacher ? null : a.data.settings.theme} className={`mx-auto ${isTeacher ? "max-w-5xl" : "max-w-3xl"}`}>
+    <ThemeScope page theme={isTeacher ? null : a.data.settings.theme} className={`mx-auto ${isTeacher ? "max-w-5xl" : "max-w-3xl"}`}>
     <div className="space-y-5">
       <Link href="/dashboard/assignments" className="text-sm text-fg-soft hover:text-fg">
         ← {isTeacher ? "Назначение тестов" : "Назначенные тесты"}

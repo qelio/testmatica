@@ -25,7 +25,7 @@ export default function AttemptPage() {
   const teacher = attempt.data.student_id !== user?.id;
   // Оформление работы — из теста при назначении (решение №42); педагог видит работу так же, как ученик.
   return (
-    <ThemeScope theme={attempt.data.settings.theme} className="mx-auto max-w-3xl">
+    <ThemeScope page theme={attempt.data.settings.theme} className="mx-auto max-w-3xl">
     <div className="space-y-5">
       <Link href={`/dashboard/assignments/${attempt.data.assignment_id}`} className="text-sm text-fg-soft hover:text-fg">
         ← К заданию
