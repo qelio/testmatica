@@ -256,6 +256,7 @@ class Submission(Base):
 # Просто тест (без урока) / тест на дом (к уроку) / тест на уроке (к уроку, прогресс в реальном времени).
 PLAIN, HOMEWORK, LIVE = "test", "homework", "live"
 IN_PROGRESS, SUBMITTED = "in_progress", "submitted"
+SELF = "self"  # самостоятельное прохождение общего теста курса
 # Процент → оценка по пятибалльной шкале; педагог может задать свои границы при назначении.
 DEFAULT_GRADE_SCALE = {"5": 85, "4": 65, "3": 45}
 
@@ -284,6 +285,8 @@ class Test(Base):
     # при назначении копируется в settings уже конкретной темой.
     theme: Mapped[str] = mapped_column(String(12), default="classic", server_default="classic")
     # Привязка к модулю курса библиотеки (решение №43), по желанию. Названия — копия из content на момент сохранения.
+    # shared — тест автора курса «для всех»: виден под модулем всем, кто видит курс, его проходят самостоятельно.
+    shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     module_id: Mapped[UUID | None]
     course_id: Mapped[UUID | None]
     module_title: Mapped[str | None] = mapped_column(String(200))
@@ -311,7 +314,8 @@ class Assignment(Base):
 
     __tablename__ = "assignments"
     __table_args__ = (
-        CheckConstraint("kind IN ('test', 'homework', 'live')", name="kind_valid"),
+        # self — самостоятельное прохождение общего теста курса (решение №44): ученик сам себе «педагог».
+        CheckConstraint("kind IN ('test', 'homework', 'live', 'self')", name="kind_valid"),
         CheckConstraint("target_type IN ('student', 'group')", name="target_type_valid"),
         Index("ix_assignments_teacher", "teacher_id", "created_at"),
         Index("ix_assignments_lesson", "lesson_id"),

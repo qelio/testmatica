@@ -286,6 +286,7 @@ async def test_internal_modules_lookup(client):
     found = (await client.post("/internal/modules/lookup", json={"module_ids": [m1, str(uuid4())], "user_id": str(t)}, headers=internal)).json()
     assert len(found) == 1 and found[0]["title"] == "Что такое уравнение" and found[0]["section_title"] == "Основы"
     assert (found[0]["course_title"], found[0]["course_theme"], found[0]["usable"]) == ("Линейные уравнения", "comics", True)
+    assert (found[0]["course_status"], found[0]["owner_id"]) == ("private", str(t))
     foreign = (await client.post("/internal/modules/lookup", json={"module_ids": [m1], "user_id": str(other)}, headers=internal)).json()
     assert foreign[0]["usable"] is False
     assert (await client.post("/internal/modules/lookup", json={"module_ids": [m1], "user_id": str(t)})).status_code in (401, 403)

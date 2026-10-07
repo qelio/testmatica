@@ -10,7 +10,8 @@ from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import access, views
-from ..deps import auth, content, db
+from ..courses import course_editable, module_info
+from ..deps import auth, db
 from ..models import SOLUTION_FILE_TYPES, Assignment, Task, Test, TestItem
 from ..schemas import ModuleRef, QuizIn, QuizItemOut, QuizOut, QuizSummary
 
@@ -23,12 +24,6 @@ async def own_test(session: AsyncSession, test_id: UUID, p: Principal, lock: boo
     if test is None or test.owner_id != p.user_id:
         raise ApiError(404, "test_not_found", "Тест не найден")
     return test
-
-
-async def module_info(module_id: UUID, user_id: UUID) -> dict | None:
-    """Модуль курса из content (решение №43): названия, оформление курса и можно ли к нему привязать тест."""
-    found = await content.post("/internal/modules/lookup", json={"module_ids": [str(module_id)], "user_id": str(user_id)})
-    return found[0] if found else None
 
 
 def module_ref(test: Test) -> ModuleRef | None:
@@ -52,7 +47,7 @@ async def quiz_out(session: AsyncSession, test: Test) -> QuizOut:
     return QuizOut(
         id=test.id, title=test.title, description=test.description, grade_level=test.grade_level, order_mode=test.order_mode,
         shuffle_options=test.shuffle_options, time_mode=test.time_mode, time_limit_s=test.time_limit_s,
-        theme=test.theme, module=module_ref(test), items=[QuizItemOut(task_id=i.task_id, points=i.points, solution_file=i.solution_file, task=summaries[i.task_id]) for i in test.items if i.task_id in summaries],
+        theme=test.theme, module=module_ref(test), shared=test.shared, items=[QuizItemOut(task_id=i.task_id, points=i.points, solution_file=i.solution_file, task=summaries[i.task_id]) for i in test.items if i.task_id in summaries],
         max_score=sum(i.points for i in test.items),
         assignments_count=(await _assignments_count(session, [test.id])).get(test.id, 0),
         updated_at=test.updated_at,
@@ -71,10 +66,20 @@ async def my_tests(
     tests = (await session.execute(query.order_by(Test.updated_at.desc()))).scalars().all()
     counts = await _assignments_count(session, [t.id for t in tests])
     return [
-        QuizSummary(id=t.id, title=t.title, grade_level=t.grade_level, module=module_ref(t), tasks_count=len(t.items), max_score=sum(i.points for i in t.items),
+        QuizSummary(id=t.id, title=t.title, grade_level=t.grade_level, module=module_ref(t), shared=t.shared, tasks_count=len(t.items), max_score=sum(i.points for i in t.items),
                     time_mode=t.time_mode, time_limit_s=t.time_limit_s, assignments_count=counts.get(t.id, 0), updated_at=t.updated_at)
         for t in tests
     ]
+
+
+COURSE_LOCKED = "Тест «для всех» — часть курса, а курс на модерации или опубликован. Измените его, сняв курс с публикации"
+
+
+async def _check_course_editable(test: Test, p: Principal, module: dict | None = None) -> None:
+    """Общий тест меняется и удаляется, только пока его курс можно править (курс удалили — можно всегда)."""
+    module = module or await module_info(test.module_id, p.user_id)
+    if module is not None and not course_editable(module, p):
+        raise ApiError(409, "course_locked", COURSE_LOCKED)
 
 
 async def _apply(session: AsyncSession, test: Test, body: QuizIn, p: Principal) -> None:
@@ -87,17 +92,28 @@ async def _apply(session: AsyncSession, test: Test, body: QuizIn, p: Principal) 
             raise ApiError(422, "task_not_available", "Задача недоступна — возможно, её сняли с публикации")
         if item.solution_file and task.type not in SOLUTION_FILE_TYPES:
             raise ApiError(422, "solution_file_not_allowed", "Файл с решением можно запросить только к короткому ответу и выбору варианта")
+    module = await module_info(body.module_id, p.user_id) if body.module_id else None
+    if test.shared:
+        await _check_course_editable(test, p, module if body.module_id == test.module_id else None)
     if body.module_id is None:
         test.module_id = test.course_id = test.module_title = test.course_title = None
     else:
         # Названия обновляются при каждом сохранении. Курс сняли с публикации — прежняя привязка остаётся, новую не сделать.
-        module = await module_info(body.module_id, p.user_id)
         if module is not None and module["usable"]:
             test.module_id, test.course_id = body.module_id, UUID(module["course_id"])
             test.module_title, test.course_title = module["title"], module["course_title"]
         elif body.module_id != test.module_id:
             raise ApiError(422, "module_not_available", "Модуль не найден — привязать тест можно к своему или опубликованному курсу")
-    for field in ("title", "description", "grade_level", "order_mode", "shuffle_options", "time_mode", "time_limit_s", "theme"):
+    if body.shared:
+        # «Для всех» — часть курса: только у автора курса и публикуется вместе с ним (через модерацию).
+        if module is None or UUID(module["owner_id"]) != p.user_id:
+            raise ApiError(422, "shared_not_author", "«Для всех» может быть только тест автора курса")
+        if not course_editable(module, p):
+            raise ApiError(409, "course_locked", COURSE_LOCKED)
+    test.shared = body.shared
+    # Оформление — как у курса привязанного модуля, у остальных тестов — обычное (решение №44).
+    test.theme = "course" if test.module_id else "classic"
+    for field in ("title", "description", "grade_level", "order_mode", "shuffle_options", "time_mode", "time_limit_s"):
         setattr(test, field, getattr(body, field))
     test.items = [TestItem(task_id=i.task_id, points=i.points, solution_file=i.solution_file, position=n) for n, i in enumerate(body.items)]
     test.updated_at = datetime.now(UTC)
@@ -131,6 +147,8 @@ async def update(
 @router.delete("/{test_id}", status_code=204)
 async def delete(test_id: UUID, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)) -> None:
     test = await own_test(session, test_id, principal, lock=True)
+    if test.shared:
+        await _check_course_editable(test, principal)
     if (await _assignments_count(session, [test.id])).get(test.id):
         raise ApiError(409, "test_assigned", "Тест уже выдавали — его результаты хранятся, удалить нельзя")
     await session.delete(test)
