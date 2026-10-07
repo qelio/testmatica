@@ -340,6 +340,10 @@ class QuizItemIn(BaseModel):
     solution_file: bool = Field(False, description="Ученик прикрепляет файл с решением (короткий ответ и выбор); проверяет педагог")
 
 
+# Оформление прохождения теста (решение №42) — как у курсов в content; course — как у курса привязанного модуля.
+Theme = Literal["classic", "comics", "course"]
+
+
 class QuizIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field("", max_length=5000)
@@ -348,6 +352,8 @@ class QuizIn(BaseModel):
     shuffle_options: bool = False
     time_mode: Literal["none", "total", "per_task"] = "none"
     time_limit_s: int | None = Field(None, ge=10, le=6 * 3600, description="Секунды: на весь тест или на каждое задание")
+    theme: Theme = "classic"
+    module_id: UUID | None = Field(None, description="Модуль курса библиотеки, к которому относится тест (по желанию)")
     items: list[QuizItemIn] = Field(default_factory=list, max_length=100)
 
     _title = field_validator("title")(_clean)
@@ -360,6 +366,8 @@ class QuizIn(BaseModel):
             raise ValueError("Укажите ограничение времени")
         if len({i.task_id for i in self.items}) != len(self.items):
             raise ValueError("Задача добавлена в тест дважды")
+        if self.theme == "course" and self.module_id is None:
+            raise ValueError("Оформление «как у курса» — только у теста, привязанного к модулю курса")
         return self
 
 
@@ -368,6 +376,15 @@ class QuizItemOut(BaseModel):
     points: int
     solution_file: bool = False
     task: TaskSummary
+
+
+class ModuleRef(BaseModel):
+    """Модуль курса, к которому привязан тест или работа (решение №43)."""
+
+    id: UUID
+    title: str
+    course_id: UUID
+    course_title: str | None = None
 
 
 class QuizOut(BaseModel):
@@ -379,6 +396,8 @@ class QuizOut(BaseModel):
     shuffle_options: bool
     time_mode: str
     time_limit_s: int | None
+    theme: str
+    module: ModuleRef | None
     items: list[QuizItemOut]
     max_score: int
     assignments_count: int
@@ -389,6 +408,7 @@ class QuizSummary(BaseModel):
     id: UUID
     title: str
     grade_level: int | None
+    module: ModuleRef | None = None
     tasks_count: int
     max_score: int
     time_mode: str
@@ -492,6 +512,7 @@ class AssignmentOut(BaseModel):
     teacher_id: UUID
     teacher_name: str
     lesson_id: UUID | None
+    module: ModuleRef | None = None
     opens_at: datetime | None
     deadline: datetime | None
     not_open_yet: bool

@@ -25,6 +25,10 @@ INSTRUCTIONS = """Ты работаешь с образовательной пл
 mcp = MCPServer(name="ТестМатика", instructions=INSTRUCTIONS, website_url="https://testmatica.ru")
 
 TaskType = Literal["choice", "short", "long", "code"]
+# Оформление курса (решение №42): classic — как вся платформа; comics — игровое: толстые контуры, яркие цвета,
+# крупный округлый шрифт; подходит для 5–9 классов и курсов-«миссий».
+Theme = Annotated[Literal["classic", "comics"], Field(description="Оформление для учеников: classic — строгое, "
+                                                                     "comics — игровое «Комикс» для 5–9 классов")]
 
 
 def _key(ctx: Context) -> str:
@@ -216,7 +220,7 @@ async def update_task(
 
 def _course_out(c: dict) -> dict:
     return {
-        "id": c["id"], "title": c["title"], "status": c["status"], "url": link(f"/dashboard/library/course/{c['id']}"),
+        "id": c["id"], "title": c["title"], "status": c["status"], "theme": c.get("theme"), "url": link(f"/dashboard/library/course/{c['id']}"),
         "sections": [
             {"id": s["id"], "title": s["title"],
              "modules": [{"id": m["id"], "title": m["title"], "url": link(f"/dashboard/library/module/{m['id']}"),
@@ -247,10 +251,18 @@ async def create_course(
     title: str,
     subject_id: Annotated[UUID | None, Field(description="Предмет из list_subjects")] = None,
     description: str = "",
+    theme: Theme = "classic",
 ) -> dict:
     """Создать курс в библиотеке (черновик педагога). Дальше — add_section, add_module, add_material."""
     return _course_out(await call(_key(ctx), "content", "POST", "/courses",
-                                  json={"title": title, "subject_id": str(subject_id) if subject_id else None, "description": description}))
+                                  json={"title": title, "subject_id": str(subject_id) if subject_id else None,
+                                        "description": description, "theme": theme}))
+
+
+@mcp.tool()
+async def set_course_theme(ctx: Context, course_id: UUID, theme: Theme) -> dict:
+    """Сменить оформление курса: страницы курса и модулей у учеников."""
+    return _course_out(await call(_key(ctx), "content", "PATCH", f"/nodes/{course_id}", json={"theme": theme}))
 
 
 async def _add_child(key: str, parent_id: UUID, title: str, description: str, kind: str) -> dict:

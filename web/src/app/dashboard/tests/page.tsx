@@ -50,6 +50,11 @@ export default function TestsPage() {
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
+                {t.module && (
+                  <span className="block truncate text-sm text-brand">
+                    {t.module.course_title} → {t.module.title}
+                  </span>
+                )}
               </Link>
               {t.tasks_count > 0 && (
                 <Link href={`/dashboard/assignments/new?test=${t.id}`} className="text-sm font-medium text-brand hover:underline">

@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { AdminContentActions } from "@/components/admin-content";
+import { ThemePicker, ThemeScope } from "@/components/theme-scope";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
-import { classroom, content, type CourseStatus, type CourseTree } from "@/lib/api";
+import { classroom, content, type CourseStatus, type CourseTheme, type CourseTree } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -99,10 +100,11 @@ export function CourseView({ id, base }: { id: string; base: string }) {
   const total = c.materials_count;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <ThemeScope theme={c.theme} className="mx-auto max-w-4xl">
+    <div className="space-y-6">
       <div>
         <div className="flex flex-wrap items-center gap-2 text-sm text-fg-soft">
-          <span>{[c.subject?.name, c.author_name].filter(Boolean).join(" · ")}</span>
+          <span className="tm-eyebrow">{[c.subject?.name, c.author_name].filter(Boolean).join(" · ")}</span>
           {c.status !== "published" && (c.owner_id === user?.id || user?.roles.includes("moderator")) && (
             <Badge tone={STATUS_LABELS[c.status].tone}>{STATUS_LABELS[c.status].text}</Badge>
           )}
@@ -147,7 +149,7 @@ export function CourseView({ id, base }: { id: string; base: string }) {
           {edit && (
             <>
               <Button variant="secondary" onClick={() => setEditing(true)}>
-                Изменить описание
+                Описание и оформление
               </Button>
               <Button
                 variant="secondary"
@@ -198,10 +200,14 @@ export function CourseView({ id, base }: { id: string; base: string }) {
       ) : (
         <ol className="space-y-4">
           {c.sections.map((s, si) => (
-            <li key={s.id} className="rounded-2xl border border-line bg-surface">
-              <div className="flex items-center gap-2 border-b border-line px-5 py-3">
-                <h2 className="flex-1 font-semibold">
-                  {si + 1}. {s.title}
+            <li key={s.id} className="tm-card rounded-2xl border border-line bg-surface">
+              <div className="flex items-center gap-3 border-b border-line px-5 py-3">
+                <h2 className="flex flex-1 items-center gap-3 font-semibold">
+                  <span className="tm-num">
+                    {si + 1}
+                    <span className="tm-dot">.</span>
+                  </span>
+                  <span>{s.title}</span>
                 </h2>
                 {edit && (
                   <NodeTools
@@ -260,6 +266,7 @@ export function CourseView({ id, base }: { id: string; base: string }) {
       {editing && <CourseDetailsModal course={c} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); course.reload(); }} />}
       {report && <ProgressModal courseId={c.id} onClose={() => setReport(false)} />}
     </div>
+    </ThemeScope>
   );
 }
 
@@ -313,10 +320,11 @@ export function CourseDetailsModal({
   const [title, setTitle] = useState(course?.title ?? "");
   const [subjectId, setSubjectId] = useState(course?.subject?.id ?? "");
   const [description, setDescription] = useState(course?.description ?? "");
+  const [theme, setTheme] = useState<CourseTheme>(course?.theme ?? "classic");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   return (
-    <Modal open onClose={onClose} title={course ? "Описание курса" : "Новый курс"}>
+    <Modal open onClose={onClose} title={course ? "Описание и оформление" : "Новый курс"}>
       <form
         className="space-y-4"
         onSubmit={async (e) => {
@@ -324,7 +332,7 @@ export function CourseDetailsModal({
           setBusy(true);
           setError(undefined);
           try {
-            const data = { title, subject_id: subjectId || null, description };
+            const data = { title, subject_id: subjectId || null, description, theme };
             const saved = course ? await content.updateNode(course.id, data) : await content.createCourse(data);
             onSaved(saved.id);
           } catch (err) {
@@ -354,6 +362,7 @@ export function CourseDetailsModal({
             className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </label>
+        <ThemePicker value={theme} onChange={setTheme} hint="Как курс, его модули и задачи выглядят у учеников. Работы по тестам оформляются в настройках теста." />
         <Button type="submit" loading={busy} disabled={!title.trim()} className="w-full">
           {course ? "Сохранить" : "Создать курс"}
         </Button>

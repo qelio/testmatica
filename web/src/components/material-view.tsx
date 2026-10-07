@@ -65,7 +65,8 @@ function VideoPlayer({ material, signedIn }: { material: Material; signedIn: boo
   );
 }
 
-export function MaterialView({ material, onFavorite }: { material: Material; onFavorite?: (on: boolean) => void }) {
+/** n — номер материала в модуле: виден в игровых оформлениях курса (кружок у заголовка). */
+export function MaterialView({ material, n, onFavorite }: { material: Material; n?: number; onFavorite?: (on: boolean) => void }) {
   const { status } = useAuth();
   const signedIn = status === "authenticated";
   const [favorite, setFavorite] = useState(material.favorite);
@@ -78,11 +79,14 @@ export function MaterialView({ material, onFavorite }: { material: Material; onF
   const yt = material.kind === "link" && material.url ? youtubeId(material.url) : null;
 
   return (
-    <article className={`rounded-2xl border bg-surface p-5 sm:p-6 ${material.kind === "card" ? "border-brand/40" : "border-line"}`}>
+    <article className={`tm-card rounded-2xl border bg-surface p-5 sm:p-6 ${material.kind === "card" ? "border-brand/40" : "border-line"}`}>
       <header className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <Badge tone={material.kind === "card" ? "brand" : "neutral"}>{KIND_LABELS[material.kind]}</Badge>
-          <h2 className="mt-2 text-xl font-semibold">{material.title}</h2>
+        <div className="flex items-start gap-3">
+          {n !== undefined && <span className="tm-only tm-num">{n}</span>}
+          <div>
+            <Badge tone={material.kind === "card" ? "brand" : "neutral"}>{KIND_LABELS[material.kind]}</Badge>
+            <h2 className="mt-2 text-xl font-semibold">{material.title}</h2>
+          </div>
         </div>
         {signedIn && (
           <button

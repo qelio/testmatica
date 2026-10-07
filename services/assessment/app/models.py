@@ -280,6 +280,14 @@ class Test(Base):
     shuffle_options: Mapped[bool] = mapped_column(Boolean, default=False)  # варианты ответа у каждого свои
     time_mode: Mapped[str] = mapped_column(String(8), default="none")  # таймер на весь тест или на каждое задание
     time_limit_s: Mapped[int | None]
+    # Оформление прохождения (решение №42): classic, comics или course — как у курса привязанного модуля;
+    # при назначении копируется в settings уже конкретной темой.
+    theme: Mapped[str] = mapped_column(String(12), default="classic", server_default="classic")
+    # Привязка к модулю курса библиотеки (решение №43), по желанию. Названия — копия из content на момент сохранения.
+    module_id: Mapped[UUID | None]
+    course_id: Mapped[UUID | None]
+    module_title: Mapped[str | None] = mapped_column(String(200))
+    course_title: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -307,6 +315,7 @@ class Assignment(Base):
         CheckConstraint("target_type IN ('student', 'group')", name="target_type_valid"),
         Index("ix_assignments_teacher", "teacher_id", "created_at"),
         Index("ix_assignments_lesson", "lesson_id"),
+        Index("ix_assignments_module", "module_id"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
@@ -322,11 +331,15 @@ class Assignment(Base):
     target_id: Mapped[UUID]
     target_title: Mapped[str] = mapped_column(String(200))
     lesson_id: Mapped[UUID | None]  # урок в расписании: колонка журнала для автооценки
+    # Модуль курса из теста при назначении (решение №43) — работа видна ученику на странице модуля.
+    module_id: Mapped[UUID | None]
+    course_id: Mapped[UUID | None]
+    module_title: Mapped[str | None] = mapped_column(String(200))
     opens_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # до этого времени начать нельзя
     deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # когда закроется
     # Сколько попыток у ученика; None — без ограничений. Засчитывается лучшая (решение №15).
     max_attempts: Mapped[int | None] = mapped_column(SmallInteger)
-    # {order_mode, shuffle_options, time_mode, time_limit_s}
+    # {order_mode, shuffle_options, time_mode, time_limit_s, theme}
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB)
     # [{task_id, points, solution_file}] — в порядке теста
     items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
