@@ -44,6 +44,7 @@ from ..schemas import (
     AttemptTask,
     DraftIn,
     FileRef,
+    ModuleRef,
     ProctorEventIn,
     ProctorEventOut,
     RemovedOut,
@@ -51,7 +52,7 @@ from ..schemas import (
     StartIn,
     SubmissionOut,
 )
-from .quizzes import own_test
+from .quizzes import module_info, own_test
 from .solving import _file_urls
 
 router = APIRouter(tags=["assignments"])
@@ -86,14 +87,21 @@ async def assign(
     if body.proctoring and await plans.of(principal.user_id) != BASIC:
         raise ApiError(403, "plan_required", "Прокторинг доступен на тарифе «Базовый»")
 
+    # Оформление «как у курса» — берём текущую тему курса; курс недоступен — классика.
+    theme = test.theme
+    if theme == "course":
+        module = await module_info(test.module_id, principal.user_id) if test.module_id else None
+        theme = module["course_theme"] if module else "classic"
+
     a = Assignment(
         test_id=test.id, teacher_id=principal.user_id, title=body.title or test.title, test_title=test.title,
         grade_level=test.grade_level,
         description=test.description, kind=body.kind,
         target_type=body.target_type, target_id=body.target_id, target_title=target_title, lesson_id=body.lesson_id,
+        module_id=test.module_id, course_id=test.course_id, module_title=test.module_title,
         opens_at=body.opens_at, deadline=body.deadline, max_attempts=body.max_attempts,
         settings={"order_mode": test.order_mode, "shuffle_options": test.shuffle_options, "time_mode": test.time_mode,
-                  "time_limit_s": test.time_limit_s},
+                  "time_limit_s": test.time_limit_s, "theme": theme},
         items=[{"task_id": str(i.task_id), "points": i.points, "solution_file": i.solution_file} for i in test.items],
         grade_scale=body.grade_scale.stored(),
         grade_to_journal=body.grade_to_journal, grade_type_id=body.grade_type_id if body.grade_to_journal else None,
@@ -207,6 +215,7 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
         # Ученику — текущее имя из реплики («Фамилия Имя»), а не копия на момент выдачи.
         target_title=names.get(a.target_id, a.target_title) if a.target_type == "student" else a.target_title,
         teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, opens_at=a.opens_at,
+        module=ModuleRef(id=a.module_id, title=a.module_title or "", course_id=a.course_id) if a.module_id else None,
         deadline=deadline, not_open_yet=not_open_yet, overdue=bool(deadline and now >= deadline), closed=a.closed_at is not None,
         max_attempts=a.max_attempts, attempts_left=attempts_left, settings=a.settings,
         tasks_count=len(a.items), max_score=sum(i["points"] for i in a.items), grade_scale=a.grade_scale,
@@ -220,6 +229,7 @@ async def list_assignments(
     role: str = Query("student", pattern="^(teacher|student)$"),
     lesson_id: UUID | None = None,
     target_id: UUID | None = None,
+    module_id: UUID | None = Query(None, description="Работы по модулю курса — для страницы модуля"),
     principal: Principal = Depends(auth.principal),
     session: AsyncSession = Depends(db.session),
 ) -> list[AssignmentOut]:
@@ -235,6 +245,8 @@ async def list_assignments(
         query = query.where(Assignment.lesson_id == lesson_id)
     if target_id:
         query = query.where(Assignment.target_id == target_id)
+    if module_id:
+        query = query.where(Assignment.module_id == module_id)
     found = (await session.execute(query.order_by(Assignment.created_at.desc()).limit(100))).scalars().all()
     out = [await assignment_out(session, a, principal, as_teacher) for a in found]
     await session.commit()  # просроченные попытки могли сдаться при просмотре

@@ -91,6 +91,8 @@ class Node(Base):
     review_comment: Mapped[str | None] = mapped_column(Text)
     removed_from: Mapped[str | None] = mapped_column(String(10))  # статус до снятия администратором — для отмены
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Оформление курса для учеников (решение №42): classic — как вся платформа, comics — игровое «Комикс».
+    theme: Mapped[str] = mapped_column(String(12), default="classic", server_default="classic")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
