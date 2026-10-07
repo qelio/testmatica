@@ -22,8 +22,8 @@ SERVICES = {"assessment": settings.assessment_url, "content": settings.content_u
 transport: httpx.AsyncBaseTransport | None = None  # подменяется в тестах
 
 NO_KEY = ToolError(
-    "Нет ключа доступа. В ТестМатике: Личный кабинет → «Ключи доступа» → выпустить ключ и указать его в настройках "
-    "подключения Claude (заголовок Authorization: Bearer tm_…)."
+    "Нет ключа доступа. В ТестМатике: Личный кабинет → «Подключение Claude» → «Выпустить ключ» и укажите в коннекторе "
+    "Claude адрес с ключом: https://testmatica.ru/api/mcp/tm_… (его показывают сразу после выпуска ключа)."
 )
 
 _tokens: dict[str, tuple[str, float, str]] = {}  # sha256(ключ) → (токен, когда истекает, имя пользователя)

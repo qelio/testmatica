@@ -7,9 +7,10 @@ import { identity } from "@/lib/api";
 import { fmtDateTime } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 
-/** Адрес подключения для Claude — на том же домене, что и сайт. */
-function mcpUrl(): string {
-  return typeof window === "undefined" ? "/api/mcp" : `${window.location.origin}/api/mcp`;
+/** Адрес подключения для Claude — на том же домене, что и сайт; ключ — в конце адреса (у «своего коннектора»
+ *  Claude указывается только адрес, заголовков нет). */
+function mcpUrl(key: string): string {
+  return `${typeof window === "undefined" ? "" : window.location.origin}/api/mcp/${key}`;
 }
 
 /** Подключение Claude (решение №41): личные ключи доступа и как подключить. Claude создаёт задачи и теорию от вашего имени. */
@@ -43,31 +44,25 @@ export function ClaudeConnect() {
 
       {created ? (
         <div className="space-y-3 rounded-xl border border-brand/40 bg-brand/5 p-4 text-sm">
-          <p className="font-medium">Ключ создан — скопируйте его сейчас, потом он показан не будет.</p>
+          <p className="font-medium">Ключ создан. Скопируйте адрес подключения сейчас — потом ключ показан не будет.</p>
           <div className="flex flex-wrap items-center gap-2">
-            <code className="min-w-0 flex-1 break-all rounded-lg bg-surface px-3 py-2 font-mono text-xs">{created}</code>
-            <Button variant="secondary" className="h-9" onClick={() => copy(created, "key")}>
-              {copied === "key" ? "Скопировано" : "Копировать"}
+            <code className="min-w-0 flex-1 break-all rounded-lg bg-surface px-3 py-2 font-mono text-xs">{mcpUrl(created)}</code>
+            <Button variant="secondary" className="h-9" onClick={() => copy(mcpUrl(created), "url")}>
+              {copied === "url" ? "Скопировано" : "Копировать"}
             </Button>
           </div>
           <ol className="list-inside list-decimal space-y-1.5 text-fg-soft">
             <li>
-              В Claude Desktop откройте <b className="text-fg">Настройки → Коннекторы → Добавить свой коннектор</b> (Customize → Connectors →
-              Add custom connector).
+              В Claude (приложение или claude.ai) откройте <b className="text-fg">Настройки → Коннекторы → Добавить свой коннектор</b>{" "}
+              (Settings → Connectors → Add custom connector).
             </li>
             <li>
-              Название — «ТестМатика», адрес —{" "}
-              <button type="button" onClick={() => copy(mcpUrl(), "url")} className="font-mono text-brand hover:underline">
-                {mcpUrl()}
-              </button>
-              {copied === "url" && " (скопировано)"}.
-            </li>
-            <li>
-              В заголовках запроса (Request headers) добавьте <code className="font-mono text-fg">Authorization</code> со значением{" "}
-              <code className="font-mono text-fg">Bearer {created.slice(0, 11)}…</code> — то есть «Bearer» и пробел перед ключом.
+              Название — «ТестМатика», адрес — скопированный выше (с ключом в конце). Поля OAuth в дополнительных настройках оставьте
+              пустыми.
             </li>
             <li>Напишите Claude, например: «Посмотри рубрикатор по алгебре и создай 5 задач на линейные уравнения с разбором».</li>
           </ol>
+          <p className="text-xs text-fg-soft">Адрес с ключом — как пароль: не пересылайте его. Если он утёк, отзовите ключ ниже и выпустите новый.</p>
           <Button variant="ghost" className="h-9" onClick={() => setCreated(null)}>
             Готово
           </Button>

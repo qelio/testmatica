@@ -119,3 +119,27 @@ async def test_tests_tools(monkeypatch):
     assert [i["task_id"] for i in body["items"]] == ["t100345", "t100346"]
     with pytest.raises(ToolError, match="Неизвестные поля: theme"):
         await tools.update_test(ctx, "22222222-2222-2222-2222-222222222222", {"theme": "comics"})
+
+
+async def test_key_in_url_and_hidden_in_logs():
+    """Ключ в адресе коннектора (у «своего коннектора» Claude нет заголовков): /tm_… → Authorization; в журнале — tm_***."""
+    import logging
+
+    from app.main import HideKeys, KeyInPath
+
+    seen: list[dict] = []
+
+    async def inner(scope, receive, send):
+        seen.append(scope)
+
+    app = KeyInPath(inner)
+    await app({"type": "http", "path": "/tm_Abc-1_x", "raw_path": b"/tm_Abc-1_x", "headers": [(b"accept", b"*/*")]}, None, None)
+    await app({"type": "http", "path": "/", "raw_path": b"/", "headers": [(b"authorization", b"Bearer tm_hdr")]}, None, None)
+    await app({"type": "http", "path": "/health", "raw_path": b"/health", "headers": []}, None, None)
+    assert seen[0]["path"] == "/" and dict(seen[0]["headers"])[b"authorization"] == b"Bearer tm_Abc-1_x"
+    assert platform.api_key({k.decode(): v.decode() for k, v in seen[0]["headers"]}) == "tm_Abc-1_x"
+    assert dict(seen[1]["headers"])[b"authorization"] == b"Bearer tm_hdr" and seen[2]["path"] == "/health"
+
+    record = logging.LogRecord("uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d', ("1.2.3.4", "POST", "/tm_Abc-1_x", "1.1", 200), None)
+    HideKeys().filter(record)
+    assert "tm_Abc" not in record.getMessage() and "/tm_***" in record.getMessage()

@@ -5,12 +5,14 @@ Claude (Claude Desktop или claude.ai) может сам создавать з
 
 ## Подключить (один раз)
 
-1. ТестМатика → **Личный кабинет → Подключение Claude** → «Выпустить ключ». Скопируйте ключ `tm_…` — он показывается один раз.
-2. Claude Desktop → **Customize → Connectors → Add custom connector** (у организаций коннектор сначала добавляет владелец
-   в Organization settings → Connectors).
+1. ТестМатика → **Личный кабинет → Подключение Claude** → «Выпустить ключ». Скопируйте **адрес подключения** вида
+   `https://testmatica.ru/api/mcp/tm_…` — ключ в его конце показывается один раз.
+2. Claude (приложение или claude.ai) → **Settings → Connectors → Add custom connector** (у организаций коннектор сначала
+   добавляет владелец в Organization settings → Connectors).
    - Название: `ТестМатика`
-   - Адрес: `https://testmatica.ru/api/mcp`
-   - Request headers: `Authorization` = `Bearer tm_…` (слово Bearer, пробел, ключ)
+   - Адрес: скопированный адрес с ключом. Поля OAuth оставьте пустыми.
+   - У «своего коннектора» Claude нет поля для заголовков, поэтому ключ — в адресе. Клиенты, которые умеют передавать
+     заголовки, могут подключаться к `https://testmatica.ru/api/mcp` с `Authorization: Bearer tm_…`.
 3. Готово. Ключ можно отозвать в личном кабинете — Claude сразу потеряет доступ.
 
 ## Что умеет Claude
@@ -40,6 +42,7 @@ Claude (Claude Desktop или claude.ai) может сам создавать з
 
 ## Как устроено
 
-Сервис `mcp` (`services/mcp`) принимает запросы Claude по протоколу MCP (Streamable HTTP). Ключ из заголовка обменивается
+Сервис `mcp` (`services/mcp`) принимает запросы Claude по протоколу MCP (Streamable HTTP). Ключ из адреса (`/api/mcp/tm_…`,
+в журнале сервиса маскируется) или из заголовка обменивается
 в identity на обычный токен пользователя, дальше — публичные API assessment, content и media: права и проверки те же,
 что в интерфейсе. Своей базы у сервиса нет; ключи хранятся в identity только в виде хеша.
