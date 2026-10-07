@@ -340,10 +340,6 @@ class QuizItemIn(BaseModel):
     solution_file: bool = Field(False, description="Ученик прикрепляет файл с решением (короткий ответ и выбор); проверяет педагог")
 
 
-# Оформление прохождения теста (решение №42) — как у курсов в content; course — как у курса привязанного модуля.
-Theme = Literal["classic", "comics", "course"]
-
-
 class QuizIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field("", max_length=5000)
@@ -352,8 +348,8 @@ class QuizIn(BaseModel):
     shuffle_options: bool = False
     time_mode: Literal["none", "total", "per_task"] = "none"
     time_limit_s: int | None = Field(None, ge=10, le=6 * 3600, description="Секунды: на весь тест или на каждое задание")
-    theme: Theme = "classic"
     module_id: UUID | None = Field(None, description="Модуль курса библиотеки, к которому относится тест (по желанию)")
+    shared: bool = Field(False, description="Для всех, кто проходит курс: виден под модулем (только у автора курса)")
     items: list[QuizItemIn] = Field(default_factory=list, max_length=100)
 
     _title = field_validator("title")(_clean)
@@ -366,8 +362,8 @@ class QuizIn(BaseModel):
             raise ValueError("Укажите ограничение времени")
         if len({i.task_id for i in self.items}) != len(self.items):
             raise ValueError("Задача добавлена в тест дважды")
-        if self.theme == "course" and self.module_id is None:
-            raise ValueError("Оформление «как у курса» — только у теста, привязанного к модулю курса")
+        if self.shared and self.module_id is None:
+            raise ValueError("«Для всех» — только у теста, привязанного к модулю курса")
         return self
 
 
@@ -396,8 +392,9 @@ class QuizOut(BaseModel):
     shuffle_options: bool
     time_mode: str
     time_limit_s: int | None
-    theme: str
+    theme: str = Field(description="course — как у курса привязанного модуля, иначе classic (решение №44)")
     module: ModuleRef | None
+    shared: bool = False
     items: list[QuizItemOut]
     max_score: int
     assignments_count: int
@@ -409,6 +406,7 @@ class QuizSummary(BaseModel):
     title: str
     grade_level: int | None
     module: ModuleRef | None = None
+    shared: bool = False
     tasks_count: int
     max_score: int
     time_mode: str
@@ -550,6 +548,7 @@ class AttemptTask(BaseModel):
 class AttemptOut(BaseModel):
     id: UUID
     assignment_id: UUID
+    self_study: bool = Field(False, description="Самостоятельное прохождение общего теста курса — без проверки педагогом")
     title: str
     student_id: UUID
     number: int
@@ -639,3 +638,17 @@ class ProctorAccess(BaseModel):
     closed: bool
     attempt_id: UUID | None = Field(None, description="Ученику — идущая попытка (без неё к экрану не подключиться)")
     students: list[ProctorStudent] = Field(default_factory=list, description="Педагогу — ученики назначения")
+
+
+class CourseTestOut(BaseModel):
+    """Общий тест курса под модулем (решение №44); ученику — его самостоятельная работа по нему, если начинал."""
+
+    id: UUID
+    title: str
+    description: str
+    owner_id: UUID
+    tasks_count: int
+    max_score: int
+    time_mode: str
+    time_limit_s: int | None
+    self_assignment: AssignmentOut | None = None

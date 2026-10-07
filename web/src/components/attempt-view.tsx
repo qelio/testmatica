@@ -312,7 +312,8 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
 
   // Проверка педагогом: какие задания он засчитал или нет (только изменённые).
   const [marks, setMarks] = useState<Record<string, boolean>>({});
-  const reviewing = teacher && attempt.status === "submitted";
+  // Самостоятельную работу (решение №44) педагоги ученика только смотрят.
+  const reviewing = teacher && attempt.status === "submitted" && !attempt.self_study;
 
   if (inProgress && !teacher) return <Solving attempt={attempt} offset={offset} reload={reload} />;
 
@@ -521,7 +522,12 @@ function ResultHeader({ attempt, teacher }: { attempt: Attempt; teacher: boolean
   const correct = attempt.tasks.filter(isCorrect).length;
   return (
     <div className="tm-card flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-line bg-surface px-5 py-4">
-      {attempt.checked ? (
+      {attempt.self_study && !attempt.checked ? (
+        <span>
+          Работа сдана. Верно: {correct} из {attempt.tasks.length}. Это самостоятельное прохождение — развёрнутые ответы и файлы
+          педагог не проверяет, сверьтесь с разбором решений.
+        </span>
+      ) : attempt.checked ? (
         <>
           <span className="tm-grade text-3xl font-semibold">{attempt.grade}</span>
           <span>

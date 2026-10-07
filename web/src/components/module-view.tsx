@@ -39,7 +39,7 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
   if (!m) return <Spinner />;
 
   return (
-    <ThemeScope theme={m.course_theme} className="mx-auto max-w-3xl">
+    <ThemeScope page theme={m.course_theme} className="mx-auto max-w-3xl">
     <div className="space-y-6">
       <nav className="tm-eyebrow text-sm text-fg-soft">
         <Link href={`${base}/course/${m.course_id}`} className="hover:text-fg">
