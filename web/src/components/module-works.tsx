@@ -12,7 +12,7 @@ import { fmtDateTime } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 
 /** Тесты под модулем курса (решения №43, 44).
- *  Всем, кто видит курс, — тесты «для всех»: ученик проходит их сам. Ученику — ещё и работы по теме от его педагога.
+ *  Всем, кто видит курс, — публичные тесты курса: ученик проходит их сам. Ученику — ещё и работы по теме от его педагога.
  *  Педагогу — общие тесты и свои личные к модулю (проверочные, контрольные) с кнопкой «Назначить». */
 export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId: string }) {
   const { status, user } = useAuth();
@@ -44,16 +44,16 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
         </div>
         {!shared.data?.length && !personal.length ? (
           <p className="text-sm text-fg-soft">
-            Привяжите тест к этому модулю в его настройках. «Для всех» (только у автора курса) — виден ученикам курса, его проходят
-            сами; без галочки — только ваш, его вы назначаете своим ученикам.
+            Привяжите тест к этому модулю в его настройках. Публичный (только у автора курса) — часть курса: виден ученикам, его
+            проходят сами; личный — только ваш, его вы назначаете своим ученикам.
           </p>
         ) : (
           <ul className="divide-y divide-line">
             {shared.data?.map((t) => (
-              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own={t.owner_id === user?.id} assign={canAssign} badge="для всех" />
+              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own={t.owner_id === user?.id} assign={canAssign} badge="публичный" />
             ))}
             {personal.map((t) => (
-              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own assign={canAssign} badge="только ваш" />
+              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own assign={canAssign} badge="личный" />
             ))}
           </ul>
         )}
@@ -127,7 +127,7 @@ function TeacherRow({
         )}
         <span className="ml-2 text-sm text-fg-soft">заданий: {tasks}</span>
       </span>
-      <Badge tone={badge === "для всех" ? "ok" : "neutral"}>{badge}</Badge>
+      <Badge tone={badge === "публичный" ? "ok" : "neutral"}>{badge}</Badge>
       {assign && tasks > 0 && (
         <Link href={`/dashboard/assignments/new?test=${id}`} className="text-sm font-medium text-brand hover:underline">
           Назначить

@@ -105,7 +105,14 @@ function When({ label, date, time, onDate, onTime }: { label: string; date: stri
 
 /** Назначение теста: какой тест, кому, как (тест / ДЗ / на уроке), когда открыть и закрыть, сколько попыток. */
 export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAssigned: (a: Assignment) => void }) {
-  const tests = useLoad(() => assessment.tests(), []);
+  const own = useLoad(() => assessment.tests(), []);
+  // Публичный тест чужого курса («Назначить» со страницы модуля) — в списке отдельно от своих (решение №44).
+  const course = useLoad(
+    () => (preset.testId ? assessment.courseTest(preset.testId).catch(() => null) : Promise.resolve(null)),
+    [preset.testId],
+  );
+  const fromCourse = course.data && !own.data?.some((t) => t.id === course.data!.id) ? course.data : null;
+  const tests = { data: own.data ? [...own.data, ...(fromCourse ? [fromCourse] : [])] : null };
   const groups = useLoad(() => classroom.groups(), []);
   const students = useLoad(() => classroom.students(), []);
   // Уроки за месяц назад и на два вперёд — к какому привязать тест и куда ставить оценку.
@@ -179,11 +186,18 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
       {error && <Alert>{error}</Alert>}
       <Select label="Тест" value={testId} required onChange={(e) => setTestId(e.target.value)}>
         <option value="">{tests.data && !tests.data.length ? "Сначала создайте тест" : "Выберите тест"}</option>
-        {tests.data?.map((t) => (
+        {own.data?.map((t) => (
           <option key={t.id} value={t.id}>
             {t.title} · заданий: {t.tasks_count}
           </option>
         ))}
+        {fromCourse && (
+          <optgroup label={`Из курса «${fromCourse.module?.course_title ?? "библиотеки"}»`}>
+            <option value={fromCourse.id}>
+              {fromCourse.title} · заданий: {fromCourse.tasks_count}
+            </option>
+          </optgroup>
+        )}
       </Select>
       <Field
         label="Название для учеников"

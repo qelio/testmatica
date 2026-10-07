@@ -56,7 +56,7 @@ export default function TestsPage() {
                 {t.module && (
                   <span className="block truncate text-sm text-brand">
                     {t.module.course_title} → {t.module.title}
-                    {t.shared ? " · для всех" : " · только ваш"}
+                    {t.shared ? " · публичный" : " · личный"}
                   </span>
                 )}
               </Link>

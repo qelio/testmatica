@@ -1313,6 +1313,8 @@ export const assessment = {
   /** Тесты «для всех» под модулем курса; ученику — с его самостоятельной работой (решение №44). */
   courseTests: (moduleId: string, authed: boolean) =>
     api<CourseTest[]>(`${AS}/course-tests?module_id=${moduleId}`, readOpts(authed)),
+  /** Публичный тест курса автора — для формы назначения (решение №44). */
+  courseTest: (testId: string) => api<QuizSummary>(`${AS}/course-tests/${testId}`),
   startSelf: (testId: string) => api<Attempt>(`${AS}/course-tests/${testId}/start`, { method: "POST" }),
   selfWork: (studentId: string) => api<Assignment[]>(`${AS}/students/${studentId}/self-work`),
   reassign: (id: string, studentId: string, deadline?: string | null) => {

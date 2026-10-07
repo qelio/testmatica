@@ -610,6 +610,9 @@ async def test_shared_course_tests_and_self_study(client, fakes):
 
     # Другой педагог назначает общий тест своим ученикам (курс ему виден); личный чужой — нет.
     fakes.modules[mod]["course_status"] = "published"
+    brief = (await client.get(f"/course-tests/{shared['id']}", headers=bearer(teacher))).json()  # для формы назначения
+    assert brief["title"] == "Практическая работа" and brief["shared"] and brief["tasks_count"] == 1
+    assert (await client.get(f"/course-tests/{private['id']}", headers=bearer(teacher))).status_code == 404
     a = await assign(client, teacher, shared, target_type="student", target_id=str(olya))
     assert a["teacher_id"] == str(teacher) and a["settings"]["theme"] == "comics"
     assert (await client.post(f"/tests/{private['id']}/assign", json={"target_type": "student", "target_id": str(olya)},

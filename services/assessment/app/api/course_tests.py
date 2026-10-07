@@ -4,7 +4,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
@@ -13,8 +13,9 @@ from .. import access, views
 from ..courses import course_readable, module_info
 from ..deps import auth, db
 from ..models import SELF, Assignment, AssignmentStudent, Test
-from ..schemas import AssignmentOut, AttemptOut, CourseTestOut
+from ..schemas import AssignmentOut, AttemptOut, CourseTestOut, QuizSummary
 from .assignments import assignment_out, copy_of, start, test_theme
+from .quizzes import module_ref
 
 router = APIRouter(tags=["course-tests"])
 
@@ -54,6 +55,25 @@ async def course_tests(
         ))
     await session.commit()  # просроченные попытки могли сдаться при просмотре
     return out
+
+
+@router.get("/course-tests/{test_id}", response_model=QuizSummary)
+async def course_test(
+    test_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)
+) -> QuizSummary:
+    """Публичный тест курса — для формы назначения: его назначает любой педагог, которому виден курс."""
+    test = await session.get(Test, test_id)
+    if test is None or not test.shared or test.module_id is None or \
+            await _readable_module(session, test.module_id, principal.user_id) is None:
+        raise ApiError(404, "test_not_found", "Тест не найден")
+    mine = await session.scalar(
+        select(func.count()).select_from(Assignment).where(Assignment.test_id == test.id, Assignment.teacher_id == principal.user_id)
+    )
+    return QuizSummary(
+        id=test.id, title=test.title, grade_level=test.grade_level, module=module_ref(test), shared=True,
+        tasks_count=len(test.items), max_score=sum(i.points for i in test.items), time_mode=test.time_mode,
+        time_limit_s=test.time_limit_s, assignments_count=mine or 0, updated_at=test.updated_at,
+    )
 
 
 @router.post("/course-tests/{test_id}/start", response_model=AttemptOut)

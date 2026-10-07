@@ -171,10 +171,10 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" checked={shared} onChange={(e) => change(setShared)(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
             <span>
-              Для всех, кто проходит курс
+              Публичный — часть курса, для всех, кто его проходит
               <span className="block text-xs text-fg-soft">
                 Тест виден под модулем всем ученикам курса, его можно пройти самостоятельно; в публичную библиотеку попадает вместе
-                с курсом. Без галочки — только ваш: проверочная или контрольная, которую вы назначаете сами.
+                с курсом. Без галочки — личный: проверочная или контрольная, которую видите и назначаете только вы.
               </span>
             </span>
           </label>

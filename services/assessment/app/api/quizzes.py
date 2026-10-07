@@ -72,7 +72,7 @@ async def my_tests(
     ]
 
 
-COURSE_LOCKED = "Тест «для всех» — часть курса, а курс на модерации или опубликован. Измените его, сняв курс с публикации"
+COURSE_LOCKED = "Публичный тест — часть курса, а курс на модерации или опубликован. Измените его, сняв курс с публикации"
 
 
 async def _check_course_editable(test: Test, p: Principal, module: dict | None = None) -> None:
@@ -107,7 +107,7 @@ async def _apply(session: AsyncSession, test: Test, body: QuizIn, p: Principal) 
     if body.shared:
         # «Для всех» — часть курса: только у автора курса и публикуется вместе с ним (через модерацию).
         if module is None or UUID(module["owner_id"]) != p.user_id:
-            raise ApiError(422, "shared_not_author", "«Для всех» может быть только тест автора курса")
+            raise ApiError(422, "shared_not_author", "Публичным может быть только тест автора курса")
         if not course_editable(module, p):
             raise ApiError(409, "course_locked", COURSE_LOCKED)
     test.shared = body.shared
