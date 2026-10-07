@@ -9,8 +9,9 @@ import { TaskNumber } from "@/components/task-number";
 import { TaskPicker } from "@/components/task-picker";
 import { PreviewToggle, TaskPreview } from "@/components/task-preview";
 import { Alert, Badge, Button, Field, Select } from "@/components/ui";
-import { ThemePicker } from "@/components/theme-scope";
-import { assessment, content, type CourseSummary, type CourseTree, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TestTheme, type TimeMode } from "@/lib/api";
+import { assessment, content, type CourseSummary, type CourseTree, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TimeMode } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { themeLabel } from "@/lib/course-themes";
 import { GRADE_LEVELS } from "@/lib/assignments";
 import { TASK_TYPE_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
@@ -39,13 +40,15 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
   const [shuffle, setShuffle] = useState(test?.shuffle_options ?? false);
   const [timeMode, setTimeMode] = useState<TimeMode>(test?.time_mode ?? "none");
   const [minutes, setMinutes] = useState(test?.time_limit_s ? test.time_limit_s / 60 : 20);
-  const [theme, setTheme] = useState<TestTheme>(test?.theme ?? (preset ? "course" : "classic"));
-  // Привязка к модулю курса (по желанию): курс → модуль.
+  const { user } = useAuth();
+  // Привязка к модулю курса (по желанию): свои курсы и опубликованные в библиотеке (решение №44).
   const [courseId, setCourseId] = useState(test?.module?.course_id ?? preset?.courseId ?? "");
   const [moduleId, setModuleId] = useState(test?.module?.id ?? preset?.moduleId ?? "");
-  const courses = useLoad(() => content.myCourses(), []);
+  const [shared, setShared] = useState(test?.shared ?? false);
+  const mine = useLoad(() => content.myCourses(), []);
+  const library = useLoad(() => content.catalog({}), []);
   const tree = useLoad(() => (courseId ? content.course(courseId, true) : Promise.resolve(null)), [courseId]);
-  const linkedCourse = moduleId && tree.data ? { title: tree.data.title, theme: tree.data.theme } : null;
+  const courseAuthor = !!tree.data && tree.data.owner_id === user?.id;
   const [items, setItems] = useState<Item[]>(
     () => test?.items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file, title: i.task.title, task: i.task })) ?? [],
   );
@@ -81,8 +84,8 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
       shuffle_options: shuffle,
       time_mode: timeMode,
       time_limit_s: timeMode === "none" ? null : Math.round(minutes * 60),
-      theme: theme === "course" && !moduleId ? "classic" : theme,
       module_id: moduleId || null,
+      shared: shared && !!moduleId && courseAuthor,
       items: items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file && canAskFile(i) })),
     };
     try {
@@ -151,7 +154,8 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
           <p className="text-xs text-fg-soft">Задания открываются по одному; к пройденному вернуться нельзя. Когда время выходит — открывается следующее.</p>
         )}
         <ModuleField
-          courses={courses.data ?? []}
+          mine={mine.data ?? []}
+          library={library.data ?? []}
           extraCourse={test?.module && test.module.course_title ? { id: test.module.course_id, title: test.module.course_title } : null}
           courseId={courseId}
           tree={tree.data ?? null}
@@ -159,21 +163,27 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
           onCourse={(id) => {
             change(setCourseId)(id);
             setModuleId("");
-            if (theme === "course") setTheme("classic");
+            setShared(false);
           }}
-          onModule={(id) => {
-            change(setModuleId)(id);
-            // Привязали — по умолчанию оформление курса; отвязали — «как у курса» больше не к чему.
-            if (id && theme === "classic") setTheme("course");
-            if (!id && theme === "course") setTheme("classic");
-          }}
+          onModule={change(setModuleId)}
         />
-        <ThemePicker
-          value={theme}
-          onChange={change(setTheme)}
-          course={linkedCourse}
-          hint="Как ученики видят работу и её итог. Работы, выданные раньше, сохраняют своё оформление."
-        />
+        {moduleId && courseAuthor && (
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={shared} onChange={(e) => change(setShared)(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
+            <span>
+              Для всех, кто проходит курс
+              <span className="block text-xs text-fg-soft">
+                Тест виден под модулем всем ученикам курса, его можно пройти самостоятельно; в публичную библиотеку попадает вместе
+                с курсом. Без галочки — только ваш: проверочная или контрольная, которую вы назначаете сами.
+              </span>
+            </span>
+          </label>
+        )}
+        <p className="text-xs text-fg-soft">
+          {moduleId && tree.data
+            ? `Оформление для учеников — как у курса: «${themeLabel(tree.data.theme)}».`
+            : "Оформление для учеников — обычное. Тесты, привязанные к модулю курса, оформляются как курс."}
+        </p>
       </section>
 
       <section className="space-y-3">
@@ -308,7 +318,8 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
 
 /** Тема курса библиотеки, к которой относится тест (решение №43): курс → модуль. По желанию. */
 function ModuleField({
-  courses,
+  mine,
+  library,
   extraCourse,
   courseId,
   tree,
@@ -316,7 +327,8 @@ function ModuleField({
   onCourse,
   onModule,
 }: {
-  courses: CourseSummary[];
+  mine: CourseSummary[];
+  library: CourseSummary[];
   extraCourse: { id: string; title: string } | null;
   courseId: string;
   tree: CourseTree | null;
@@ -324,18 +336,34 @@ function ModuleField({
   onCourse: (id: string) => void;
   onModule: (id: string) => void;
 }) {
-  // Тест мог быть привязан к опубликованному чужому курсу — его нет среди своих, но показать нужно.
-  const options = extraCourse && !courses.some((c) => c.id === extraCourse.id) ? [extraCourse, ...courses] : courses;
+  // Свои курсы (в том числе черновики) и опубликованные чужие; привязанный курс могли снять — показываем его всё равно.
+  const ownIds = new Set(mine.map((c) => c.id));
+  const others = library.filter((c) => !ownIds.has(c.id));
+  const known = extraCourse && !ownIds.has(extraCourse.id) && !others.some((c) => c.id === extraCourse.id) ? extraCourse : null;
   return (
     <div className="space-y-1.5">
       <div className="grid gap-3 sm:grid-cols-2">
         <Select label="Курс (по желанию)" value={courseId} onChange={(e) => onCourse(e.target.value)}>
           <option value="">Без привязки к курсу</option>
-          {options.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
+          {known && <option value={known.id}>{known.title}</option>}
+          {mine.length > 0 && (
+            <optgroup label="Мои курсы">
+              {mine.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {others.length > 0 && (
+            <optgroup label="Библиотека">
+              {others.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </Select>
         {courseId && (
           <Select label="Тема (модуль)" value={moduleId} onChange={(e) => onModule(e.target.value)}>
@@ -352,7 +380,7 @@ function ModuleField({
           </Select>
         )}
       </div>
-      <p className="text-xs text-fg-soft">Работы по тесту ученики увидят на странице этого модуля, а вы — там же кнопку «Назначить».</p>
+      <p className="text-xs text-fg-soft">Тест появится на странице модуля в блоке «Тесты по теме» — там же кнопка «Назначить».</p>
     </div>
   );
 }

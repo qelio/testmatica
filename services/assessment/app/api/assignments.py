@@ -24,6 +24,7 @@ from ..models import (
     LONG,
     PROCTOR_ALERTS,
     REVIEWED,
+    SELF,
     SUBMITTED,
     Assignment,
     AssignmentStudent,
@@ -32,6 +33,7 @@ from ..models import (
     ProctorEvent,
     Submission,
     Task,
+    Test,
 )
 from ..schemas import (
     AssignIn,
@@ -52,7 +54,8 @@ from ..schemas import (
     StartIn,
     SubmissionOut,
 )
-from .quizzes import module_info, own_test
+from ..courses import course_readable, module_info
+from .quizzes import own_test
 from .solving import _file_urls
 
 router = APIRouter(tags=["assignments"])
@@ -62,12 +65,41 @@ teacher = auth.require(ROLE_TEACHER, ROLE_MODERATOR)
 # ---------- выдача ----------
 
 
+async def assignable_test(session: AsyncSession, test_id: UUID, p: Principal) -> Test:
+    """Назначить можно свой тест или общий тест курса, который педагог видит (решение №44)."""
+    test = await session.get(Test, test_id)
+    if test is not None and test.owner_id != p.user_id and test.shared and test.module_id:
+        module = await module_info(test.module_id, p.user_id)
+        if module is not None and await course_readable(session, module, p.user_id):
+            return test
+    return await own_test(session, test_id, p)
+
+
+async def test_theme(test: Test, user_id: UUID) -> str:
+    """Оформление работы: тест привязан к модулю — текущая тема курса, иначе обычное (решения №42, 44)."""
+    if not test.module_id:
+        return "classic"
+    module = await module_info(test.module_id, user_id)
+    return module["course_theme"] if module else "classic"
+
+
+def copy_of(test: Test, theme: str) -> dict:
+    """Состав и настройки теста на момент выдачи — правка теста выданное не меняет."""
+    return {
+        "test_id": test.id, "test_title": test.title, "grade_level": test.grade_level, "description": test.description,
+        "module_id": test.module_id, "course_id": test.course_id, "module_title": test.module_title,
+        "settings": {"order_mode": test.order_mode, "shuffle_options": test.shuffle_options, "time_mode": test.time_mode,
+                     "time_limit_s": test.time_limit_s, "theme": theme},
+        "items": [{"task_id": str(i.task_id), "points": i.points, "solution_file": i.solution_file} for i in test.items],
+    }
+
+
 @router.post("/tests/{test_id}/assign", response_model=AssignmentOut, status_code=201)
 async def assign(
     test_id: UUID, body: AssignIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> AssignmentOut:
     """Назначить тест группе или ученику: просто тест, на дом (к уроку) или на уроке. Состав теста фиксируется."""
-    test = await own_test(session, test_id, principal)
+    test = await assignable_test(session, test_id, principal)
     if not test.items:
         raise ApiError(422, "test_empty", "Добавьте в тест хотя бы одну задачу")
     if body.target_type == "group":
@@ -87,22 +119,12 @@ async def assign(
     if body.proctoring and await plans.of(principal.user_id) != BASIC:
         raise ApiError(403, "plan_required", "Прокторинг доступен на тарифе «Базовый»")
 
-    # Оформление «как у курса» — берём текущую тему курса; курс недоступен — классика.
-    theme = test.theme
-    if theme == "course":
-        module = await module_info(test.module_id, principal.user_id) if test.module_id else None
-        theme = module["course_theme"] if module else "classic"
+    theme = await test_theme(test, principal.user_id)
 
     a = Assignment(
-        test_id=test.id, teacher_id=principal.user_id, title=body.title or test.title, test_title=test.title,
-        grade_level=test.grade_level,
-        description=test.description, kind=body.kind,
+        **copy_of(test, theme), teacher_id=principal.user_id, title=body.title or test.title, kind=body.kind,
         target_type=body.target_type, target_id=body.target_id, target_title=target_title, lesson_id=body.lesson_id,
-        module_id=test.module_id, course_id=test.course_id, module_title=test.module_title,
         opens_at=body.opens_at, deadline=body.deadline, max_attempts=body.max_attempts,
-        settings={"order_mode": test.order_mode, "shuffle_options": test.shuffle_options, "time_mode": test.time_mode,
-                  "time_limit_s": test.time_limit_s, "theme": theme},
-        items=[{"task_id": str(i.task_id), "points": i.points, "solution_file": i.solution_file} for i in test.items],
         grade_scale=body.grade_scale.stored(),
         grade_to_journal=body.grade_to_journal, grade_type_id=body.grade_type_id if body.grade_to_journal else None,
         proctoring=body.proctoring,
@@ -241,6 +263,7 @@ async def list_assignments(
         query = select(Assignment).where(Assignment.teacher_id == principal.user_id)
     else:
         query = select(Assignment).join(AssignmentStudent).where(AssignmentStudent.student_id == principal.user_id)
+    query = query.where(Assignment.kind != SELF)  # самостоятельные — под модулем курса и в карточке ученика
     if lesson_id:
         query = query.where(Assignment.lesson_id == lesson_id)
     if target_id:
@@ -253,10 +276,23 @@ async def list_assignments(
     return out
 
 
-async def _assignment(session: AsyncSession, assignment_id: UUID, p: Principal) -> tuple[Assignment, bool]:
-    """Работа и роль смотрящего: педагог-автор или ученик, которому выдано."""
+async def _self_viewer(session: AsyncSession, a: Assignment, student_id: UUID, p: Principal, write: bool) -> bool | None:
+    """Самостоятельная работа (решение №44): владелец — сам ученик; его педагоги только смотрят."""
+    if student_id == p.user_id:
+        return False
+    if not write and await access.linked(session, p.user_id, student_id):
+        return True
+    return None
+
+
+async def _assignment(session: AsyncSession, assignment_id: UUID, p: Principal, write: bool = False) -> tuple[Assignment, bool]:
+    """Работа и роль смотрящего: педагог-автор или ученик, которому выдано. write — действие педагога."""
     a = await session.get(Assignment, assignment_id)
-    if a is not None:
+    if a is not None and a.kind == SELF:
+        role = await _self_viewer(session, a, a.target_id, p, write)
+        if role is not None:
+            return a, role
+    elif a is not None:
         if a.teacher_id == p.user_id:
             return a, True
         if any(r.student_id == p.user_id for r in a.students):
@@ -284,7 +320,7 @@ async def reassign(
     session: AsyncSession = Depends(db.session),
 ) -> AssignmentOut:
     """Переназначить ученику: ещё одна попытка. Все прошлые попытки сохраняются."""
-    a, is_teacher = await _assignment(session, assignment_id, principal)
+    a, is_teacher = await _assignment(session, assignment_id, principal, write=True)
     if not is_teacher:
         raise ApiError(404, "assignment_not_found", "Задание не найдено")
     row = next((r for r in a.students if r.student_id == student_id), None)
@@ -326,7 +362,7 @@ async def _drop_attempts(session: AsyncSession, a: Assignment, student_ids: set[
 @router.delete("/assignments/{assignment_id}", status_code=204)
 async def delete_assignment(assignment_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> None:
     """Удалить назначенный тест целиком: у всех учеников, с попытками и оценками в журнале (academic — по событию)."""
-    a, is_teacher = await _assignment(session, assignment_id, principal)
+    a, is_teacher = await _assignment(session, assignment_id, principal, write=True)
     if not is_teacher:
         raise ApiError(404, "assignment_not_found", "Задание не найдено")
     await _delete(session, a, principal)
@@ -350,7 +386,7 @@ async def remove_students(
 ) -> RemovedOut:
     """Убрать работу у конкретных учеников или у всех, кто её не сдал. Их попытки и оценки в журнале удаляются.
     Если учеников не осталось — назначение удаляется целиком."""
-    a, is_teacher = await _assignment(session, assignment_id, principal)
+    a, is_teacher = await _assignment(session, assignment_id, principal, write=True)
     if not is_teacher:
         raise ApiError(404, "assignment_not_found", "Задание не найдено")
     targets = {r.student_id for r in a.students if r.student_id in set(body.student_ids)}
@@ -379,7 +415,7 @@ async def remove_students(
 @router.post("/assignments/{assignment_id}/close", response_model=AssignmentOut)
 async def close(assignment_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> AssignmentOut:
     """Завершить тест на уроке: незавершённые попытки сдаются с тем, что ученики успели ответить."""
-    a, is_teacher = await _assignment(session, assignment_id, principal)
+    a, is_teacher = await _assignment(session, assignment_id, principal, write=True)
     if not is_teacher:
         raise ApiError(404, "assignment_not_found", "Задание не найдено")
     a.closed_at = a.closed_at or datetime.now(UTC)
@@ -455,9 +491,15 @@ async def start(
     return await attempt_out(session, current, a, principal, teacher_view=False)
 
 
-async def _attempt(session: AsyncSession, attempt_id: UUID, p: Principal, lock: bool = False) -> tuple[Attempt, Assignment, bool]:
+async def _attempt(
+    session: AsyncSession, attempt_id: UUID, p: Principal, lock: bool = False, write: bool = False
+) -> tuple[Attempt, Assignment, bool]:
     t = await session.get(Attempt, attempt_id, with_for_update=lock)
-    if t is not None:
+    if t is not None and (a := await session.get(Assignment, t.assignment_id)).kind == SELF:
+        role = await _self_viewer(session, a, t.student_id, p, write)
+        if role is not None:
+            return t, a, role
+    elif t is not None:
         a = await session.get(Assignment, t.assignment_id)
         if a.teacher_id == p.user_id:
             return t, a, True
@@ -502,7 +544,7 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
             earned=attempts._earned(sub, points.get(task_id, 1)) if submitted and (t.checked or teacher_view) else None,
         ))
     return AttemptOut(
-        id=t.id, assignment_id=a.id, title=a.title, student_id=t.student_id, number=t.number, status=t.status,
+        id=t.id, assignment_id=a.id, self_study=a.kind == SELF, title=a.title, student_id=t.student_id, number=t.number, status=t.status,
         settings=a.settings, started_at=t.started_at, ends_at=t.ends_at, current_index=t.current_index,
         current_ends_at=attempts.current_ends_at(t, a) if not submitted else None, submitted_at=t.submitted_at,
         auto_submitted=t.auto_submitted, score=t.score if t.checked or teacher_view else None, max_score=t.max_score,
@@ -621,7 +663,7 @@ async def attempt_status(attempt_id: UUID, principal: Principal = Depends(auth.p
 async def finish_by_teacher(attempt_id: UUID, principal: Principal = Depends(auth.principal),
                             session: AsyncSession = Depends(db.session)) -> AttemptOut:
     """Педагог завершает попытку ученика досрочно: сохранённые ответы отправляются на проверку, как при сдаче."""
-    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True, write=True)
     if not is_teacher:
         raise ApiError(403, "forbidden", "Завершить чужую работу может только педагог")
     if await _synced(session, t, a):
@@ -667,7 +709,7 @@ async def review_attempt(
 ) -> AttemptOut:
     """Проверка работы педагогом: засчитать или не засчитать задания (в том числе проверенные автоматически)
     и поставить оценку вручную (null — по критериям работы). После этого итог виден ученику и уходит в журнал."""
-    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True, write=True)
     if not is_teacher:
         raise ApiError(404, "attempt_not_found", "Попытка не найдена")
     if t.status != SUBMITTED:

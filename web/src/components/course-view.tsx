@@ -100,7 +100,7 @@ export function CourseView({ id, base }: { id: string; base: string }) {
   const total = c.materials_count;
 
   return (
-    <ThemeScope theme={c.theme} className="mx-auto max-w-4xl">
+    <ThemeScope page theme={c.theme} className="mx-auto max-w-4xl">
     <div className="space-y-6">
       <div>
         <div className="flex flex-wrap items-center gap-2 text-sm text-fg-soft">
@@ -362,7 +362,7 @@ export function CourseDetailsModal({
             className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </label>
-        <ThemePicker value={theme} onChange={setTheme} hint="Как курс, его модули и задачи выглядят у учеников. Работы по тестам оформляются в настройках теста." />
+        <ThemePicker value={theme} onChange={setTheme} hint="Как курс, его модули, задачи и привязанные к нему тесты выглядят у учеников." />
         <Button type="submit" loading={busy} disabled={!title.trim()} className="w-full">
           {course ? "Сохранить" : "Создать курс"}
         </Button>

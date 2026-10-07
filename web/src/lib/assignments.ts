@@ -4,7 +4,7 @@ import { fmtDateTime } from "@/lib/dates";
 export type Tone = "neutral" | "brand" | "warn" | "ok";
 type Row = Assignment["students"][number];
 
-export const KIND_LABELS = { test: "Тест", homework: "ДЗ", live: "Тест на уроке" } as const;
+export const KIND_LABELS = { test: "Тест", homework: "ДЗ", live: "Тест на уроке", self: "Самостоятельно" } as const;
 
 export function lastAttempt(row: Row | undefined): AttemptBrief | undefined {
   return row?.attempts[row.attempts.length - 1];

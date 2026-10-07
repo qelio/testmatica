@@ -80,13 +80,14 @@ class Fakes:
         for mid in body["module_ids"]:
             m = self.modules.get(mid)
             if m is not None:
-                out.append(m | {"id": mid, "usable": m["owner_id"] == body["user_id"] or m.get("published", False)})
+                published = m["course_status"] == "published"
+                out.append(m | {"id": mid, "usable": published or (m["owner_id"] == body["user_id"] and m["course_status"] != "removed")})
         return httpx.Response(200, json=out)
 
-    def module(self, owner: UUID, theme="comics", published=False) -> str:
+    def module(self, owner: UUID, theme="comics", status="private") -> str:
         mid = str(uuid4())
         self.modules[mid] = {"title": "Уравнения", "section_title": "Алгебра", "course_id": str(uuid4()), "course_title": "Математика 7",
-                             "course_theme": theme, "owner_id": str(owner), "published": published}
+                             "course_theme": theme, "owner_id": str(owner), "course_status": status}
         return mid
 
     def file(self, owner: UUID, name="решение.pdf") -> str:

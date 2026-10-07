@@ -27,6 +27,8 @@ class ModuleBrief(BaseModel):
     course_id: UUID
     course_title: str
     course_theme: str
+    course_status: str
+    owner_id: UUID
     usable: bool = Field(description="Пользователь может привязать тест: курс опубликован или его (не снятый администратором)")
 
 
@@ -41,6 +43,6 @@ async def modules_lookup(body: ModulesIn, session: AsyncSession = Depends(db.ses
         course, section = parents[m.course_id], parents[m.parent_id]
         out.append(ModuleBrief(
             id=m.id, title=m.title, section_title=section.title, course_id=course.id, course_title=course.title,
-            course_theme=course.theme, usable=course.status == PUBLISHED or (course.owner_id == body.user_id and course.status != REMOVED),
+            course_theme=course.theme, course_status=course.status, owner_id=course.owner_id, usable=course.status == PUBLISHED or (course.owner_id == body.user_id and course.status != REMOVED),
         ))
     return out

@@ -527,49 +527,32 @@ async def test_remove_assignment_and_students(client, fakes):
     assert (await client.get(f"/attempts/{t['id']}", headers=student(olya))).status_code == 404
 
 
-async def test_theme_copied_to_assignment(client, fakes):
-    """Оформление теста (решение №42) копируется в работу: ученик проходит её в нём, правка теста выданное не меняет."""
-    teacher, olya = uuid4(), uuid4()
-    tasks = await make_tasks(client, teacher)
-    test = await make_test(client, teacher, tasks[:1], theme="comics")
-    assert test["theme"] == "comics"
-    assert (await client.post("/tests", json={"title": "Т", "grade_level": 7, "items": [], "theme": "neon"},
-                              headers=bearer(teacher))).status_code == 422
-    await link(teacher, olya)
-    a = await assign(client, teacher, test, target_type="student", target_id=str(olya))
-    assert a["settings"]["theme"] == "comics"
-
-    body = {"title": test["title"], "grade_level": 9, "items": [{"task_id": tasks[0]["id"]}]}
-    assert (await client.put(f"/tests/{test['id']}", json=body, headers=bearer(teacher))).json()["theme"] == "classic"
-    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(olya))).json()
-    assert attempt["settings"]["theme"] == "comics"
-
-
 async def test_test_linked_to_course_module(client, fakes):
-    """Привязка теста к модулю курса (решение №43): проверка в content, оформление «как у курса», работы видны по модулю."""
+    """Привязка теста к модулю (решения №43, 44): проверка в content, оформление — как у курса, работы видны по модулю."""
     teacher, other, olya = uuid4(), uuid4(), uuid4()
     tasks = await make_tasks(client, teacher)
-    mine, foreign, public = fakes.module(teacher), fakes.module(other), fakes.module(other, theme="classic", published=True)
+    mine, foreign, public = fakes.module(teacher), fakes.module(other), fakes.module(other, theme="classic", status="published")
     body = {"title": "К теме", "grade_level": 7, "items": [{"task_id": tasks[0]["id"]}]}
 
-    assert (await client.post("/tests", json=body | {"theme": "course"}, headers=bearer(teacher))).status_code == 422  # без модуля
     for bad in (str(uuid4()), foreign):  # нет такого модуля или чужой черновик
         resp = await client.post("/tests", json=body | {"module_id": bad}, headers=bearer(teacher))
         assert resp.status_code == 422 and resp.json()["error"]["code"] == "module_not_available"
+    plain = (await client.post("/tests", json=body, headers=bearer(teacher))).json()
+    assert plain["theme"] == "classic" and plain["module"] is None
     assert (await client.post("/tests", json=body | {"module_id": public}, headers=bearer(teacher))).status_code == 201
 
-    test = (await client.post("/tests", json=body | {"module_id": mine, "theme": "course"}, headers=bearer(teacher))).json()
+    test = (await client.post("/tests", json=body | {"module_id": mine, "theme": "classic"}, headers=bearer(teacher))).json()
+    assert test["theme"] == "course"  # выбрать оформление нельзя: привязан — как у курса
     assert test["module"]["title"] == "Уравнения" and test["module"]["course_title"] == "Математика 7"
     listed = (await client.get("/tests", params={"module_id": mine}, headers=bearer(teacher))).json()
     assert [t["id"] for t in listed] == [test["id"]] and listed[0]["module"]["id"] == mine
 
-    # При назначении «как у курса» превращается в тему курса; привязка к модулю — в работу.
     await link(teacher, olya)
     a = await assign(client, teacher, test, target_type="student", target_id=str(olya))
     assert a["settings"]["theme"] == "comics" and a["module"]["id"] == mine
+    assert (await assign(client, teacher, plain, target_type="student", target_id=str(olya)))["settings"]["theme"] == "classic"
     by_module = (await client.get("/assignments", params={"module_id": mine}, headers=student(olya))).json()
     assert [x["id"] for x in by_module] == [a["id"]]
-    assert (await client.get("/assignments", params={"module_id": public}, headers=student(olya))).json() == []
 
     # Курс сменил тему — новые работы её подхватят; отвязали — модуль пропал, у выданной работы остался.
     fakes.modules[mine]["course_theme"] = "classic"
@@ -577,3 +560,62 @@ async def test_test_linked_to_course_module(client, fakes):
     unlinked = (await client.put(f"/tests/{test['id']}", json=body, headers=bearer(teacher))).json()
     assert unlinked["module"] is None and unlinked["theme"] == "classic"
     assert (await client.get(f"/assignments/{a['id']}", headers=student(olya))).json()["module"]["id"] == mine
+
+
+async def test_shared_course_tests_and_self_study(client, fakes):
+    """Тест «для всех» (решение №44): только у автора курса и пока курс можно править; виден под модулем тем, кто видит курс;
+    его проходят сами (без педагога), педагоги ученика видят такие работы; другой педагог может его назначить своим."""
+    author, teacher, olya, stranger = uuid4(), uuid4(), uuid4(), uuid4()
+    tasks = await make_tasks(client, author)
+    mod = fakes.module(author)
+    body = {"title": "Практическая работа", "grade_level": 7, "items": [{"task_id": tasks[0]["id"]}], "module_id": mod}
+
+    assert (await client.post("/tests", json=body | {"module_id": None, "shared": True}, headers=bearer(author))).status_code == 422
+    other_mod = fakes.module(stranger, status="published")
+    resp = await client.post("/tests", json=body | {"module_id": other_mod, "shared": True}, headers=bearer(author))
+    assert resp.status_code == 422 and resp.json()["error"]["code"] == "shared_not_author"
+    shared = (await client.post("/tests", json=body | {"shared": True}, headers=bearer(author))).json()
+    private = (await client.post("/tests", json=body | {"title": "Контрольная"}, headers=bearer(author))).json()
+    assert shared["shared"] and not private["shared"]
+
+    # Черновик курса: под модулем видят автор и его ученики, посторонние — нет; личный тест — никто.
+    await link(author, olya)
+    seen = (await client.get("/course-tests", params={"module_id": mod}, headers=student(olya))).json()
+    assert [t["title"] for t in seen] == ["Практическая работа"] and seen[0]["self_assignment"] is None
+    assert (await client.get("/course-tests", params={"module_id": mod}, headers=student(stranger))).json() == []
+    assert (await client.post(f"/course-tests/{private['id']}/start", headers=student(olya))).status_code == 404
+
+    # Самостоятельно: без срока и журнала, попыток сколько угодно; в обычных списках не показывается.
+    attempt = (await client.post(f"/course-tests/{shared['id']}/start", headers=student(olya))).json()
+    assert attempt["self_study"] and attempt["settings"]["theme"] == "comics"
+    choice = tasks[0]
+    right = next(o["id"] for o in (await client.get(f"/tasks/{choice['id']}", headers=bearer(author))).json()["options"] if o["is_correct"])
+    await answer(client, attempt, choice, olya, option_ids=[right])
+    done = (await client.post(f"/attempts/{attempt['id']}/submit", headers=student(olya))).json()
+    assert done["status"] == "submitted" and done["grade"] == 5
+    again = (await client.post(f"/course-tests/{shared['id']}/start", headers=student(olya))).json()
+    assert again["number"] == 2 and again["assignment_id"] == attempt["assignment_id"]
+    assert (await client.get("/assignments", headers=student(olya))).json() == []
+    row = (await client.get("/course-tests", params={"module_id": mod}, headers=student(olya))).json()[0]
+    assert row["self_assignment"]["kind"] == "self" and len(row["self_assignment"]["students"][0]["attempts"]) == 2
+
+    # Педагог ученика видит его самостоятельную работу и попытку, но не проверяет и не удаляет её.
+    await link(teacher, olya)
+    work = (await client.get(f"/students/{olya}/self-work", headers=bearer(teacher))).json()
+    assert [w["title"] for w in work] == ["Практическая работа"]
+    assert (await client.get(f"/attempts/{attempt['id']}", headers=bearer(teacher))).status_code == 200
+    assert (await client.post(f"/attempts/{attempt['id']}/review", json={"marks": {}}, headers=bearer(teacher))).status_code == 404
+    assert (await client.delete(f"/assignments/{attempt['assignment_id']}", headers=bearer(teacher))).status_code == 404
+    assert (await client.get(f"/students/{olya}/self-work", headers=bearer(uuid4()))).status_code == 404
+
+    # Другой педагог назначает общий тест своим ученикам (курс ему виден); личный чужой — нет.
+    fakes.modules[mod]["course_status"] = "published"
+    a = await assign(client, teacher, shared, target_type="student", target_id=str(olya))
+    assert a["teacher_id"] == str(teacher) and a["settings"]["theme"] == "comics"
+    assert (await client.post(f"/tests/{private['id']}/assign", json={"target_type": "student", "target_id": str(olya)},
+                              headers=bearer(teacher))).status_code == 404
+
+    # Опубликованный курс автору не изменить — общий тест тоже (только через снятие с публикации).
+    resp = await client.put(f"/tests/{shared['id']}", json=body | {"shared": True, "title": "Новое"}, headers=bearer(author))
+    assert resp.status_code == 409 and resp.json()["error"]["code"] == "course_locked"
+    assert (await client.put(f"/tests/{private['id']}", json=body | {"title": "Контрольная 2"}, headers=bearer(author))).status_code == 200
