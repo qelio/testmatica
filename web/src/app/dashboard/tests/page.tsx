@@ -7,11 +7,14 @@ import { GradeFilter } from "@/components/grade-filter";
 import { Alert, EmptyState, Spinner } from "@/components/ui";
 import { assessment } from "@/lib/api";
 import { fmtLimit, gradeLevelLabel, matchesGrade } from "@/lib/assignments";
+import { useAuth } from "@/lib/auth";
 import { useLoad } from "@/lib/hooks";
 
 /** Мои тесты: наборы задач из банка с настройками. Назначают их в разделе «Назначение тестов». */
 export default function TestsPage() {
   const tests = useLoad(() => assessment.tests(), []);
+  // Назначают педагоги; штатные редакторы готовят тесты к курсам библиотеки.
+  const canAssign = !!useAuth().user?.roles.includes("teacher");
   const [grade, setGrade] = useState("");
   const shown = tests.data?.filter((t) => matchesGrade(t.grade_level, grade)) ?? [];
   return (
@@ -57,7 +60,7 @@ export default function TestsPage() {
                   </span>
                 )}
               </Link>
-              {t.tasks_count > 0 && (
+              {canAssign && t.tasks_count > 0 && (
                 <Link href={`/dashboard/assignments/new?test=${t.id}`} className="text-sm font-medium text-brand hover:underline">
                   Назначить
                 </Link>

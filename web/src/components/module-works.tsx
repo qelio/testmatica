@@ -17,7 +17,9 @@ import { errorText, useLoad } from "@/lib/hooks";
 export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId: string }) {
   const { status, user } = useAuth();
   const signedIn = status === "authenticated";
-  const teacher = !!user?.roles.some((r) => r === "teacher" || r === "moderator");
+  // Тесты к модулю ведут педагоги и штатные редакторы библиотеки (модератор, администратор); назначают — педагоги.
+  const teacher = !!user?.roles.some((r) => r === "teacher" || r === "moderator" || r === "admin");
+  const canAssign = !!user?.roles.includes("teacher");
   const shared = useLoad(() => assessment.courseTests(moduleId, signedIn), [moduleId, signedIn]);
   const mine = useLoad(() => (signedIn && teacher ? assessment.tests(moduleId) : Promise.resolve([])), [moduleId, signedIn, teacher]);
   const works = useLoad(
@@ -48,10 +50,10 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
         ) : (
           <ul className="divide-y divide-line">
             {shared.data?.map((t) => (
-              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own={t.owner_id === user?.id} badge="для всех" />
+              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own={t.owner_id === user?.id} assign={canAssign} badge="для всех" />
             ))}
             {personal.map((t) => (
-              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own badge="только ваш" />
+              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own assign={canAssign} badge="только ваш" />
             ))}
           </ul>
         )}
@@ -98,7 +100,21 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
   );
 }
 
-function TeacherRow({ id, title, tasks, own, badge }: { id: string; title: string; tasks: number; own: boolean; badge: string }) {
+function TeacherRow({
+  id,
+  title,
+  tasks,
+  own,
+  assign,
+  badge,
+}: {
+  id: string;
+  title: string;
+  tasks: number;
+  own: boolean;
+  assign: boolean;
+  badge: string;
+}) {
   return (
     <li className="flex flex-wrap items-center gap-3 py-2.5">
       <span className="min-w-0 flex-1">
@@ -112,7 +128,7 @@ function TeacherRow({ id, title, tasks, own, badge }: { id: string; title: strin
         <span className="ml-2 text-sm text-fg-soft">заданий: {tasks}</span>
       </span>
       <Badge tone={badge === "для всех" ? "ok" : "neutral"}>{badge}</Badge>
-      {tasks > 0 && (
+      {assign && tasks > 0 && (
         <Link href={`/dashboard/assignments/new?test=${id}`} className="text-sm font-medium text-brand hover:underline">
           Назначить
         </Link>

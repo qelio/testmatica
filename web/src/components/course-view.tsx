@@ -161,7 +161,7 @@ export function CourseView({ id, base }: { id: string; base: string }) {
           )}
           {edit && (c.status === "private" || c.status === "rejected") && (
             <Button onClick={() => act(() => content.submit(c.id))}>
-              {user?.roles.includes("moderator") ? "Опубликовать" : "Отправить в публичную библиотеку"}
+              {user?.roles.some((r) => r === "moderator" || r === "admin") ? "Опубликовать" : "Отправить в публичную библиотеку"}
             </Button>
           )}
           {c.owner_id === user?.id && (c.status === "pending" || c.status === "published") && (
