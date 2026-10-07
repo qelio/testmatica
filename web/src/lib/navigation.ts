@@ -93,6 +93,8 @@ export const NAV = {
     SUPPORT_QUEUE,
     { title: "Банк задач", href: "/dashboard/tasks", icon: Boxes, ready: true },
     { title: "Библиотека", href: "/dashboard/library", icon: BookOpen, ready: true },
+    // Штатный редактор ведёт курсы библиотеки — и тесты к их модулям (решение №44).
+    { title: "Тесты", href: "/dashboard/tests", icon: ListChecks, ready: true },
     { title: "Типы оценок", href: "/dashboard/grade-types", icon: Tags, ready: true },
     { title: "Предметы", href: "/dashboard/subjects", icon: Shapes, ready: true },
     { title: "Компетенции", href: "/dashboard/competencies", icon: Lightbulb, ready: true },
