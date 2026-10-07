@@ -1,5 +1,6 @@
 """Сервис mcp: ключ из заголовка, обмен на токен, ошибки сервисов, перенос картинок (решение №41)."""
 
+import base64
 import json
 
 import httpx
@@ -30,6 +31,10 @@ def platform_fake(monkeypatch):
 
     def services(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer user-token"
+        if request.url.path == "/files":  # загрузка картинки — multipart
+            content = request.read()
+            calls.append((request.method, request.url.path, {"multipart": content}))
+            return httpx.Response(201, json={"id": "f2"})
         body = json.loads(request.content) if request.content else None
         calls.append((request.method, request.url.path, body))
         if request.url.path == "/files/import":
@@ -143,3 +148,29 @@ async def test_key_in_url_and_hidden_in_logs():
     record = logging.LogRecord("uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d', ("1.2.3.4", "POST", "/tm_Abc-1_x", "1.1", 200), None)
     HideKeys().filter(record)
     assert "tm_Abc" not in record.getMessage() and "/tm_***" in record.getMessage()
+
+
+PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16).decode()
+
+
+async def test_upload_images(platform_fake):
+    """Картинки для Claude: base64 из файла (upload_image) и вшитые в текст data:image/… — в хранилище платформы."""
+    from types import SimpleNamespace
+
+    from app import tools
+
+    assert platform.decode_image(f"data:image/png;base64,{PNG}")[1] == ".png"
+    with pytest.raises(ToolError, match="не картинка"):
+        platform.decode_image(base64.b64encode(b"<svg></svg>").decode())
+    with pytest.raises(ToolError, match="base64"):
+        platform.decode_image("это не base64!")
+
+    text = f'Схема: ![сайт](data:image/png;base64,{PNG} "width=400") и ![граф](https://example.com/g.png)'
+    out = await platform.localize_images("tm_good", text)
+    assert out == 'Схема: ![сайт](/api/media/files/f2/content "width=400") и ![граф](/api/media/files/f1/content)'
+    upload = next(c for c in platform_fake if c[1] == "/files")[2]["multipart"]
+    assert b'name="purpose"' in upload and b"content" in upload and b'filename="' in upload
+
+    ctx = SimpleNamespace(headers={"authorization": "Bearer tm_good"})
+    res = await tools.upload_image(ctx, PNG, "Тэгги")
+    assert res["markdown"] == "![Тэгги](/api/media/files/f2/content)" and res["url"].endswith("/api/media/files/f2/content")

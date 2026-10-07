@@ -11,11 +11,12 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel, Field
 
-from .platform import api_key, call, link, localize_images, session_for
+from .platform import api_key, call, link, localize_images, session_for, upload_image as store_image
 
 INSTRUCTIONS = """Ты работаешь с образовательной платформой ТестМатика от имени педагога.
-Тексты — Markdown; формулы — LaTeX: $…$ в строке и $$…$$ отдельной строкой. Картинки — ![подпись](https://…):
-по внешним ссылкам они переносятся в хранилище платформы.
+Тексты — Markdown; формулы — LaTeX: $…$ в строке и $$…$$ отдельной строкой. Картинки — ![подпись](https://…)
+или вшитые ![подпись](data:image/png;base64,…): и те и другие переносятся в хранилище платформы. Картинку из файла
+загрузи upload_image (base64) и вставь полученный Markdown в текст материала, условие, варианты или разбор задачи.
 Перед созданием задачи найди тему рубрикатора (list_topics) и при необходимости задания ЕГЭ/ОГЭ (list_exam_items),
 проверь, нет ли похожей задачи (search_tasks). У каждой задачи короткий номер — «(100345)»; по нему её можно найти
 и исправить. Теория: курс → раздел → модуль → материалы (текст, карточка теории, задача из банка).
@@ -36,6 +37,22 @@ Theme = Annotated[Literal["classic", "comics"], Field(description="Оформл�
 
 def _key(ctx: Context) -> str:
     return api_key(ctx.headers)
+
+
+# ---------- картинки ----------
+
+
+@mcp.tool()
+async def upload_image(
+    ctx: Context,
+    image: Annotated[str, Field(description="Картинка в base64 или data:image/png;base64,… — PNG, JPEG, GIF или WebP, до 20 МБ")],
+    name: Annotated[str, Field(description="Короткое название (подпись)")] = "картинка",
+) -> dict:
+    """Загрузить картинку на платформу. Возвращает Markdown — вставь его в текст материала (add_material, update_material),
+    в условие, варианты или разбор задачи (create_task, update_task) или в описание теста. Картинки по ссылкам https://…
+    и вшитые data:image/… в тексте загружаются сами — эта функция нужна для картинок из файлов."""
+    path = await store_image(_key(ctx), image, name)
+    return {"markdown": f"![{name}]({path})", "url": link(path)}
 
 
 # ---------- справочники ----------
@@ -370,6 +387,7 @@ async def _test_body(key: str, fields: TestFields) -> dict:
         task = await _resolve_task(key, item.task)
         items.append({"task_id": task["id"], "points": item.points, "solution_file": item.solution_file})
     body = fields.model_dump(mode="json", exclude={"items", "time_limit_min"})
+    body["description"] = await localize_images(key, body["description"])
     body["items"] = items
     body["time_limit_s"] = round(fields.time_limit_min * 60) if fields.time_mode != "none" and fields.time_limit_min else None
     if fields.time_mode != "none" and body["time_limit_s"] is None:

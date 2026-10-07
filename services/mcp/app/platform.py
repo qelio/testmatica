@@ -4,6 +4,8 @@ Claude присылает личный ключ «tm_…» в заголовке
 access-токен пользователя (кэш — пока токен жив), и дальше сервис ходит в публичные API assessment, content
 и media как сам пользователь: права, проверки и ошибки — те же, что в интерфейсе."""
 
+import base64
+import binascii
 import hashlib
 import re
 import time
@@ -87,15 +89,55 @@ def link(path: str) -> str:
     return f"{settings.web_base_url.rstrip('/')}{path}"
 
 
-# ---------- картинки из интернета → в хранилище платформы ----------
+# ---------- картинки → в хранилище платформы ----------
 
 IMAGE = re.compile(r"!\[([^\]]*)\]\((https?://[^)\s]+)((?:\s+\"[^\"]*\")?)\)")
+# Картинка прямо в тексте: ![подпись](data:image/png;base64,…) — так они вшиты в HTML-файлы уроков.
+DATA_IMAGE = re.compile(r"!\[([^\]]*)\]\((data:image/[a-z+.-]+;base64,[A-Za-z0-9+/=\s]+)((?:\s+\"[^\"]*\")?)\)")
+# Тип — по первым байтам, а не по тому, что написано в data:… (png, jpeg, gif, webp — как разрешает media).
+SIGNATURES = ((b"\x89PNG", ".png"), (b"\xff\xd8\xff", ".jpg"), (b"GIF8", ".gif"))
+
+
+def decode_image(data: str) -> tuple[bytes, str]:
+    """data:image/…;base64,… или просто base64 → (байты, расширение)."""
+    raw = data.strip()
+    if raw.startswith("data:"):
+        raw = raw.split(",", 1)[1] if "," in raw else ""
+    try:
+        content = base64.b64decode("".join(raw.split()), validate=True)
+    except (binascii.Error, ValueError):
+        raise ToolError("Картинка должна быть в base64 (или data:image/png;base64,…)") from None
+    if content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return content, ".webp"
+    ext = next((e for sig, e in SIGNATURES if content.startswith(sig)), None)
+    if ext is None:
+        raise ToolError("Это не картинка PNG, JPEG, GIF или WebP")
+    return content, ext
+
+
+async def upload_image(key: str, data: str, name: str = "картинка") -> str:
+    """Загрузить картинку в хранилище платформы; возвращает адрес для Markdown."""
+    content, ext = decode_image(data)
+    stem = re.sub(r"[^\w\- ]+", "", name).strip()[:60] or "картинка"
+    stored = await call(key, "media", "POST", "/files", data={"purpose": "content"},
+                        files={"file": (f"{stem}{ext}", content)})
+    return f"/api/media/files/{stored['id']}/content"
 
 
 async def localize_images(key: str, text: str) -> str:
-    """Картинки по внешним ссылкам переносятся в хранилище платформы (как вставка в редакторе):
-    чужая ссылка со временем ломается. Не удалось — ссылка остаётся как есть."""
-    if not text or "](http" not in text:
+    """Картинки по внешним ссылкам и вшитые в текст (data:…;base64) переносятся в хранилище платформы
+    (как вставка в редакторе): чужая ссылка со временем ломается, а base64 в тексте материала не хранится.
+    Не удалось скачать по ссылке — ссылка остаётся как есть; битая вшитая картинка — ошибка."""
+    if not text:
+        return text
+    if "](data:image/" in text:
+        parts, last = [], 0
+        for m in DATA_IMAGE.finditer(text):
+            path = await upload_image(key, m.group(2), m.group(1) or "картинка")
+            parts += [text[last:m.start()], f"![{m.group(1)}]({path}{m.group(3)})"]
+            last = m.end()
+        text = "".join(parts) + text[last:]
+    if "](http" not in text:
         return text
     cache: dict[str, str] = {}
     for m in IMAGE.finditer(text):
