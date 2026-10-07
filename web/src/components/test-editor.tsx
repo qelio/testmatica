@@ -9,10 +9,11 @@ import { TaskNumber } from "@/components/task-number";
 import { TaskPicker } from "@/components/task-picker";
 import { PreviewToggle, TaskPreview } from "@/components/task-preview";
 import { Alert, Badge, Button, Field, Select } from "@/components/ui";
-import { assessment, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TimeMode } from "@/lib/api";
+import { ThemePicker } from "@/components/theme-scope";
+import { assessment, content, type CourseSummary, type CourseTree, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TestTheme, type TimeMode } from "@/lib/api";
 import { GRADE_LEVELS } from "@/lib/assignments";
 import { TASK_TYPE_LABELS } from "@/lib/format";
-import { errorText } from "@/lib/hooks";
+import { errorText, useLoad } from "@/lib/hooks";
 
 type Item = { task_id: string; points: number; solution_file: boolean; title: string; task?: TaskSummary; type?: TaskType };
 
@@ -27,8 +28,9 @@ function canAskFile(item: Item): boolean {
   return !!type && SOLUTION_TYPES.has(type);
 }
 
-/** Редактор теста: задачи из банка, баллы, порядок, перемешивание, таймер. Назначают тест в разделе «Назначение тестов». */
-export function TestEditor({ test }: { test?: Quiz }) {
+/** Редактор теста: задачи из банка, баллы, порядок, перемешивание, таймер. Назначают тест в разделе «Назначение тестов».
+ *  preset — новый тест со страницы модуля: сразу привязан к нему (решение №43). */
+export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId: string; moduleId: string } }) {
   const router = useRouter();
   const [title, setTitle] = useState(test?.title ?? "");
   const [description, setDescription] = useState(test?.description ?? "");
@@ -37,6 +39,13 @@ export function TestEditor({ test }: { test?: Quiz }) {
   const [shuffle, setShuffle] = useState(test?.shuffle_options ?? false);
   const [timeMode, setTimeMode] = useState<TimeMode>(test?.time_mode ?? "none");
   const [minutes, setMinutes] = useState(test?.time_limit_s ? test.time_limit_s / 60 : 20);
+  const [theme, setTheme] = useState<TestTheme>(test?.theme ?? (preset ? "course" : "classic"));
+  // Привязка к модулю курса (по желанию): курс → модуль.
+  const [courseId, setCourseId] = useState(test?.module?.course_id ?? preset?.courseId ?? "");
+  const [moduleId, setModuleId] = useState(test?.module?.id ?? preset?.moduleId ?? "");
+  const courses = useLoad(() => content.myCourses(), []);
+  const tree = useLoad(() => (courseId ? content.course(courseId, true) : Promise.resolve(null)), [courseId]);
+  const linkedCourse = moduleId && tree.data ? { title: tree.data.title, theme: tree.data.theme } : null;
   const [items, setItems] = useState<Item[]>(
     () => test?.items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file, title: i.task.title, task: i.task })) ?? [],
   );
@@ -72,6 +81,8 @@ export function TestEditor({ test }: { test?: Quiz }) {
       shuffle_options: shuffle,
       time_mode: timeMode,
       time_limit_s: timeMode === "none" ? null : Math.round(minutes * 60),
+      theme: theme === "course" && !moduleId ? "classic" : theme,
+      module_id: moduleId || null,
       items: items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file && canAskFile(i) })),
     };
     try {
@@ -139,6 +150,30 @@ export function TestEditor({ test }: { test?: Quiz }) {
         {timeMode === "per_task" && (
           <p className="text-xs text-fg-soft">Задания открываются по одному; к пройденному вернуться нельзя. Когда время выходит — открывается следующее.</p>
         )}
+        <ModuleField
+          courses={courses.data ?? []}
+          extraCourse={test?.module && test.module.course_title ? { id: test.module.course_id, title: test.module.course_title } : null}
+          courseId={courseId}
+          tree={tree.data ?? null}
+          moduleId={moduleId}
+          onCourse={(id) => {
+            change(setCourseId)(id);
+            setModuleId("");
+            if (theme === "course") setTheme("classic");
+          }}
+          onModule={(id) => {
+            change(setModuleId)(id);
+            // Привязали — по умолчанию оформление курса; отвязали — «как у курса» больше не к чему.
+            if (id && theme === "classic") setTheme("course");
+            if (!id && theme === "course") setTheme("classic");
+          }}
+        />
+        <ThemePicker
+          value={theme}
+          onChange={change(setTheme)}
+          course={linkedCourse}
+          hint="Как ученики видят работу и её итог. Работы, выданные раньше, сохраняют своё оформление."
+        />
       </section>
 
       <section className="space-y-3">
@@ -268,5 +303,56 @@ export function TestEditor({ test }: { test?: Quiz }) {
         )}
       </div>
     </form>
+  );
+}
+
+/** Тема курса библиотеки, к которой относится тест (решение №43): курс → модуль. По желанию. */
+function ModuleField({
+  courses,
+  extraCourse,
+  courseId,
+  tree,
+  moduleId,
+  onCourse,
+  onModule,
+}: {
+  courses: CourseSummary[];
+  extraCourse: { id: string; title: string } | null;
+  courseId: string;
+  tree: CourseTree | null;
+  moduleId: string;
+  onCourse: (id: string) => void;
+  onModule: (id: string) => void;
+}) {
+  // Тест мог быть привязан к опубликованному чужому курсу — его нет среди своих, но показать нужно.
+  const options = extraCourse && !courses.some((c) => c.id === extraCourse.id) ? [extraCourse, ...courses] : courses;
+  return (
+    <div className="space-y-1.5">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Select label="Курс (по желанию)" value={courseId} onChange={(e) => onCourse(e.target.value)}>
+          <option value="">Без привязки к курсу</option>
+          {options.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
+        </Select>
+        {courseId && (
+          <Select label="Тема (модуль)" value={moduleId} onChange={(e) => onModule(e.target.value)}>
+            <option value="">{tree ? "Выберите модуль" : "Загрузка…"}</option>
+            {tree?.sections.map((s) => (
+              <optgroup key={s.id} label={s.title}>
+                {s.modules.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.title}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </Select>
+        )}
+      </div>
+      <p className="text-xs text-fg-soft">Работы по тесту ученики увидят на странице этого модуля, а вы — там же кнопку «Назначить».</p>
+    </div>
   );
 }

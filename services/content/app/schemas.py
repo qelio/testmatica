@@ -28,6 +28,10 @@ class SubjectUpdate(BaseModel):
     position: int | None = Field(None, ge=0)
 
 
+# Оформление курса для учеников (решение №42). Новая тема — сюда, в web/src/lib/course-themes.ts и в mcp.
+Theme = Literal["classic", "comics"]
+
+
 class CourseSummary(BaseModel):
     id: UUID
     title: str
@@ -37,6 +41,7 @@ class CourseSummary(BaseModel):
     author_name: str
     status: str
     review_comment: str | None
+    theme: str
     sections_count: int
     materials_count: int
     updated_at: datetime
@@ -99,6 +104,7 @@ class ModuleContent(BaseModel):
     description: str
     course_id: UUID
     course_title: str
+    course_theme: str
     section_title: str
     materials: list[MaterialOut]
     prev_module_id: UUID | None
@@ -113,6 +119,7 @@ class CourseCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     subject_id: UUID | None = None
     description: str = Field("", max_length=5000)
+    theme: Theme = "classic"
 
     _title = field_validator("title")(_clean)
 
@@ -128,6 +135,7 @@ class NodeUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=5000)
     subject_id: UUID | None = None
+    theme: Theme | None = Field(None, description="Только у курса")
 
     _title = field_validator("title")(_clean)
 

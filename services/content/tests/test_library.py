@@ -253,3 +253,39 @@ async def test_admin_removes_any_course(client):
     restored = await client.post(f"/admin/courses/{course_id}/restore", headers=bearer(boss, ("admin",)))
     assert restored.json()["status"] == "private" and restored.json()["review_comment"] is None  # был приватным
     assert (await client.get(f"/courses/{course_id}", headers=student(pupil))).status_code == 200
+
+
+async def test_course_theme(client):
+    """Оформление курса (решение №42): выбирается при создании и в настройках, видно в курсе и в модуле."""
+    t = uuid4()
+    course_id, section, m1, *_ = await build_course(client, t)
+    tree = (await client.get(f"/courses/{course_id}", headers=bearer(t))).json()
+    assert tree["theme"] == "classic"
+
+    tree = (await client.patch(f"/nodes/{course_id}", json={"theme": "comics"}, headers=bearer(t))).json()
+    assert tree["theme"] == "comics"
+    assert (await client.get(f"/modules/{m1}", headers=bearer(t))).json()["course_theme"] == "comics"
+    # Неизвестная тема — ошибка; у раздела оформления нет — поле игнорируется.
+    assert (await client.patch(f"/nodes/{course_id}", json={"theme": "neon"}, headers=bearer(t))).status_code == 422
+    assert (await client.patch(f"/nodes/{section}", json={"theme": "classic"}, headers=bearer(t))).status_code == 200
+    assert (await client.get(f"/courses/{course_id}", headers=bearer(t))).json()["theme"] == "comics"
+
+    created = (await client.post("/courses", json={"title": "Вебоград", "theme": "comics"}, headers=bearer(t))).json()
+    assert created["theme"] == "comics"
+    assert {c["id"]: c["theme"] for c in (await client.get("/my/courses", headers=bearer(t))).json()}[created["id"]] == "comics"
+
+
+async def test_internal_modules_lookup(client):
+    """Для assessment (решение №43): модуль, его курс и тема; привязать можно к своему или опубликованному курсу."""
+    from app.config import settings
+
+    t, other = uuid4(), uuid4()
+    course_id, _, m1, *_ = await build_course(client, t)
+    await client.patch(f"/nodes/{course_id}", json={"theme": "comics"}, headers=bearer(t))
+    internal = {"X-Internal-Token": settings.internal_token}
+    found = (await client.post("/internal/modules/lookup", json={"module_ids": [m1, str(uuid4())], "user_id": str(t)}, headers=internal)).json()
+    assert len(found) == 1 and found[0]["title"] == "Что такое уравнение" and found[0]["section_title"] == "Основы"
+    assert (found[0]["course_title"], found[0]["course_theme"], found[0]["usable"]) == ("Линейные уравнения", "comics", True)
+    foreign = (await client.post("/internal/modules/lookup", json={"module_ids": [m1], "user_id": str(other)}, headers=internal)).json()
+    assert foreign[0]["usable"] is False
+    assert (await client.post("/internal/modules/lookup", json={"module_ids": [m1], "user_id": str(t)})).status_code in (401, 403)

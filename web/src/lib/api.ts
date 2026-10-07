@@ -753,6 +753,9 @@ export type SubjectRef = { id: string; name: string; hidden?: boolean };
 
 export type CourseStatus = "private" | "pending" | "published" | "rejected" | "removed";
 
+/** Оформление курса или теста для учеников (решение №42); список — lib/course-themes.ts. */
+export type CourseTheme = "classic" | "comics";
+
 export type CourseSummary = {
   id: string;
   title: string;
@@ -762,6 +765,7 @@ export type CourseSummary = {
   author_name: string;
   status: CourseStatus;
   review_comment: string | null;
+  theme: CourseTheme;
   sections_count: number;
   materials_count: number;
   updated_at: string;
@@ -798,6 +802,7 @@ export type ModuleContent = {
   description: string;
   course_id: string;
   course_title: string;
+  course_theme: CourseTheme;
   section_title: string;
   materials: Material[];
   prev_module_id: string | null;
@@ -832,11 +837,11 @@ export const content = {
   course: (id: string, authed: boolean) => api<CourseTree>(`${CT}/courses/${id}`, readOpts(authed)),
   module: (id: string, authed: boolean) => api<ModuleContent>(`${CT}/modules/${id}`, readOpts(authed)),
 
-  createCourse: (data: { title: string; subject_id?: string | null; description?: string }) =>
+  createCourse: (data: { title: string; subject_id?: string | null; description?: string; theme?: CourseTheme }) =>
     api<CourseTree>(`${CT}/courses`, { method: "POST", body: data }),
   addChild: (parentId: string, title: string) =>
     api<CourseTree>(`${CT}/nodes/${parentId}/children`, { method: "POST", body: { title } }),
-  updateNode: (id: string, data: { title?: string; description?: string; subject_id?: string | null }) =>
+  updateNode: (id: string, data: { title?: string; description?: string; subject_id?: string | null; theme?: CourseTheme }) =>
     api<CourseTree>(`${CT}/nodes/${id}`, { method: "PATCH", body: data }),
   deleteNode: (id: string) => api<void>(`${CT}/nodes/${id}`, { method: "DELETE" }),
   moveNode: (id: string, direction: "up" | "down") =>
@@ -1024,13 +1029,32 @@ export type ItemTaskProgress = {
 };
 
 export type TimeMode = "none" | "total" | "per_task";
-export type QuizSettings = { order_mode: "fixed" | "random"; shuffle_options: boolean; time_mode: TimeMode; time_limit_s: number | null };
+export type QuizSettings = {
+  order_mode: "fixed" | "random";
+  shuffle_options: boolean;
+  time_mode: TimeMode;
+  time_limit_s: number | null;
+  /** У работ, выданных до появления оформлений, — нет (значит, классика). */
+  theme?: CourseTheme;
+};
 export type QuizItemInput = { task_id: string; points: number; solution_file: boolean };
-export type QuizInput = QuizSettings & { title: string; description: string; grade_level: number; items: QuizItemInput[] };
-export type Quiz = QuizSettings & {
+/** Оформление теста: тема или «как у курса» привязанного модуля (решения №42, 43). */
+export type TestTheme = CourseTheme | "course";
+/** Модуль курса библиотеки, к которому привязан тест или работа (решение №43). */
+export type ModuleRef = { id: string; title: string; course_id: string; course_title: string | null };
+type TestSettings = Omit<QuizSettings, "theme"> & { theme: TestTheme };
+export type QuizInput = TestSettings & {
+  title: string;
+  description: string;
+  grade_level: number;
+  module_id: string | null;
+  items: QuizItemInput[];
+};
+export type Quiz = TestSettings & {
   id: string;
   title: string;
   description: string;
+  module: ModuleRef | null;
   /** Для какого класса (1–11); у старых тестов — null. */
   grade_level: number | null;
   items: { task_id: string; points: number; solution_file: boolean; task: TaskSummary }[];
@@ -1042,6 +1066,7 @@ export type QuizSummary = {
   id: string;
   title: string;
   grade_level: number | null;
+  module: ModuleRef | null;
   tasks_count: number;
   max_score: number;
   time_mode: TimeMode;
@@ -1090,6 +1115,7 @@ export type Assignment = {
   teacher_id: string;
   teacher_name: string;
   lesson_id: string | null;
+  module: ModuleRef | null;
   opens_at: string | null;
   deadline: string | null;
   not_open_yet: boolean;
@@ -1253,13 +1279,13 @@ export const assessment = {
   examItemTasks: (studentId: string, itemId: string) =>
     api<ItemTaskProgress[]>(`${AS}/exam-board/tasks?student_id=${studentId}&item_id=${itemId}`),
 
-  tests: () => api<QuizSummary[]>(`${AS}/tests`),
+  tests: (moduleId?: string) => api<QuizSummary[]>(`${AS}/tests${moduleId ? `?module_id=${moduleId}` : ""}`),
   test: (id: string) => api<Quiz>(`${AS}/tests/${id}`),
   createTest: (data: QuizInput) => api<Quiz>(`${AS}/tests`, { method: "POST", body: data }),
   updateTest: (id: string, data: QuizInput) => api<Quiz>(`${AS}/tests/${id}`, { method: "PUT", body: data }),
   deleteTest: (id: string) => api<void>(`${AS}/tests/${id}`, { method: "DELETE" }),
   assign: (testId: string, data: AssignInput) => api<Assignment>(`${AS}/tests/${testId}/assign`, { method: "POST", body: data }),
-  assignments: (role: "teacher" | "student", params: { lesson_id?: string; target_id?: string } = {}) => {
+  assignments: (role: "teacher" | "student", params: { lesson_id?: string; target_id?: string; module_id?: string } = {}) => {
     const qs = new URLSearchParams({ role, ...Object.fromEntries(Object.entries(params).filter(([, v]) => v)) });
     return api<Assignment[]>(`${AS}/assignments?${qs}`);
   },

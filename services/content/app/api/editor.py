@@ -60,7 +60,7 @@ async def create_course(
     cid = uuid7()
     course = Node(
         id=cid, kind="course", course_id=cid, owner_id=principal.user_id, title=body.title,
-        description=body.description, subject_id=body.subject_id, status=PRIVATE,
+        description=body.description, subject_id=body.subject_id, status=PRIVATE, theme=body.theme,
     )
     session.add(course)
     await session.commit()
@@ -106,6 +106,8 @@ async def update_node(
     if "subject_id" in data and node.kind == "course":
         await _check_subject(session, data["subject_id"])
         node.subject_id = data["subject_id"]
+    if data.get("theme") and node.kind == "course":
+        node.theme = data["theme"]
     _touch(course)
     await session.commit()
     return await views.course_tree(session, course, principal)

@@ -137,7 +137,7 @@ function Solver({
             <fieldset className="space-y-2">
               <legend className="mb-1 text-sm text-fg-soft">{task.multiple ? "Выберите все верные варианты" : "Выберите один вариант"}</legend>
               {task.options.map((o) => (
-                <label key={o.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 ${selected.includes(o.id) ? "border-brand bg-brand/5" : "border-line hover:bg-muted"}`}>
+                <label key={o.id} className={`tm-opt flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 ${selected.includes(o.id) ? "tm-opt-on border-brand bg-brand/5" : "border-line hover:bg-muted"}`}>
                   <input
                     type={task.multiple ? "checkbox" : "radio"}
                     name={`task-${task.id}`}
@@ -198,7 +198,7 @@ function Solver({
       )}
 
       {view.explanation && (
-        <details className="rounded-xl border border-ok/40 bg-ok/5 px-4 py-3" open={view.solved}>
+        <details className="tm-expl rounded-xl border border-ok/40 bg-ok/5 px-4 py-3" open={view.solved}>
           <summary className="cursor-pointer font-medium">Разбор решения</summary>
           <div className="mt-2">
             <Markdown text={view.explanation} />

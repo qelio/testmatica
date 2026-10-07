@@ -188,3 +188,170 @@ body {
 .tm-editor [data-resize-container] { max-width: 100%; vertical-align: bottom; }
 .tm-editor [data-resize-container] img { max-width: 100%; }
 
+
+/* ---------- Оформления курсов и тестов (решение №42, components/theme-scope.tsx) ----------
+   Обёртка .tm-<тема> переопределяет токены цветов, а классы-зацепки (tm-card, tm-btn, tm-opt, tm-num…) у компонентов
+   получают свой вид. В классике зацепки ничего не меняют; .tm-only — элементы, которые видны только в теме. */
+.tm-only { display: none; }
+
+.tm-comics {
+  --bg: #e9f5ff;
+  --surface: #ffffff;
+  --muted: #dff1ff;
+  --line: #23243a;
+  --fg: #23243a;
+  --fg-soft: #4a4d6b;
+  --brand: #2f6be8;
+  --brand-strong: #1f55c7;
+  --danger: #d63a25;
+  --ok: #11806a;
+  --tutor: #e0532f;
+  --sun: #ffc83d;
+  --pink: #ff6b57;
+  --mint: #2ec4a6;
+  --sky: #3d7bfd;
+  --ink: #23243a; /* текст на жёлтом — тёмный в обеих темах */
+  --yel: #ffc83d;
+  --coral: #ff6b57;
+  --ok-bg: #c8f2e8;
+  --bad-bg: #ffd3cc;
+  --code-bg: #23243a;
+  --code-fg: #f3f4ff;
+  color: var(--fg);
+  background-color: var(--bg);
+  /* Комиксовый «растр» на фоне сцены. */
+  background-image: radial-gradient(color-mix(in srgb, var(--sky) 16%, transparent) 1.3px, transparent 1.6px);
+  background-size: 20px 20px;
+  border-radius: 28px;
+  padding: 20px 14px 28px;
+  font-family: var(--font-nunito-body), "Nunito", system-ui, sans-serif;
+  font-weight: 500;
+}
+@media (min-width: 640px) {
+  .tm-comics { padding: 32px 28px 40px; }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tm-comics {
+    --bg: #161727; --surface: #222439; --muted: #2b2e4a; --line: #4a4d6b; --fg: #eef0ff; --fg-soft: #b4b8d6;
+    --brand: #7aa2ff; --brand-strong: #9bb9ff; --danger: #ff8a7a; --ok: #4fd8bb; --tutor: #ff8a6a;
+    --ok-bg: #1d4a42; --bad-bg: #5a2a26; --code-bg: #0f1020;
+  }
+}
+:root[data-theme="dark"] .tm-comics {
+  --bg: #161727; --surface: #222439; --muted: #2b2e4a; --line: #4a4d6b; --fg: #eef0ff; --fg-soft: #b4b8d6;
+  --brand: #7aa2ff; --brand-strong: #9bb9ff; --danger: #ff8a7a; --ok: #4fd8bb; --tutor: #ff8a6a;
+  --ok-bg: #1d4a42; --bad-bg: #5a2a26; --code-bg: #0f1020;
+}
+.tm-comics.tm-preview { padding: 10px; border-radius: 10px; background-size: 12px 12px; }
+
+.tm-comics :is(h1, h2, h3, .tm-title) {
+  font-family: var(--font-unbounded), "Nunito", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.tm-comics h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.15; }
+.tm-comics .tm-eyebrow {
+  font-family: var(--font-unbounded), "Nunito", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+
+.tm-comics .tm-card {
+  background: var(--surface);
+  border: 3px solid var(--line);
+  border-radius: 22px;
+  box-shadow: 0 6px 0 var(--line);
+}
+.tm-comics.tm-preview .tm-card { border-width: 2px; border-radius: 10px; box-shadow: 0 3px 0 var(--line); }
+
+.tm-comics .tm-only { display: initial; }
+.tm-comics .tm-dot { display: none; }
+.tm-comics .tm-num {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--yel);
+  color: var(--ink);
+  border: 3px solid var(--line);
+  font: 800 16px var(--font-unbounded), "Nunito", system-ui, sans-serif;
+}
+.tm-comics.tm-preview .tm-num { width: 20px; height: 20px; border-width: 2px; font-size: 10px; }
+
+.tm-comics .tm-btn {
+  border-radius: 14px;
+  font-weight: 800;
+  font-size: 15px;
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  transition: transform 0.08s, box-shadow 0.08s, background-color 0.15s;
+}
+.tm-comics .tm-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
+.tm-comics .tm-btn-primary { background: var(--yel); color: var(--ink); }
+.tm-comics .tm-btn-primary:hover:not(:disabled) { background: #ffd566; }
+.tm-comics .tm-btn-primary:disabled { background: var(--yel); opacity: 0.55; }
+.tm-comics .tm-btn-secondary { background: var(--surface); }
+.tm-comics .tm-btn-ghost { border-color: transparent; box-shadow: none; }
+
+.tm-comics .tm-badge {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.tm-comics .tm-badge-neutral { background: var(--mint); color: var(--ink); }
+
+.tm-comics .tm-opt {
+  background: var(--bg);
+  border: 3px solid var(--line);
+  border-radius: 14px;
+  font-weight: 700;
+}
+.tm-comics .tm-opt:hover { background: var(--muted); }
+.tm-comics .tm-opt-on { background: var(--muted); box-shadow: 0 4px 0 var(--line); }
+.tm-comics .tm-opt-ok { background: var(--ok-bg); }
+.tm-comics .tm-opt-bad { background: var(--bad-bg); }
+.tm-comics.tm-preview .tm-opt { border-width: 2px; border-radius: 6px; }
+
+.tm-comics :is(input:not([type="radio"], [type="checkbox"], [type="file"]), textarea, select) {
+  background: var(--bg);
+  border: 3px solid var(--line);
+  border-radius: 12px;
+  font-weight: 700;
+}
+.tm-comics :is(input, textarea, select):focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+.tm-comics .tm-expl { background: var(--ok-bg); border: 0; border-radius: 14px; }
+.tm-comics .tm-bar { border: 3px solid var(--line); border-radius: 18px; background: color-mix(in srgb, var(--bg) 92%, transparent); }
+
+.tm-comics .prose-tm { font-size: 17px; }
+.tm-comics .prose-tm :is(h1, h2, h3) { font-weight: 700; }
+.tm-comics .prose-tm code { background: var(--muted); font-weight: 600; }
+.tm-comics .prose-tm pre { background: var(--code-bg); color: var(--code-fg); border-radius: 14px; }
+.tm-comics .prose-tm pre code { background: none; color: inherit; }
+.tm-comics .prose-tm blockquote { background: var(--muted); border: 0; border-radius: 14px; padding: 10px 16px; color: var(--fg); }
+.tm-comics .prose-tm table { width: 100%; }
+.tm-comics .prose-tm :is(th, td) { border: 2px solid var(--line); padding: 8px 12px; }
+.tm-comics .prose-tm th { background: var(--muted); font-weight: 800; }
+.tm-comics .prose-tm img { border-radius: 16px; }
+.tm-comics .prose-tm hr { border: 0; border-top: 3px dotted var(--line); opacity: 0.4; }
+.tm-comics .tm-grade {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--yel);
+  color: var(--ink);
+  border: 3px solid var(--line);
+  box-shadow: 0 4px 0 var(--line);
+  font: 800 26px var(--font-unbounded), "Nunito", system-ui, sans-serif;
+}

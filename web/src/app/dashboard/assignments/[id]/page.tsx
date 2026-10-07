@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { FinishButton } from "@/components/finish-attempt";
 import { Markdown } from "@/components/markdown";
+import { ThemeScope } from "@/components/theme-scope";
 import { Alert, Badge, Button, Field, Modal, Spinner } from "@/components/ui";
 import { type Assignment, assessment } from "@/lib/api";
 import { attemptsText, bestAttempt, fmtLimit, KIND_LABELS, lastAttempt, studentStatus, summary } from "@/lib/assignments";
@@ -34,14 +35,17 @@ export default function AssignmentPage() {
 
   if (a.error) return <Alert>{a.error}</Alert>;
   if (!a.data) return <Spinner />;
+  // Ученик видит работу в оформлении теста (решение №42); таблица результатов педагога — в обычном.
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <ThemeScope theme={isTeacher ? null : a.data.settings.theme} className={`mx-auto ${isTeacher ? "max-w-5xl" : "max-w-3xl"}`}>
+    <div className="space-y-5">
       <Link href="/dashboard/assignments" className="text-sm text-fg-soft hover:text-fg">
         ← {isTeacher ? "Назначение тестов" : "Назначенные тесты"}
       </Link>
       <Header a={a.data} isTeacher={isTeacher} />
       {isTeacher ? <TeacherPanel a={a.data} reload={a.reload} /> : <StudentPanel a={a.data} />}
     </div>
+    </ThemeScope>
   );
 }
 
@@ -56,6 +60,14 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
         {a.overdue && !a.closed && <Badge tone="warn">срок прошёл</Badge>}
       </div>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight">{a.title}</h1>
+      {a.module && (
+        <p className="mt-1 text-sm">
+          Тема:{" "}
+          <Link href={`/dashboard/library/module/${a.module.id}`} className="text-brand hover:underline">
+            {a.module.title}
+          </Link>
+        </p>
+      )}
       {isTeacher && (
         <p className="mt-1 text-sm">
           Тест:{" "}
@@ -387,11 +399,11 @@ function StudentPanel({ a }: { a: Assignment }) {
     <div className="space-y-4">
       {error && <Alert>{error}</Alert>}
       {a.description && (
-        <div className="rounded-2xl border border-line bg-surface p-5">
+        <div className="tm-card rounded-2xl border border-line bg-surface p-5">
           <Markdown text={a.description} />
         </div>
       )}
-      <div className="space-y-3 rounded-2xl border border-line bg-surface p-5">
+      <div className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
         <p>
           Статус: <Badge tone={st.tone}>{st.text}</Badge>
         </p>
@@ -450,7 +462,7 @@ function StudentPanel({ a }: { a: Assignment }) {
         </div>
       </Modal>
       {row && row.attempts.some((t) => t.status === "submitted") && (
-        <div className="rounded-2xl border border-line bg-surface">
+        <div className="tm-card rounded-2xl border border-line bg-surface">
           <h2 className="border-b border-line px-5 py-3 font-medium">Мои попытки</h2>
           <ul className="divide-y divide-line">
             {row.attempts

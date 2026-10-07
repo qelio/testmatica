@@ -40,7 +40,7 @@ export function Button({ variant = "primary", loading, disabled, className = "",
     <button
       {...rest}
       disabled={disabled || loading}
-      className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed ${styles} ${className}`}
+      className={`tm-btn tm-btn-${variant} inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed ${styles} ${className}`}
     >
       {loading && (
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
@@ -191,7 +191,7 @@ export function Badge({
     warn: "bg-tutor/10 text-tutor",
     ok: "bg-ok/10 text-ok",
   }[tone];
-  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${styles}`}>{children}</span>;
+  return <span className={`tm-badge tm-badge-${tone} inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${styles}`}>{children}</span>;
 }
 
 /** Модальное окно на нативном <dialog>: фокус, Esc и затемнение фона — из коробки. */

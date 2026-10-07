@@ -127,7 +127,7 @@ function AnswerInput({
         <fieldset className="space-y-2">
           <legend className="mb-1 text-sm text-fg-soft">{task.multiple ? "Выберите все верные варианты" : "Выберите один вариант"}</legend>
           {task.options.map((o) => (
-            <label key={o.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 ${selected.includes(o.id) ? "border-brand bg-brand/5" : "border-line hover:bg-muted"}`}>
+            <label key={o.id} className={`tm-opt flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 ${selected.includes(o.id) ? "tm-opt-on border-brand bg-brand/5" : "border-line hover:bg-muted"}`}>
               <input
                 type={task.multiple ? "checkbox" : "radio"}
                 name={`task-${task.id}`}
@@ -230,6 +230,9 @@ function AnswerInput({
 function AnswerReadonly({ item, teacher }: { item: AttemptTask; teacher: boolean }) {
   const { task, answer } = item;
   if (!answer && !item.files.length) return <p className="text-sm text-fg-soft">Нет ответа</p>;
+  // Выбранный вариант после проверки — зелёный или красный (виден в игровом оформлении).
+  const checked = ["correct", "incorrect", "reviewed"].includes(item.result?.status ?? "");
+  const verdict = checked ? (isCorrect(item) ? "tm-opt-ok" : "tm-opt-bad") : "";
   return (
     <div className="space-y-2">
       {task.type === "choice" && (
@@ -239,7 +242,7 @@ function AnswerReadonly({ item, teacher }: { item: AttemptTask; teacher: boolean
             return (
               <li
                 key={o.id}
-                className={`flex items-start gap-2 rounded-lg border px-3 py-2 ${chosen ? "border-brand bg-brand/5" : "border-line"} ${teacher && o.is_correct ? "ring-1 ring-ok/60" : ""}`}
+                className={`tm-opt flex items-start gap-2 rounded-lg border px-3 py-2 ${chosen ? `tm-opt-on ${verdict} border-brand bg-brand/5` : "border-line"} ${teacher && o.is_correct ? "ring-1 ring-ok/60" : ""}`}
               >
                 <span className="w-16 shrink-0 text-xs text-fg-soft">
                   {chosen ? "выбрано" : ""}
@@ -329,7 +332,7 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
       )}
       <ol className="space-y-4">
         {attempt.tasks.map((item, i) => (
-          <li key={item.task.id} className="space-y-3 rounded-2xl border border-line bg-surface p-5">
+          <li key={item.task.id} className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
             <TaskHead item={item} n={i + 1} />
             <Markdown text={item.task.statement} />
             <AnswerReadonly item={item} teacher={teacher} />
@@ -380,7 +383,7 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
               />
             )}
             {!inProgress && item.task.explanation && (
-              <details className="rounded-xl border border-ok/40 bg-ok/5 px-4 py-3">
+              <details className="tm-expl rounded-xl border border-ok/40 bg-ok/5 px-4 py-3">
                 <summary className="cursor-pointer font-medium">Разбор решения</summary>
                 <div className="mt-2">
                   <Markdown text={item.task.explanation} />
@@ -493,7 +496,11 @@ function TeacherReview({ attempt, marks, onSaved }: { attempt: Attempt; marks: R
 function TaskHead({ item, n }: { item: AttemptTask; n: number }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="font-semibold">Задание {n}</span>
+      <span className="tm-title flex items-center gap-2 font-semibold">
+        {/* В игровом оформлении номер — в кружке, в классике — текстом. */}
+        <span className="tm-only tm-num">{n}</span>
+        Задание<span className="tm-dot"> {n}</span>
+      </span>
       <Badge>{TASK_TYPE_LABELS[item.task.type]}</Badge>
       {item.solution_file && <Badge tone="warn">нужен файл с решением</Badge>}
       <span className="text-fg-soft">
@@ -513,10 +520,10 @@ function ResultHeader({ attempt, teacher }: { attempt: Attempt; teacher: boolean
   }
   const correct = attempt.tasks.filter(isCorrect).length;
   return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-line bg-surface px-5 py-4">
+    <div className="tm-card flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-line bg-surface px-5 py-4">
       {attempt.checked ? (
         <>
-          <span className="text-3xl font-semibold">{attempt.grade}</span>
+          <span className="tm-grade text-3xl font-semibold">{attempt.grade}</span>
           <span>
             {attempt.score} из {attempt.max_score} баллов · {Math.round(attempt.percent ?? 0)}%
             {attempt.grade_override !== null && <span className="text-fg-soft"> · оценку поставил педагог</span>}
@@ -590,7 +597,7 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
 
   return (
     <div className="space-y-5">
-      <div className="sticky top-16 z-10 -mx-4 flex flex-wrap items-center gap-3 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border">
+      <div className="tm-bar sticky top-16 z-10 -mx-4 flex flex-wrap items-center gap-3 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border">
         <span className="text-sm text-fg-soft">
           {perTask ? `Задание ${attempt.current_index + 1} из ${total}` : `Отвечено: ${answered.size} из ${total}`}
         </span>
@@ -602,7 +609,7 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
       {error && <Alert>{error}</Alert>}
       <ol className="space-y-4">
         {visible.map((item, i) => (
-          <li key={item.task.id} className="space-y-3 rounded-2xl border border-line bg-surface p-5">
+          <li key={item.task.id} className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
             <TaskHead item={item} n={firstNumber + i} />
             <Markdown text={item.task.statement} />
             <AnswerInput item={item} onSave={(answer, fileIds) => saveAnswer(item.task.id, answer, fileIds)} />
