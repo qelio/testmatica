@@ -146,7 +146,6 @@ async def recording(
             await rooms.start_recording(session, room, lesson)
         except LiveKitError as e:
             raise ApiError(409, "recording_failed", f"Не удалось включить запись: {e}") from e
-        room.auto_record_off = False
     else:
         if not active or active.stop_requested_at:
             raise ApiError(409, "not_recording", "Запись не идёт")
@@ -156,7 +155,6 @@ async def recording(
             raise ApiError(409, "recording_starting", "Запись ещё запускается — подождите несколько секунд")
         await livekit.stop_recording(active.egress_id)
         active.stop_requested_at = datetime.now(UTC)
-        room.auto_record_off = True  # педагог выключил сам — при следующем входе не включаем
     await session.commit()
     return await room_out(session, room, lesson, True)
 

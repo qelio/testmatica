@@ -104,6 +104,40 @@ docker compose -f compose.prod.yaml exec identity python -m app.cli create-user 
 - **Новая база** (новый сервис) — в `SERVICE_DATABASES` и `PG_PASSWORD_*` сервиса `postgres` в `compose.prod.yaml`, пароль — в `.env` и `gen-secrets.sh`. Скрипт `postgres-init.sh` работает только на пустом томе — на живом сервере базу и пользователя создать вручную (`CREATE ROLE … LOGIN PASSWORD …; CREATE DATABASE … OWNER …;`).
 - **Изменить инфраструктуру** — правка `infra/terraform`, `terraform plan`, `terraform apply`.
 
+## Сервер на Timeweb Cloud (с 2026-10-12, решение №45)
+
+Боевой сервер — Timeweb Cloud, Санкт-Петербург, `testmatica-app` (91.186.197.71), пользователь `deploy`, каталог `/opt/testmatica`.
+Разделы выше про Yandex Cloud (ВМ, реестр, `YC_CI_KEY_JSON`) — история; хранилище и реестр теперь такие:
+
+- **Инфраструктура** — `infra/timeweb` (сервер, IPv4, SSH-ключ, бакеты). Токен API — в `infra/timeweb/twc.env`
+  (`TWC_TOKEN=…`, панель Timeweb → «API и Terraform»), запуск — `sh infra/timeweb/tf.sh plan|apply|output`.
+  Ключи S3 — `sh infra/timeweb/tf.sh output -raw s3_access_key` / `s3_secret_key`.
+- **`.env` на сервере**: `REGISTRY=ghcr.io/qelio/testmatica`, `S3_ENDPOINT=https://s3.twcstorage.ru`, `S3_REGION=ru-1`,
+  ключи S3 Timeweb, остальные секреты — прежние. Копию `.env` хранить в менеджере паролей.
+- **GitHub**: секреты `SSH_HOST` (адрес сервера), `SSH_USER`, `SSH_PRIVATE_KEY`; реестр — ghcr.io через `GITHUB_TOKEN`.
+- **DNS** пока в Yandex Cloud DNS: записи `testmatica.ru`, `www`, `live` — на адрес сервера. Перенос в reg.ru:
+  в зоне reg.ru завести A-записи `@`, `www`, `live` на адрес сервера, затем сменить DNS-серверы домена на `ns1.reg.ru`, `ns2.reg.ru`.
+
+## Заглушка: авария или технические работы
+
+Страница «Сайт временно не работает» — `infra/maintenance/index.html` (без внешних файлов; причина — абзац `id="reason"`).
+Она лежит в Object Storage, а не на ВМ, поэтому работает, даже когда ВМ недоступна:
+
+- бакет `testmatica.ru` — статический сайт (любой адрес отдаёт заглушку), бакет `www.testmatica.ru` — перенаправление на `https://testmatica.ru`;
+- HTTPS — сертификат Let's Encrypt `testmatica-stub` из Certificate Manager (продлевается сам: записи `_acme-challenge` в DNS не удалять).
+
+Включить и выключить (переключаются записи `testmatica.ru` и `www` в Cloud DNS; TTL 5 минут — до всех доходит за 5–10 минут;
+`live.testmatica.ru` не трогается):
+
+```bash
+infra/maintenance/switch.sh on    # перед этим поправьте причину в index.html — скрипт загрузит свежую страницу
+infra/maintenance/switch.sh off   # домен обратно на ВМ
+```
+
+Пока заглушка включена, `terraform apply` вернул бы записи на ВМ — запускайте его после `off`. Впервые заглушку подняли
+2026-10-09: ВМ в ru-central1-a не стартовала после инцидента в дата-центре Яндекса (облако отвечало «Resource allocation
+is restricted» и в других зонах).
+
 ## Известные ограничения первого этапа
 - Одна ВМ: при её перезагрузке сайт недоступен пару минут. Дальше — вторая ВМ под LiveKit или Managed Kubernetes.
 - LiveKit и запись (egress) на одной ВМ: если запись не подключается к комнате (egress внутри сети Docker, а LiveKit объявляет публичный адрес), перевести `livekit` и `egress` на `network_mode: host` — проверить при первом видеозанятии.

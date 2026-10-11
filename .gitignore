@@ -12,3 +12,8 @@ __pycache__/
 .idea/
 .vscode/
 .env.prod
+
+# Timeweb Cloud: токен и состояние Terraform — секреты
+infra/timeweb/twc.env
+infra/timeweb/*.tfstate*
+infra/timeweb/.terraform/
