@@ -13,7 +13,7 @@ from .config import settings
 from testmatica_common.ids import uuid7
 from testmatica_common.plans import BASIC, FREE
 
-from .deps import db, livekit, outbox, plans, schedule
+from .deps import db, livekit, outbox, plans
 from .lk import WebhookEvent
 from .models import EXPIRED, FAILED, READY, RECORDING, Connection, Recording, Room
 
@@ -81,19 +81,6 @@ async def start_recording(session: AsyncSession, room: Room, lesson: dict) -> Re
     return rec
 
 
-async def _auto_record(session: AsyncSession, room: Room) -> None:
-    """Занятие записывается само, как только в комнату вошёл участник (решение №40) — если педагог не выключил запись."""
-    if room.auto_record_off or room.ended_at:
-        return
-    if await session.scalar(select(Recording.id).where(Recording.room_id == room.id, Recording.status == RECORDING)):
-        return
-    try:
-        lesson = await schedule.get(f"/internal/lessons/{room.lesson_id}/room")
-        await start_recording(session, room, lesson)
-    except Exception:  # запись — не повод ломать вход в комнату; педагог может включить её сам
-        log.warning("auto recording failed", extra={"room": room.livekit_name}, exc_info=True)
-
-
 async def on_webhook(session: AsyncSession, ev: WebhookEvent) -> None:
     now = datetime.now(UTC)
     if ev.event.startswith("egress_"):
@@ -117,7 +104,6 @@ async def on_webhook(session: AsyncSession, ev: WebhookEvent) -> None:
             insert(Connection).values(room_id=room.id, user_id=user, livekit_sid=ev.participant_sid, joined_at=now)
             .on_conflict_do_nothing(index_elements=["livekit_sid"])
         )
-        await _auto_record(session, room)
     elif ev.event == "participant_left" and user:
         await session.execute(
             update(Connection).where(Connection.livekit_sid == ev.participant_sid, Connection.left_at.is_(None)).values(left_at=now)

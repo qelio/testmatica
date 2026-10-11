@@ -1,0 +1,63 @@
+<!doctype html>
+<!-- Заглушка «сайт временно не работает» (docs/deploy.md → «Заглушка»). Одна страница для аварий и технических работ:
+     меняется только абзац с причиной (id="reason"). Без внешних файлов — работает из любого хранилища. -->
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>ТестМатика — временно не работает</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7fb; --surface: #ffffff; --line: #dfe3ec; --fg: #151a2d; --fg-soft: #5d6479; --brand: #00875f; --leaf: #00a074;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { color-scheme: dark; --bg: #0e1117; --surface: #161b25; --line: #2b3243; --fg: #e8eaf0; --fg-soft: #9aa2b6; --brand: #1fae84; --leaf: #2ecf9c; }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 24px 16px; display: grid; place-items: center;
+      background: var(--bg); color: var(--fg);
+      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main {
+      width: 100%; max-width: 560px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
+      padding: 32px 28px; text-align: center;
+    }
+    .logo { display: inline-flex; align-items: center; gap: 10px; font-weight: 900; font-size: 22px; color: var(--leaf); letter-spacing: -0.01em; }
+    .logo svg { height: 40px; width: auto; }
+    h1 { font-size: clamp(22px, 5vw, 28px); line-height: 1.25; margin: 24px 0 12px; text-wrap: balance; }
+    p { margin: 0 0 12px; color: var(--fg-soft); }
+    p strong { color: var(--fg); }
+    .note { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; }
+    a { color: var(--brand); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="logo">
+      <svg viewBox="0 0 100 124" aria-hidden="true">
+        <rect x="24" y="0" width="11" height="14" rx="2.5" fill="#e6bf88"/>
+        <rect x="65" y="0" width="11" height="14" rx="2.5" fill="#e6bf88"/>
+        <rect x="20" y="94" width="60" height="3.4" rx="1.7" fill="#c8a07c"/>
+        <path d="M16 74 H26 L21 120 H11 Z" fill="#e6bf88"/>
+        <path d="M74 74 H84 L89 120 H79 Z" fill="#e6bf88"/>
+        <rect x="2" y="9" width="96" height="66" rx="5" fill="#00a074"/>
+        <path d="M19.5 38 H27 L33.7 57.5 L40.2 26.5 H72.2 M51.6 34.6 L69.6 57.5 M69.6 34.6 L51.6 57.5" fill="none" stroke="#fff" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="0" y="77" width="100" height="3.6" rx="1.8" fill="#c8a07c"/>
+        <rect x="7.5" y="119" width="17" height="4" rx="2" fill="#cda37b"/>
+        <rect x="75.5" y="119" width="17" height="4" rx="2" fill="#cda37b"/>
+      </svg>
+      ТестМатика
+    </div>
+    <h1>Сайт временно не работает</h1>
+    <!-- Причина: меняется под случай. Для технических работ, например:
+         «Идут плановые технические работы. Сайт снова заработает сегодня к 23:00 (мск).» -->
+    <p id="reason">Из‑за инцидента в дата‑центре Яндекса, где работают наши серверы, сайт сейчас недоступен. Мы восстанавливаем работу как можно скорее.</p>
+    <p><strong>Ваши данные в сохранности:</strong> задания, результаты, курсы и записи занятий никуда не пропадут.</p>
+    <p class="note">Попробуйте зайти позже — как только всё заработает, сайт откроется по тому же адресу.</p>
+  </main>
+</body>
+</html>

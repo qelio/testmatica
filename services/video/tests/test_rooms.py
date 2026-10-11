@@ -100,12 +100,16 @@ async def test_recording_lifecycle_and_retention(client, lk, lessons, s3):
     early = await client.post(f"/rooms/{lesson}/recording", params={"action": "start"}, headers=bearer(teacher, T))
     assert early.json()["error"]["code"] == "room_not_active"
     await webhook("participant_joined", name, identity=str(teacher), participant_sid="PA_1")
-
-    # Запись включилась сама, как только педагог вошёл (решение №40); второй раз не включить.
-    assert (await client.get(f"/rooms/{lesson}", headers=bearer(teacher, T))).json()["recording"] == "starting"
-    assert (await client.post(f"/rooms/{lesson}/recording", params={"action": "start"}, headers=bearer(teacher, T))).status_code == 409
     await webhook("participant_joined", name, identity=str(pupil), participant_sid="PA_2")
-    assert len(lk.egress) == 1  # вход ученика не запускает вторую запись
+
+    # Сама запись не включается — только педагог кнопкой; второй раз не включить.
+    assert (await client.get(f"/rooms/{lesson}", headers=bearer(teacher, T))).json()["recording"] is None
+    assert lk.egress == {}
+    assert (await client.post(f"/rooms/{lesson}/recording", params={"action": "start"}, headers=bearer(pupil))).status_code == 403
+    started = await client.post(f"/rooms/{lesson}/recording", params={"action": "start"}, headers=bearer(teacher, T))
+    assert started.json()["recording"] == "starting"
+    assert (await client.post(f"/rooms/{lesson}/recording", params={"action": "start"}, headers=bearer(teacher, T))).status_code == 409
+    assert len(lk.egress) == 1
     [(egress_id, path)] = lk.egress.items()
     # Пока egress запускает Chrome, остановить нельзя — иначе файла не будет.
     too_soon = await client.post(f"/rooms/{lesson}/recording", params={"action": "stop"}, headers=bearer(teacher, T))
@@ -119,7 +123,7 @@ async def test_recording_lifecycle_and_retention(client, lk, lessons, s3):
     stopping = (await client.post(f"/rooms/{lesson}/recording", params={"action": "stop"}, headers=bearer(teacher, T))).json()
     assert lk.stopped == [egress_id] and stopping["recording"] == "stopping"
     await webhook("egress_ended", name, egress_id=egress_id, egress_status="EGRESS_COMPLETE", file_size=1_000_000, file_duration_s=600)
-    # Педагог выключил запись сам — переподключение её не включает.
+    # Переподключение запись не включает.
     await webhook("participant_joined", name, identity=str(pupil), participant_sid="PA_3")
     assert len(lk.egress) == 1
     assert (await client.get(f"/rooms/{lesson}", headers=bearer(pupil))).json()["recording"] is None
@@ -156,9 +160,7 @@ async def test_recording_failure(client, lk, lessons):
     lesson = lessons.lesson(teacher, [uuid4()])
     await client.post(f"/rooms/{lesson}/join", headers=bearer(teacher, T))
     lk.fail_recording = True
-    # Автозапись не удалась — вход в комнату это не ломает, педагог может включить запись сам.
     await webhook("participant_joined", f"lesson-{lesson}", identity=str(teacher), participant_sid="PA_1")
-    assert lk.egress == {}
     resp = await client.post(f"/rooms/{lesson}/recording", params={"action": "start"}, headers=bearer(teacher, T))
     assert resp.json()["error"]["code"] == "recording_failed"
     lk.fail_recording = False
