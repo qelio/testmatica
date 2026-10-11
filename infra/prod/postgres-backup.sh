@@ -5,8 +5,8 @@
 set -u
 
 apk add --no-cache aws-cli >/dev/null 2>&1 || echo "aws-cli не установился — копии останутся только на диске ВМ"
-export AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY}" AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY}" AWS_DEFAULT_REGION=ru-central1
-S3="aws --endpoint-url=https://storage.yandexcloud.net s3"
+export AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY}" AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY}" AWS_DEFAULT_REGION="${S3_REGION}"
+S3="aws --endpoint-url=${S3_ENDPOINT} s3"
 
 backup() {
   day=$(date -u +%Y-%m-%d)
