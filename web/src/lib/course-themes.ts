@@ -5,6 +5,7 @@ import type { CourseTheme } from "@/lib/api";
 export const COURSE_THEMES: { id: CourseTheme; label: string; text: string }[] = [
   { id: "classic", label: "Классика", text: "Строгое оформление, как вся платформа" },
   { id: "comics", label: "Комикс", text: "Игровое: толстые контуры, яркие цвета, крупные заголовки — для 5–9 классов" },
+  { id: "code", label: "Код", text: "Для информатики: в стиле среды разработки — подписи как в терминале, кнопки-клавиши; в тёмной теме — терминал" },
 ];
 
 export function themeLabel(theme: CourseTheme | undefined): string {

@@ -81,7 +81,7 @@ export function MaterialView({ material, n, onFavorite }: { material: Material; 
   return (
     <article className={`tm-card rounded-2xl border bg-surface p-5 sm:p-6 ${material.kind === "card" ? "border-brand/40" : "border-line"}`}>
       <header className="mb-4 flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
+        <div className="flex items-center gap-4">
           {n !== undefined && <span className="tm-only tm-num">{n}</span>}
           <div>
             <Badge tone={material.kind === "card" ? "brand" : "neutral"}>{KIND_LABELS[material.kind]}</Badge>

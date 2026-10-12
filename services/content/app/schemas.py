@@ -29,7 +29,7 @@ class SubjectUpdate(BaseModel):
 
 
 # Оформление курса для учеников (решение №42). Новая тема — сюда, в web/src/lib/course-themes.ts и в mcp.
-Theme = Literal["classic", "comics"]
+Theme = Literal["classic", "comics", "code"]
 
 
 class CourseSummary(BaseModel):
