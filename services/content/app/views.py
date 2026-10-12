@@ -120,7 +120,7 @@ async def course_tree(session: AsyncSession, course: Node, principal: Principal 
     for n in nodes:
         if n.kind == "module":
             modules_by_section[n.parent_id].append(
-                ModuleOut(id=n.id, title=n.title, description=n.description, materials=by_module[n.id])
+                ModuleOut(id=n.id, title=n.title, description=n.description, materials=by_module[n.id], origin_id=n.origin_id)
             )
     sections = [
         SectionOut(id=n.id, title=n.title, description=n.description, modules=modules_by_section[n.id])

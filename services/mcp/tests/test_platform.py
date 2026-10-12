@@ -174,3 +174,49 @@ async def test_upload_images(platform_fake):
     ctx = SimpleNamespace(headers={"authorization": "Bearer tm_good"})
     res = await tools.upload_image(ctx, PNG, "Тэгги")
     assert res["markdown"] == "![Тэгги](/api/media/files/f2/content)" and res["url"].endswith("/api/media/files/f2/content")
+
+
+async def test_course_changes_and_submit_tools(monkeypatch):
+    """Черновик изменений курса, отправка на проверку, задачи в публичный банк (решение №46)."""
+    from types import SimpleNamespace
+
+    from app import tools
+
+    sent: list[tuple[str, str]] = []
+    draft = {"id": "d1", "title": "Вебоград", "status": "private", "can_edit": True, "revision_of": "c1", "revision": None,
+             "sections": [{"id": "s1", "title": "Уровень 1", "modules": [{"id": "dm1", "title": "Миссия 1", "materials": [],
+                                                                              "origin_id": "m1"}]}]}
+
+    def services(request: httpx.Request) -> httpx.Response:
+        sent.append((request.method, request.url.path))
+        path = request.url.path
+        if path == "/courses/c1/revision":
+            return httpx.Response(201, json=draft)
+        if path == "/courses/d1/submit":
+            return httpx.Response(200, json=draft | {"status": "pending"})
+        if path == "/tasks" and request.method == "GET":
+            n = int(request.url.params["q"])
+            return httpx.Response(200, json={"items": [{"id": f"t{n}", "number": n}], "total": 1})
+        if path.startswith("/tasks/") and path.endswith("/submit"):
+            tid = path.split("/")[2]
+            if tid == "t100002":
+                return httpx.Response(422, json={"error": {"code": "topic_required", "message": "Выберите тему"}})
+            return httpx.Response(200, json={"id": tid, "number": int(tid[1:]), "title": "З", "type": "short", "difficulty": 1,
+                                             "status": "pending", "topic_path": []})
+        if path.startswith("/tasks/"):
+            tid = path.rsplit("/", 1)[1]
+            return httpx.Response(200, json={"id": tid, "number": int(tid[1:]), "title": "З"})
+        return httpx.Response(404, json={"error": {"code": "not_found", "message": "Нет"}})
+
+    platform._tokens.clear()
+    monkeypatch.setattr(platform.identity, "transport", httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"access_token": "tok", "expires_in": 900, "user_id": "u", "full_name": "М"})))
+    monkeypatch.setattr(platform, "transport", httpx.MockTransport(services))
+    ctx = SimpleNamespace(headers={"authorization": "Bearer tm_good"})
+
+    out = await tools.start_course_changes(ctx, "c1")
+    assert out["draft_of_course_id"] == "c1" and out["sections"][0]["modules"][0]["published_module_id"] == "m1"
+    assert (await tools.submit_course(ctx, "d1"))["status"] == "pending"
+    res = await tools.submit_tasks_to_bank(ctx, ["100001", "(100002)"])
+    assert [t["number"] for t in res["sent"]] == [100001] and res["failed"] == [{"task": "(100002)", "error": "Выберите тему"}]
+    assert ("POST", "/tasks/t100001/submit") in sent

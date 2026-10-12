@@ -60,6 +60,7 @@ class ModuleOut(BaseModel):
     title: str
     description: str
     materials: list[MaterialBrief]
+    origin_id: UUID | None = Field(None, description="В черновике изменений — модуль опубликованной версии (решение №46)")
 
 
 class SectionOut(BaseModel):
