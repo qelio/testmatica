@@ -9,6 +9,7 @@ import { assessment, type CourseTest, type TestVisibility } from "@/lib/api";
 import { lastAttempt, studentStatus } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
+import { pluralWord } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
 
 const VISIBILITY: Record<TestVisibility, { label: string; tone: "ok" | "brand" | "neutral" }> = {
@@ -43,7 +44,7 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
         id: t.id,
         title: t.title,
         tasks: t.tasks_count,
-        own: true,
+        points: t.max_score,
         visibility: t.visibility ?? "private",
         note:
           t.visibility === "private" || !t.visibility
@@ -56,7 +57,7 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
       })),
       ...(shared.data ?? [])
         .filter((t) => !ownIds.has(t.id))
-        .map((t) => ({ id: t.id, title: t.title, tasks: t.tasks_count, own: false, visibility: t.visibility as TestVisibility, note: null })),
+        .map((t) => ({ id: t.id, title: t.title, tasks: t.tasks_count, points: t.max_score, visibility: t.visibility as TestVisibility, note: null })),
     ].sort((a, b) => ORDER.indexOf(a.visibility) - ORDER.indexOf(b.visibility));
     return (
       <section className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
@@ -75,7 +76,7 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
             педагогов» (его назначают все педагоги); тест любого другого педагога — личный, виден только ему.
           </p>
         ) : (
-          <ul className="divide-y divide-line">
+          <ul className="grid gap-3 sm:grid-cols-2">
             {rows.map((t) => (
               <TeacherRow key={t.id} {...t} assign={canAssign} />
             ))}
@@ -114,7 +115,7 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
         </ul>
       )}
       {open.length > 0 && (
-        <ul className="space-y-2">
+        <ul className="grid gap-3 sm:grid-cols-2">
           {open.map((t) => (
             <SelfRow key={t.id} test={t} signedIn={signedIn} onChanged={shared.reload} />
           ))}
@@ -128,7 +129,7 @@ function TeacherRow({
   id,
   title,
   tasks,
-  own,
+  points,
   assign,
   visibility,
   note,
@@ -136,35 +137,40 @@ function TeacherRow({
   id: string;
   title: string;
   tasks: number;
-  own: boolean;
+  points: number;
   assign: boolean;
   visibility: TestVisibility;
   note: string | null;
 }) {
   const v = VISIBILITY[visibility];
   return (
-    <li className="flex flex-wrap items-center gap-3 py-2.5">
-      <span className="min-w-0 flex-1">
-        {own ? (
-          <Link href={`/dashboard/tests/${id}`} className="font-medium hover:text-brand">
-            {title}
-          </Link>
-        ) : (
-          <span className="font-medium">{title}</span>
-        )}
-        <span className="ml-2 text-sm text-fg-soft">
-          заданий: {tasks}
-          {note && ` · ${note}`}
-        </span>
-      </span>
-      <Badge tone={v.tone}>{v.label}</Badge>
-      {assign && tasks > 0 && (
-        <Link href={`/dashboard/assignments/new?test=${id}`} className="text-sm font-medium text-brand hover:underline">
-          Назначить
+    <li className="tm-opt flex flex-col gap-3 rounded-xl border border-line px-4 py-3">
+      <div className="space-y-1.5">
+        <Badge tone={v.tone}>{v.label}</Badge>
+        <Link href={`/dashboard/tests/${id}`} className="line-clamp-2 font-medium leading-snug hover:text-brand" title={title}>
+          {title}
         </Link>
-      )}
+        <p className="text-sm text-fg-soft">
+          {tasksText(tasks)} · {points} {pluralWord(points, "балл", "балла", "баллов")}
+        </p>
+        {note && <p className="text-xs text-fg-soft italic">{note}</p>}
+      </div>
+      <div className="mt-auto flex items-center justify-end gap-3 border-t border-line pt-2.5">
+        <Link href={`/dashboard/tests/${id}`} className="text-sm text-fg-soft hover:text-fg">
+          Открыть
+        </Link>
+        {assign && tasks > 0 && (
+          <Link href={`/dashboard/assignments/new?test=${id}`} className="text-sm font-medium text-brand hover:underline">
+            Назначить
+          </Link>
+        )}
+      </div>
     </li>
   );
+}
+
+function tasksText(n: number): string {
+  return `${n} ${pluralWord(n, "задание", "задания", "заданий")}`;
 }
 
 /** Общий тест для самостоятельного прохождения: статус своей работы и кнопка «Пройти». */
@@ -191,14 +197,17 @@ function SelfRow({ test, signedIn, onChanged }: { test: CourseTest; signedIn: bo
   }
 
   return (
-    <li className="tm-opt space-y-2 rounded-xl border border-line px-4 py-3">
-      <div>
-        <span className="block font-medium">{test.title}</span>
-        <span className="block text-sm text-fg-soft">
-          заданий: {test.tasks_count} · баллов: {test.max_score} · можно проходить сколько угодно раз
+    <li className="tm-opt flex flex-col gap-3 rounded-xl border border-line px-4 py-3">
+      <div className="space-y-1.5">
+        <span className="line-clamp-2 font-medium leading-snug" title={test.title}>
+          {test.title}
         </span>
+        <p className="text-sm text-fg-soft">
+          {tasksText(test.tasks_count)} · {test.max_score} {pluralWord(test.max_score, "балл", "балла", "баллов")}
+        </p>
+        <p className="text-xs text-fg-soft">Можно проходить сколько угодно раз</p>
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+      <div className="mt-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-line pt-2.5">
         {st && row?.attempts.length ? (
           <span className="mr-auto">
             <Badge tone={st.tone}>{st.text}</Badge>

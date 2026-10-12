@@ -7,6 +7,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 
@@ -51,6 +52,21 @@ async def course_test_for(session: AsyncSession, test, p: Principal | None) -> d
     if not (test.shared or is_teacher(p)):
         return None
     return module if await course_readable(session, module, p.user_id if p else None) else None
+
+
+async def course_task_visible(session: AsyncSession, task, p: Principal | None) -> bool:
+    """Задача из теста автора курса, который виден этому педагогу (решение №46): её можно смотреть вместе с тестом,
+    даже пока она личная у автора — с условием и ответами, как у опубликованной."""
+    if not is_teacher(p):
+        return False
+    tests = (await session.execute(
+        select(Test).join(TestItem, TestItem.test_id == Test.id)
+        .where(TestItem.task_id == task.id, Test.owner_id == task.owner_id, Test.published_at.is_not(None))
+    )).scalars().unique().all()
+    for t in tests:
+        if await course_test_for(session, t, p) is not None:
+            return True
+    return False
 
 
 def in_review(module: dict) -> bool:

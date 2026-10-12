@@ -5,7 +5,8 @@ from sqlalchemy import update
 
 from app import attempts, handlers
 from app.deps import db
-from app.models import Assignment, Attempt
+from app.models import Assignment, Attempt, Task
+from app.models import Test as Quiz
 
 from .conftest import CHOICE, CODE, LONG, SHORT, apply, bearer, link, outbox, run_code_checks, student
 
@@ -651,6 +652,39 @@ async def test_course_tests_visibility_and_self_study(client, fakes):
     assert (await client.get(f"/tests/{shared['id']}", headers=bearer(author))).json()["pending"] is False
     assert (await client.put(f"/tests/{own['id']}", json=body | {"title": "Моя 2", "items": [{"task_id": teacher_tasks[0]["id"]}]},
                              headers=bearer(teacher))).status_code == 200  # личный тест — правится сразу
+
+
+async def test_course_test_read_only_for_teachers(client, fakes):
+    """Тест автора курса, видный педагогу, открывается ему только для просмотра — с задачами, условиями и ответами,
+    даже если задачи у автора ещё личные (решение №46). Ученику и чужому личному тесту — 404."""
+    author, teacher, olya = uuid4(), uuid4(), uuid4()
+    tasks = await make_tasks(client, author)
+    mod = fakes.module(author, status="published")
+    body = {"title": "Контрольная", "grade_level": 7, "items": [{"task_id": tasks[0]["id"], "points": 2}], "module_id": mod}
+    test = (await client.post("/tests", json=body, headers=bearer(author))).json()
+    task_url = f"/tasks/{tasks[0]['id']}"
+    # Пока тест не принят — не виден ни сам, ни его личные задачи.
+    assert (await client.get(f"/tests/{test['id']}", headers=bearer(teacher))).status_code == 404
+    assert (await client.get(task_url, headers=bearer(teacher))).status_code == 404
+    # Принят (задачи остались личными — так было у тестов, принятых до решения №46).
+    async with db.sessionmaker() as s, s.begin():
+        await s.execute(update(Quiz).where(Quiz.id == test["id"]).values(published_at=datetime.now(UTC)))
+        await s.execute(update(Task).where(Task.id == tasks[0]["id"]).values(status="private"))
+
+    seen = (await client.get(f"/tests/{test['id']}", headers=bearer(teacher))).json()
+    assert (seen["title"], seen["can_edit"], seen["max_score"], seen["visibility"]) == ("Контрольная", False, 2, "teachers")
+    assert [i["task_id"] for i in seen["items"]] == [tasks[0]["id"]]
+    task = (await client.get(task_url, headers=bearer(teacher))).json()
+    assert task["explanation"] and any(o["is_correct"] for o in task["options"])
+    assert (await client.get(f"/tests/{test['id']}", headers=bearer(author))).json()["can_edit"] is True
+    # Править чужой тест нельзя; ученику и непедагогу — не виден.
+    assert (await client.put(f"/tests/{test['id']}", json=body, headers=bearer(teacher))).status_code == 404
+    assert (await client.get(f"/tests/{test['id']}", headers=student(olya))).status_code == 403
+    assert (await client.get(task_url, headers=student(olya))).status_code == 404
+    # Личный тест педагога к чужому курсу другим не виден.
+    mine = await make_tasks(client, teacher)
+    own = (await client.post("/tests", json=body | {"title": "Моя", "items": [{"task_id": mine[0]["id"]}]}, headers=bearer(teacher))).json()
+    assert (await client.get(f"/tests/{own['id']}", headers=bearer(uuid4()))).status_code == 404
 
 
 async def test_staff_course_tests_publish_at_once(client, fakes):

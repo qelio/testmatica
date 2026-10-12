@@ -10,6 +10,7 @@ from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import access, views
+from ..courses import course_task_visible
 from ..deps import auth, db, outbox
 from ..models import AUTO_TYPES, CODE, PENDING, PRIVATE, PUBLISHED, REJECTED, REMOVED, ExamItem, Task, TaskOption, TaskTest, Topic
 from ..schemas import TaskIn, TaskOut, TaskPage, TopicMove
@@ -111,8 +112,14 @@ async def create(body: TaskIn, principal: Principal = Depends(author), session: 
 async def get(
     task_id: UUID, principal: Principal | None = Depends(auth.optional), session: AsyncSession = Depends(db.session)
 ) -> TaskOut:
-    """Карточка задачи. Ответы и тест-кейсы видят только автор, модераторы и педагоги (для опубликованных)."""
-    return await views.full(session, await access.viewable(session, task_id, principal), principal)
+    """Карточка задачи. Ответы и тест-кейсы видят только автор, модераторы и педагоги (для опубликованных).
+    Задачу из теста автора курса, который виден педагогу, он видит целиком, даже пока она личная (решение №46)."""
+    task = await access.load(session, task_id)
+    if await access.can_view(session, task, principal):
+        return await views.full(session, task, principal)
+    if await course_task_visible(session, task, principal):
+        return await views.full(session, task, principal, key=True)
+    raise ApiError(404, "task_not_found", "Задача не найдена")
 
 
 @router.put("/{task_id}", response_model=TaskOut)
