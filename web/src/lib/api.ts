@@ -754,7 +754,7 @@ export type SubjectRef = { id: string; name: string; hidden?: boolean };
 export type CourseStatus = "private" | "pending" | "published" | "rejected" | "removed";
 
 /** Оформление курса или теста для учеников (решение №42); список — lib/course-themes.ts. */
-export type CourseTheme = "classic" | "comics";
+export type CourseTheme = "classic" | "comics" | "code";
 
 export type CourseSummary = {
   id: string;

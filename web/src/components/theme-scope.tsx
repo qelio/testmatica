@@ -1,6 +1,6 @@
 "use client";
 
-import { Nunito, Unbounded } from "next/font/google";
+import { JetBrains_Mono, Nunito, PT_Sans, Unbounded } from "next/font/google";
 
 import type { CourseTheme } from "@/lib/api";
 import { COURSE_THEMES } from "@/lib/course-themes";
@@ -8,6 +8,10 @@ import { COURSE_THEMES } from "@/lib/course-themes";
 // Шрифты «Комикса» — грузятся только на страницах в этом оформлении.
 const display = Unbounded({ variable: "--font-unbounded", subsets: ["latin", "cyrillic"], weight: ["600", "700", "800"], preload: false });
 const body = Nunito({ variable: "--font-nunito-body", subsets: ["latin", "cyrillic"], weight: ["400", "600", "700", "800"], preload: false });
+// Шрифты «Кода»: PT Sans — текст, JetBrains Mono — подписи, номера, метки и код.
+const sans = PT_Sans({ variable: "--font-pt-sans", subsets: ["latin", "cyrillic"], weight: ["400", "700"], preload: false });
+const mono = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin", "cyrillic"], weight: ["400", "600", "700"], preload: false });
+const FONTS = [display, body, sans, mono].map((f) => f.variable).join(" ");
 
 /** Оформление курса или теста (решение №42): переопределяет токены цветов и стили карточек, кнопок, вариантов
  *  внутри себя (globals.css, .tm-<тема>). Логика страниц та же; классика — без обёртки-сцены. */
@@ -24,7 +28,7 @@ export function ThemeScope({
   children: React.ReactNode;
 }) {
   if (!theme || theme === "classic") return <div className={className}>{children}</div>;
-  return <div className={`tm-theme tm-${theme} ${page ? "tm-page" : ""} ${display.variable} ${body.variable} ${className}`}>{children}</div>;
+  return <div className={`tm-theme tm-${theme} ${page ? "tm-page" : ""} ${FONTS} ${className}`}>{children}</div>;
 }
 
 /** Выбор оформления курса — плитки с мини-превью темы. Тесты курса оформляются так же (решение №44). */
@@ -32,7 +36,7 @@ export function ThemePicker({ value, onChange, hint }: { value: CourseTheme; onC
   return (
     <fieldset>
       <legend className="mb-1.5 text-sm font-medium">Оформление для учеников</legend>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-3">
         {COURSE_THEMES.map((t) => (
           <label
             key={t.id}

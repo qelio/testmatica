@@ -34,9 +34,11 @@ mcp = MCPServer(name="ТестМатика", instructions=INSTRUCTIONS, website_
 
 TaskType = Literal["choice", "short", "long", "code"]
 # Оформление курса (решение №42): classic — как вся платформа; comics — игровое: толстые контуры, яркие цвета,
-# крупный округлый шрифт; подходит для 5–9 классов и курсов-«миссий».
-Theme = Annotated[Literal["classic", "comics"], Field(description="Оформление для учеников: classic — строгое, "
-                                                                     "comics — игровое «Комикс» для 5–9 классов")]
+# крупный округлый шрифт; подходит для 5–9 классов и курсов-«миссий»; code — «Код» (решение №47): для информатики,
+# в стиле среды разработки.
+Theme = Annotated[Literal["classic", "comics", "code"], Field(
+    description="Оформление для учеников: classic — строгое, comics — игровое «Комикс» для 5–9 классов, "
+                "code — «Код» для информатики, в стиле среды разработки")]
 
 
 def _key(ctx: Context) -> str:

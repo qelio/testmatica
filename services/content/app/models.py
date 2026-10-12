@@ -92,7 +92,8 @@ class Node(Base):
     review_comment: Mapped[str | None] = mapped_column(Text)
     removed_from: Mapped[str | None] = mapped_column(String(10))  # статус до снятия администратором — для отмены
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Оформление курса для учеников (решение №42): classic — как вся платформа, comics — игровое «Комикс».
+    # Оформление курса для учеников (решение №42): classic — как вся платформа, comics — игровое «Комикс»,
+    # code — «Код» для информатики (решение №47).
     theme: Mapped[str] = mapped_column(String(12), default="classic", server_default="classic")
     # Черновик изменений опубликованного курса (решение №46): у корня черновика — id опубликованного курса,
     # у копий разделов и модулей — id оригинала (новые — без него). Ученики видят опубликованную версию,
