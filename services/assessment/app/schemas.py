@@ -395,6 +395,9 @@ class QuizOut(BaseModel):
     theme: str = Field(description="course — как у курса привязанного модуля, иначе classic (решение №44)")
     module: ModuleRef | None
     shared: bool = False
+    visibility: str | None = Field(None, description="public, teachers или private — при модуле курса (решение №46)")
+    published: bool = Field(False, description="Тест автора курса принят модератором вместе с курсом — его видят другие")
+    pending: bool = Field(False, description="Показаны изменения, которые ждут проверки вместе с черновиком курса")
     items: list[QuizItemOut]
     max_score: int
     assignments_count: int
@@ -407,6 +410,9 @@ class QuizSummary(BaseModel):
     grade_level: int | None
     module: ModuleRef | None = None
     shared: bool = False
+    visibility: str | None = None
+    published: bool = False
+    pending: bool = False
     tasks_count: int
     max_score: int
     time_mode: str
@@ -651,4 +657,5 @@ class CourseTestOut(BaseModel):
     max_score: int
     time_mode: str
     time_limit_s: int | None
+    visibility: str = Field(description="public — ученикам и педагогам, teachers — только педагогам")
     self_assignment: AssignmentOut | None = None

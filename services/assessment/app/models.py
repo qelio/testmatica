@@ -287,6 +287,11 @@ class Test(Base):
     # Привязка к модулю курса библиотеки (решение №43), по желанию. Названия — копия из content на момент сохранения.
     # shared — тест автора курса «для всех»: виден под модулем всем, кто видит курс, его проходят самостоятельно.
     shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Тест автора курса виден другим педагогам и ученикам, только когда принят вместе с курсом (решение №46).
+    # Правка принятого теста опубликованного курса — предложение (pending, тело как у PUT /tests): применяется,
+    # когда модератор примет черновик изменений курса; до этого все видят прежнюю версию.
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pending: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     module_id: Mapped[UUID | None]
     course_id: Mapped[UUID | None]
     module_title: Mapped[str | None] = mapped_column(String(200))

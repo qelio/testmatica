@@ -56,7 +56,8 @@ export default function TestsPage() {
                 {t.module && (
                   <span className="block truncate text-sm text-brand">
                     {t.module.course_title} → {t.module.title}
-                    {t.shared ? " · публичный" : " · личный"}
+                    {t.visibility === "public" ? " · публичный" : t.visibility === "teachers" ? " · для педагогов" : " · личный"}
+                    {t.pending ? " · изменения на проверке" : t.visibility !== "private" && t.visibility && !t.published ? " · ждёт проверки курса" : ""}
                   </span>
                 )}
               </Link>

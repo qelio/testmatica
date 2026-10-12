@@ -28,6 +28,7 @@ class ModuleBrief(BaseModel):
     course_title: str
     course_theme: str
     course_status: str
+    revision_status: str | None = Field(None, description="Статус черновика изменений курса (решение №46), если он есть")
     owner_id: UUID
     usable: bool = Field(description="Пользователь может привязать тест: курс опубликован или его (не снятый администратором)")
 
@@ -38,11 +39,14 @@ async def modules_lookup(body: ModulesIn, session: AsyncSession = Depends(db.ses
     parents = {n.id: n for n in (await session.execute(
         select(Node).where(Node.id.in_({m.parent_id for m in modules} | {m.course_id for m in modules}))
     )).scalars()}
+    drafts = dict((await session.execute(
+        select(Node.revision_of, Node.status).where(Node.revision_of.in_({m.course_id for m in modules}))
+    )).all()) if modules else {}
     out = []
     for m in modules:
         course, section = parents[m.course_id], parents[m.parent_id]
         out.append(ModuleBrief(
             id=m.id, title=m.title, section_title=section.title, course_id=course.id, course_title=course.title,
-            course_theme=course.theme, course_status=course.status, owner_id=course.owner_id, usable=course.status == PUBLISHED or (course.owner_id == body.user_id and course.status != REMOVED),
+            course_theme=course.theme, course_status=course.status, revision_status=drafts.get(course.id), owner_id=course.owner_id, usable=course.status == PUBLISHED or (course.owner_id == body.user_id and course.status != REMOVED),
         ))
     return out

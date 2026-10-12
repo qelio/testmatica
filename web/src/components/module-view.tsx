@@ -92,7 +92,12 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
 
       {m.can_edit && <NewMaterial moduleId={m.id} onAdded={() => mod.reload()} />}
 
-      <ModuleWorks moduleId={m.id} courseId={m.course_id} />
+      {/* Тесты привязаны к модулям опубликованной версии: в черновике изменений — тесты оригинала (решение №46). */}
+      {m.revision_of && !m.origin_id ? (
+        <p className="text-sm text-fg-soft">Тесты к новому модулю можно будет привязать, когда модератор примет изменения курса.</p>
+      ) : (
+        <ModuleWorks moduleId={m.origin_id ?? m.id} courseId={m.revision_of ?? m.course_id} />
+      )}
 
       <div className="flex justify-between gap-3 border-t border-line pt-4">
         {m.prev_module_id ? (

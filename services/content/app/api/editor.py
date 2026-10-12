@@ -10,7 +10,7 @@ from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
 from testmatica_common.ids import uuid7
 
-from .. import access, views
+from .. import access, revisions, views
 from ..deps import assessment, auth, db, media, outbox
 from ..models import CHILD_KIND, FILE_KINDS, PENDING, PRIVATE, PUBLISHED, REJECTED, Material, Node, Subject
 from ..schemas import (
@@ -301,20 +301,43 @@ async def submit(
         raise ApiError(422, "tasks_unavailable", "Некоторые задачи курса удалены или недоступны — уберите их", {"task_ids": unavailable})
     own_private = [tid for tid, b in briefs.items() if b["owner_id"] == str(course.owner_id) and b["status"] != "published"]
     data = {
-        "course_id": str(course.id), "title": course.title, "author_id": str(course.owner_id), "materials_count": materials,
+        "course_id": str(course.id), "author_id": str(course.owner_id), "materials_count": materials,
+        "title": f"Изменения курса «{course.title}»" if course.revision_of else course.title,
         "tasks_count": len(task_ids), "task_ids": own_private,
+        # Черновик изменений опубликованного курса (решение №46): id опубликованной версии — по нему assessment
+        # находит тесты курса, чьи изменения и задачи проверяются вместе с черновиком.
+        "revision_of": str(course.revision_of) if course.revision_of else None,
     }
     if access.is_staff(principal):
-        course.status = PUBLISHED
-        course.published_at = datetime.now(UTC)
+        # Курсы штатных редакторов публикуются сразу; черновик — сразу переносится в опубликованную версию.
         course.review_comment = None
-        await outbox.event(session, "content.course.published", data, actor_id=principal.user_id)
-    else:
-        course.status = PENDING
-        course.review_comment = None
-        await outbox.event(session, "content.course.submitted", data, actor_id=principal.user_id)
+        live = await revisions.publish(session, course)
+        await outbox.event(session, "content.course.published", data | {"course_id": str(live.id), "revision_id": data["course_id"]
+                                                                          if course is not live else None},
+                           actor_id=principal.user_id)
+        await session.commit()
+        return await views.course_tree(session, live, principal)
+    course.status = PENDING
+    course.review_comment = None
+    await outbox.event(session, "content.course.submitted", data, actor_id=principal.user_id)
     await session.commit()
     return await views.course_tree(session, course, principal)
+
+
+@router.post("/courses/{course_id}/revision", response_model=CourseOut, status_code=201)
+async def start_revision(
+    course_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)
+) -> CourseOut:
+    """Черновик изменений опубликованного курса (решение №46): автор правит копию, ученики видят прежнюю версию,
+    пока модератор не примет изменения. Черновик уже есть — возвращается он."""
+    node, course = await access.load_node(session, course_id, lock=True)
+    if node.kind != "course" or course.owner_id != principal.user_id:
+        raise ApiError(404, "not_found", "Курс не найден")
+    if course.status != PUBLISHED or course.revision_of is not None:
+        raise ApiError(409, "invalid_status", "Черновик изменений — только у опубликованного курса")
+    draft = await revisions.draft_of(session, course) or await revisions.create(session, course)
+    await session.commit()
+    return await views.course_tree(session, draft, principal)
 
 
 @router.post("/courses/{course_id}/unpublish", response_model=CourseOut)

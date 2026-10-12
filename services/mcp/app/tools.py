@@ -2,7 +2,7 @@
 
 Описания функций и полей — для Claude: по ним он решает, что и как вызвать. Всё создаётся от имени владельца
 ключа как его личные материалы (задача — «личная», курс — черновик); в публичный банк и библиотеку — через
-обычную модерацию в интерфейсе."""
+обычную модерацию (submit_tasks_to_bank, submit_course) или в интерфейсе."""
 
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -20,10 +20,13 @@ INSTRUCTIONS = """Ты работаешь с образовательной пл
 Перед созданием задачи найди тему рубрикатора (list_topics) и при необходимости задания ЕГЭ/ОГЭ (list_exam_items),
 проверь, нет ли похожей задачи (search_tasks). У каждой задачи короткий номер — «(100345)»; по нему её можно найти
 и исправить. Теория: курс → раздел → модуль → материалы (текст, карточка теории, задача из банка).
-Тесты собираются из задач банка; тест можно привязать к модулю курса (свой курс или опубликованный —
-search_library_courses): тогда он виден в модуле и оформлен как курс. shared=true (публичный — часть курса, для всех, кто его проходит) —
-только у автора курса: такой тест ученики проходят сами; без него — личный тест педагога (проверочная, контрольная).
-Всё создаётся как личные материалы педагога; в публичный банк — через модерацию в интерфейсе.
+Опубликованный курс напрямую не правится: start_course_changes → правки в черновике → submit_course (модератор
+проверит; ученики до этого видят прежнюю версию). Изменения принятых тестов автора к такому курсу тоже уходят на проверку
+вместе с черновиком. Тесты собираются из задач банка; тест можно привязать к модулю курса (свой курс или опубликованный —
+search_library_courses): тогда он оформлен как курс. У автора курса тест — часть курса: shared=true — публичный (ученики
+проходят его сами), shared=false — «для педагогов» (проверочная, контрольная: видят и назначают все педагоги); другим
+он виден после того, как модератор примет его вместе с курсом. Тест к чужому курсу — личный, виден только его автору.
+Всё создаётся как личные материалы педагога; в публичный банк задачи отправляет submit_tasks_to_bank (через модерацию).
 После работы перечисли созданное со ссылками."""
 
 mcp = MCPServer(name="ТестМатика", instructions=INSTRUCTIONS, website_url="https://testmatica.ru")
@@ -203,11 +206,32 @@ async def get_task(ctx: Context, task: Annotated[str, Field(description="Ном�
 
 @mcp.tool()
 async def create_task(ctx: Context, task: TaskFields) -> dict:
-    """Создать задачу в банке педагога (личная; в публичный банк — через модерацию в интерфейсе). Возвращает номер и ссылку."""
+    """Создать задачу в банке педагога (личная; в публичный банк — submit_tasks_to_bank, через модерацию). Возвращает номер и ссылку."""
     key = _key(ctx)
     body = await _payload(key, task.model_dump(mode="json"))
     created = await call(key, "assessment", "POST", "/tasks", json=body)
     return _brief(created)
+
+
+@mcp.tool()
+async def submit_tasks_to_bank(
+    ctx: Context,
+    tasks: Annotated[list[str], Field(description="Номера задач (100345) или id — свои личные или возвращённые на доработку", min_length=1, max_length=50)],
+) -> dict:
+    """Отправить свои задачи в публичный банк: модератор проверит, после одобрения их увидят все педагоги.
+    У задачи должна быть тема рубрикатора (update_task: topic_id). Задачи модератора и администратора публикуются сразу.
+    Задачи из курса отдельно отправлять не нужно — они проверяются вместе с курсом (submit_course).
+    Перед отправкой покажи педагогу список и спроси подтверждение."""
+    key = _key(ctx)
+    sent, failed = [], []
+    for ref in tasks:
+        try:
+            task = await _resolve_task(key, ref)
+            done = await call(key, "assessment", "POST", f"/tasks/{task['id']}/submit")
+            sent.append(_brief(done))
+        except ToolError as e:
+            failed.append({"task": ref, "error": str(e)})
+    return {"sent": sent, "failed": failed}
 
 
 @mcp.tool()
@@ -239,16 +263,24 @@ async def update_task(
 
 
 def _course_out(c: dict) -> dict:
-    return {
-        "id": c["id"], "title": c["title"], "status": c["status"], "theme": c.get("theme"), "url": link(f"/dashboard/library/course/{c['id']}"),
+    out = {
+        "id": c["id"], "title": c["title"], "status": c["status"], "theme": c.get("theme"), "can_edit": c.get("can_edit"),
+        "url": link(f"/dashboard/library/course/{c['id']}"),
         "sections": [
             {"id": s["id"], "title": s["title"],
              "modules": [{"id": m["id"], "title": m["title"], "url": link(f"/dashboard/library/module/{m['id']}"),
                           "materials": [{"id": x["id"], "kind": x["kind"], "title": x["title"]} for x in m["materials"]]}
+                         | ({"published_module_id": m["origin_id"]} if m.get("origin_id") else {})
                          for m in s["modules"]]}
             for s in c.get("sections", [])
         ],
     }
+    # Черновик изменений опубликованного курса (решение №46) и черновик у опубликованного курса.
+    if c.get("revision_of"):
+        out["draft_of_course_id"] = c["revision_of"]
+    if c.get("revision"):
+        out["draft"] = {"id": c["revision"]["id"], "status": c["revision"]["status"], "review_comment": c["revision"].get("review_comment")}
+    return out
 
 
 @mcp.tool()
@@ -334,6 +366,46 @@ async def add_material(
 
 
 @mcp.tool()
+async def start_course_changes(ctx: Context, course_id: UUID) -> dict:
+    """Черновик изменений опубликованного курса (решение №46). Опубликованный курс напрямую не правится: правьте
+    черновик (его id и id его разделов, модулей, материалов — из ответа; они отличаются от опубликованных), затем
+    submit_course(id черновика). Ученики видят прежнюю версию, пока модератор не примет изменения. Черновик уже есть —
+    вернётся он. Тесты привязываются к модулям опубликованной версии — published_module_id в ответе."""
+    return _course_out(await call(_key(ctx), "content", "POST", f"/courses/{course_id}/revision"))
+
+
+@mcp.tool()
+async def submit_course(ctx: Context, course_id: UUID) -> dict:
+    """Отправить курс (или черновик изменений) на проверку модератору. Вместе с ним проверяются тесты автора к его
+    модулям и задачи в них. Курсы модератора и администратора публикуются сразу (черновик сразу переносится в курс).
+    Перед отправкой покажи педагогу, что уходит на проверку, и спроси подтверждение."""
+    c = await call(_key(ctx), "content", "POST", f"/courses/{course_id}/submit")
+    return {"id": c["id"], "title": c["title"], "status": c["status"], "url": link(f"/dashboard/library/course/{c['id']}")}
+
+
+@mcp.tool()
+async def update_course_node(
+    ctx: Context,
+    node_id: Annotated[UUID, Field(description="Курс, раздел или модуль (из get_course)")],
+    title: str | None = None,
+    description: str | None = None,
+) -> dict:
+    """Переименовать курс, раздел или модуль либо поправить описание. У опубликованного курса — только в черновике."""
+    payload = {k: v for k, v in {"title": title, "description": description}.items() if v is not None}
+    if not payload:
+        raise ToolError("Нечего менять — передайте title или description")
+    return _course_out(await call(_key(ctx), "content", "PATCH", f"/nodes/{node_id}", json=payload))
+
+
+@mcp.tool()
+async def delete_material(ctx: Context, material_id: UUID) -> dict:
+    """Удалить материал из модуля (у опубликованного курса — только в черновике изменений). Перед удалением
+    спроси подтверждение у педагога."""
+    await call(_key(ctx), "content", "DELETE", f"/materials/{material_id}")
+    return {"deleted": str(material_id)}
+
+
+@mcp.tool()
 async def update_material(ctx: Context, material_id: UUID, title: str | None = None, body: str | None = None) -> dict:
     """Исправить текст или название материала."""
     key = _key(ctx)
@@ -364,7 +436,8 @@ class TestFields(BaseModel):
     description: str = Field("", description="Описание для учеников")
     items: list[TestItem] = Field(default_factory=list, description="Задания в порядке теста")
     module_id: UUID | None = Field(None, description="Модуль курса (get_course), к которому относится тест; оформление — как у курса")
-    shared: bool = Field(False, description="Публичный — часть курса, для всех, кто его проходит (только автор курса); иначе тест личный")
+    shared: bool = Field(False, description="Для теста автора курса: true — публичный (ученикам и педагогам), false — для педагогов; "
+                                            "тест к чужому курсу — всегда личный (false)")
     order_mode: Literal["fixed", "random"] = Field("fixed", description="fixed — как в списке; random — у каждого свой порядок")
     shuffle_options: bool = Field(False, description="Перемешивать варианты ответа")
     time_mode: Literal["none", "total", "per_task"] = Field("none", description="Таймер: нет, на весь тест, на каждое задание")
@@ -377,7 +450,8 @@ def _test_brief(t: dict) -> dict:
         "id": t["id"], "title": t["title"], "grade_level": t.get("grade_level"),
         "tasks_count": t.get("tasks_count", len(t.get("items") or [])), "max_score": t.get("max_score"),
         "module": {"id": module["id"], "title": module["title"], "course_title": module.get("course_title")} if module else None,
-        "shared": t.get("shared", False), "url": link(f"/dashboard/tests/{t['id']}"),
+        "shared": t.get("shared", False), "visibility": t.get("visibility"), "published": t.get("published", False),
+        "pending_review": t.get("pending", False), "url": link(f"/dashboard/tests/{t['id']}"),
     }
 
 
@@ -406,20 +480,21 @@ async def search_library_courses(ctx: Context, query: str = "", subject_id: UUID
 
 @mcp.tool()
 async def list_my_tests(ctx: Context, module_id: Annotated[UUID | None, Field(description="Только привязанные к модулю")] = None) -> list[dict]:
-    """Мои тесты (с привязкой к модулю курса и признаком «публичный»)."""
+    """Мои тесты: привязка к модулю курса и вид — публичный, для педагогов или личный."""
     rows = await call(_key(ctx), "assessment", "GET", "/tests", params={"module_id": str(module_id)} if module_id else None)
     return [_test_brief(t) for t in rows]
 
 
 @mcp.tool()
 async def list_module_tests(ctx: Context, module_id: UUID) -> dict:
-    """Тесты модуля курса: публичные (часть курса, видны ученикам) и мои личные к нему."""
+    """Тесты модуля курса: автора курса (публичные и для педагогов, принятые с курсом) и мои личные к нему."""
     key = _key(ctx)
     shared = await call(key, "assessment", "GET", "/course-tests", params={"module_id": str(module_id)})
     mine = await call(key, "assessment", "GET", "/tests", params={"module_id": str(module_id)})
     shared_ids = {t["id"] for t in shared}
     return {
-        "shared": [{"id": t["id"], "title": t["title"], "tasks_count": t["tasks_count"], "url": link(f"/dashboard/tests/{t['id']}")} for t in shared],
+        "course": [{"id": t["id"], "title": t["title"], "visibility": t["visibility"], "tasks_count": t["tasks_count"],
+                    "url": link(f"/dashboard/tests/{t['id']}")} for t in shared],
         "mine": [_test_brief(t) for t in mine if t["id"] not in shared_ids],
     }
 

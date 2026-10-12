@@ -290,3 +290,87 @@ async def test_internal_modules_lookup(client):
     foreign = (await client.post("/internal/modules/lookup", json={"module_ids": [m1], "user_id": str(other)}, headers=internal)).json()
     assert foreign[0]["usable"] is False
     assert (await client.post("/internal/modules/lookup", json={"module_ids": [m1], "user_id": str(t)})).status_code in (401, 403)
+
+
+async def test_course_revision_draft(client):
+    """Черновик изменений опубликованного курса (решение №46): ученики видят прежнюю версию, пока модератор не примет
+    изменения; принятые переносятся в курс с сохранением id модулей и материалов (прогресс, тесты к модулям)."""
+    t, pupil, moderator = uuid4(), uuid4(), uuid4()
+    course_id, section, m1, m2, text_id, link_id = await build_course(client, t)
+    await client.post(f"/courses/{course_id}/submit", headers=bearer(t))
+    decision = {"kind": "course", "author_id": str(t), "moderator_id": str(moderator)}
+    await apply(handlers.on_moderation_decision, "moderation.decision.made", **decision, ref_id=course_id, decision="approve", comment=None)
+    await link(t, pupil)
+    assert (await client.put(f"/materials/{text_id}/progress", json={}, headers=student(pupil))).status_code == 204
+
+    # Опубликованный курс автор напрямую не правит — только через черновик.
+    assert (await client.post(f"/nodes/{course_id}/children", json={"title": "x"}, headers=bearer(t))).status_code == 403
+    assert (await client.post(f"/courses/{course_id}/revision", headers=bearer(pupil))).status_code == 404
+    draft = (await client.post(f"/courses/{course_id}/revision", headers=bearer(t))).json()
+    assert draft["revision_of"] == course_id and draft["status"] == "private" and draft["can_edit"]
+    again = (await client.post(f"/courses/{course_id}/revision", headers=bearer(t))).json()
+    assert again["id"] == draft["id"]  # черновик один
+    live = (await client.get(f"/courses/{course_id}", headers=bearer(t))).json()
+    assert live["revision"] == {"id": draft["id"], "status": "private", "review_comment": None}
+    assert (await client.get(f"/courses/{course_id}", headers=student(pupil))).json()["revision"] is None
+    assert (await client.get(f"/courses/{draft['id']}", headers=student(pupil))).status_code == 404
+    assert [c["id"] for c in (await client.get("/my/courses", headers=bearer(t))).json()] == [course_id]
+
+    # Правки черновика: переименовать модуль, поправить текст, удалить ссылку, добавить модуль с материалом.
+    d_section = draft["sections"][0]
+    d_m1, d_m2 = (m["id"] for m in d_section["modules"])
+    d_module = (await client.get(f"/modules/{d_m1}", headers=bearer(t))).json()
+    assert d_module["origin_id"] == m1 and d_module["revision_of"] == course_id
+    d_text = next(x for x in d_module["materials"] if x["kind"] == "text")
+    d_link = next(x for x in d_module["materials"] if x["kind"] == "link")
+    await client.patch(f"/nodes/{d_m1}", json={"title": "Что такое уравнение (обновлено)"}, headers=bearer(t))
+    await client.patch(f"/materials/{d_text['id']}", json={"body": "Уравнение — равенство с неизвестным $x$"}, headers=bearer(t))
+    await client.delete(f"/materials/{d_link['id']}", headers=bearer(t))
+    tree = (await client.post(f"/nodes/{d_section['id']}/children", json={"title": "Проверка"}, headers=bearer(t))).json()
+    new_module = tree["sections"][0]["modules"][-1]["id"]
+    await client.post(f"/modules/{new_module}/materials", json={"kind": "card", "title": "Итог", "body": "Корень — x"}, headers=bearer(t))
+    await client.patch(f"/nodes/{draft['id']}", json={"theme": "comics"}, headers=bearer(t))
+
+    # Ученики пока видят прежнюю версию.
+    seen = (await client.get(f"/courses/{course_id}", headers=student(pupil))).json()
+    assert [m["title"] for m in seen["sections"][0]["modules"]] == ["Что такое уравнение", "Решение уравнений"]
+    assert seen["theme"] == "classic"
+
+    # На проверку: заявка — «Изменения курса»; отклонили — черновик снова правится, курс на месте.
+    assert (await client.post(f"/courses/{draft['id']}/submit", headers=bearer(t))).json()["status"] == "pending"
+    sub = (await outbox("content.course.submitted"))[-1]["data"]
+    assert sub["title"] == "Изменения курса «Линейные уравнения»" and sub["revision_of"] == course_id
+    await apply(handlers.on_moderation_decision, "moderation.decision.made", **decision, ref_id=draft["id"], decision="reject",
+                comment="Уточните итог")
+    assert (await client.get(f"/courses/{course_id}", headers=bearer(t))).json()["revision"]["status"] == "rejected"
+    assert (await outbox("content.course.rejected"))[-1]["data"]["revision_of"] == course_id
+    await client.post(f"/courses/{draft['id']}/submit", headers=bearer(t))
+    await apply(handlers.on_moderation_decision, "moderation.decision.made", **decision, ref_id=draft["id"], decision="approve",
+                comment=None)
+
+    # Принято: изменения в опубликованном курсе, id прежних модулей и материалов сохранились, черновика больше нет.
+    pub = (await outbox("content.course.published"))[-1]["data"]
+    assert (pub["course_id"], pub["revision_id"], pub["revision_of"]) == (course_id, draft["id"], course_id)
+    live = (await client.get(f"/courses/{course_id}", headers=student(pupil))).json()
+    assert live["status"] == "published" and live["theme"] == "comics" and live["revision"] is None
+    modules = live["sections"][0]["modules"]
+    assert [(m["id"], m["title"]) for m in modules[:2]] == [(m1, "Что такое уравнение (обновлено)"), (m2, "Решение уравнений")]
+    assert modules[2]["title"] == "Проверка" and [x["title"] for x in modules[2]["materials"]] == ["Итог"]
+    first = (await client.get(f"/modules/{m1}", headers=student(pupil))).json()
+    assert [(x["id"], x["body"]) for x in first["materials"]] == [(text_id, "Уравнение — равенство с неизвестным $x$")]
+    assert first["materials"][0]["viewed"] is True  # прогресс ученика не потерялся
+    assert (await client.get(f"/courses/{draft['id']}", headers=bearer(t))).status_code == 404
+
+    # Штатный редактор (модератор) правит черновик и публикует сразу, без очереди.
+    staff = uuid4()
+    s_course = (await client.post("/courses", json={"title": "Курс редакции", "subject_id": await subject_id(client)},
+                                  headers=bearer(staff, MOD))).json()
+    s_tree = (await client.post(f"/nodes/{s_course['id']}/children", json={"title": "Раздел"}, headers=bearer(staff, MOD))).json()
+    s_tree = (await client.post(f"/nodes/{s_tree['sections'][0]['id']}/children", json={"title": "Модуль"}, headers=bearer(staff, MOD))).json()
+    await client.post(f"/modules/{s_tree['sections'][0]['modules'][0]['id']}/materials", json={"kind": "text", "title": "Т", "body": "т"},
+                      headers=bearer(staff, MOD))
+    assert (await client.post(f"/courses/{s_course['id']}/submit", headers=bearer(staff, MOD))).json()["status"] == "published"
+    s_draft = (await client.post(f"/courses/{s_course['id']}/revision", headers=bearer(staff, MOD))).json()
+    await client.patch(f"/nodes/{s_draft['id']}", json={"title": "Курс редакции, 2-е изд."}, headers=bearer(staff, MOD))
+    done = (await client.post(f"/courses/{s_draft['id']}/submit", headers=bearer(staff, MOD))).json()
+    assert (done["id"], done["title"], done["status"]) == (s_course["id"], "Курс редакции, 2-е изд.", "published")

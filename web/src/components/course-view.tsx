@@ -97,7 +97,11 @@ export function CourseView({ id, base }: { id: string; base: string }) {
   if (!c) return <Spinner />;
   const edit = c.can_edit;
   const isTeacher = !!user?.roles.includes("teacher");
+  const staff = !!user?.roles.some((r) => r === "moderator" || r === "admin");
   const total = c.materials_count;
+  // Черновик изменений опубликованного курса (решение №46): ученики видят прежнюю версию, пока модератор не примет.
+  const draft = c.revision_of;
+  const mine = c.owner_id === user?.id;
 
   return (
     <ThemeScope page theme={c.theme} className="mx-auto max-w-4xl">
@@ -106,7 +110,9 @@ export function CourseView({ id, base }: { id: string; base: string }) {
         <div className="flex flex-wrap items-center gap-2 text-sm text-fg-soft">
           <span className="tm-eyebrow">{[c.subject?.name, c.author_name].filter(Boolean).join(" · ")}</span>
           {c.status !== "published" && (c.owner_id === user?.id || user?.roles.includes("moderator")) && (
-            <Badge tone={STATUS_LABELS[c.status].tone}>{STATUS_LABELS[c.status].text}</Badge>
+            <Badge tone={STATUS_LABELS[c.status].tone}>
+              {c.revision_of ? (c.status === "pending" ? "изменения на проверке" : "черновик изменений") : STATUS_LABELS[c.status].text}
+            </Badge>
           )}
           <span className="ml-auto">
             <AdminContentActions kind="course" id={c.id} removed={c.status === "removed"} onChanged={course.reload} />
@@ -130,9 +136,34 @@ export function CourseView({ id, base }: { id: string; base: string }) {
       </div>
 
       {error && <Alert>{error}</Alert>}
+      {draft && (
+        <Alert kind="info">
+          <b>Черновик изменений опубликованного курса.</b> Ученики и педагоги видят прежнюю версию, пока модератор не примет
+          изменения. Тесты к модулям правятся в их редакторе — изменения уйдут на проверку вместе с черновиком.{" "}
+          <Link href={`${base}/course/${draft}`} className="font-medium underline">
+            Опубликованная версия
+          </Link>
+        </Alert>
+      )}
+      {!draft && mine && c.revision && (
+        <Alert kind="info">
+          {c.revision.status === "pending" ? (
+            <b>Изменения курса на проверке у модератора.</b>
+          ) : c.revision.status === "rejected" ? (
+            <>
+              <b>Модератор вернул изменения на доработку:</b> {c.revision.review_comment}
+            </>
+          ) : (
+            <b>У курса есть черновик изменений — он ещё не отправлен на проверку.</b>
+          )}{" "}
+          <Link href={`${base}/course/${c.revision.id}`} className="font-medium underline">
+            Открыть черновик
+          </Link>
+        </Alert>
+      )}
       {c.status === "rejected" && c.review_comment && (
         <Alert kind="info">
-          <b>Модератор вернул курс на доработку:</b> {c.review_comment}
+          <b>Модератор вернул {draft ? "изменения" : "курс"} на доработку:</b> {c.review_comment}
         </Alert>
       )}
       {c.status === "removed" && (
@@ -140,8 +171,10 @@ export function CourseView({ id, base }: { id: string; base: string }) {
           <b>Курс снят с платформы администратором.</b> {c.review_comment}
         </Alert>
       )}
-      {c.status === "pending" && c.owner_id === user?.id && (
-        <Alert kind="info">Курс на проверке у модератора. Пока идёт проверка, изменения недоступны.</Alert>
+      {c.status === "pending" && mine && (
+        <Alert kind="info">
+          {draft ? "Изменения на проверке у модератора." : "Курс на проверке у модератора."} Пока идёт проверка, правка недоступна.
+        </Alert>
       )}
 
       {(edit || c.owner_id === user?.id || isTeacher) && (
@@ -160,11 +193,37 @@ export function CourseView({ id, base }: { id: string; base: string }) {
             </>
           )}
           {edit && (c.status === "private" || c.status === "rejected") && (
-            <Button onClick={() => act(() => content.submit(c.id))}>
-              {user?.roles.some((r) => r === "moderator" || r === "admin") ? "Опубликовать" : "Отправить в публичную библиотеку"}
+            <Button
+              onClick={() =>
+                act(async () => {
+                  const saved = await content.submit(c.id);
+                  // Изменения штатного редактора применяются сразу — черновика больше нет.
+                  if (saved.id !== c.id) router.replace(`${base}/course/${saved.id}`);
+                })
+              }
+            >
+              {draft
+                ? staff
+                  ? "Опубликовать изменения"
+                  : "Отправить изменения на проверку"
+                : staff
+                  ? "Опубликовать"
+                  : "Отправить в публичную библиотеку"}
             </Button>
           )}
-          {c.owner_id === user?.id && (c.status === "pending" || c.status === "published") && (
+          {!draft && mine && !edit && c.status === "published" && (
+            <Button
+              onClick={() =>
+                act(async () => {
+                  const revision = await content.startRevision(c.id);
+                  router.push(`${base}/course/${revision.id}`);
+                })
+              }
+            >
+              {c.revision ? "Открыть черновик изменений" : "Предложить изменения"}
+            </Button>
+          )}
+          {mine && (c.status === "pending" || (c.status === "published" && !draft)) && (
             <Button variant="secondary" onClick={() => act(() => content.unpublish(c.id))}>
               {c.status === "pending" ? "Отозвать с проверки" : "Снять с публикации"}
             </Button>
@@ -179,14 +238,16 @@ export function CourseView({ id, base }: { id: string; base: string }) {
               variant="ghost"
               className="text-danger"
               onClick={() =>
-                window.confirm(`Удалить курс «${c.title}» со всеми материалами?`) &&
+                window.confirm(
+                  draft ? "Отменить черновик изменений? Опубликованный курс останется прежним." : `Удалить курс «${c.title}» со всеми материалами?`,
+                ) &&
                 act(async () => {
                   await content.deleteNode(c.id);
-                  router.replace(base);
+                  router.replace(draft ? `${base}/course/${draft}` : base);
                 })
               }
             >
-              Удалить курс
+              {draft ? "Отменить изменения" : "Удалить курс"}
             </Button>
           )}
         </div>

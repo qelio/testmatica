@@ -20,6 +20,7 @@ from .schemas import (
     MaterialOut,
     ModuleContent,
     ModuleOut,
+    RevisionRef,
     SectionOut,
     SubjectOut,
 )
@@ -119,7 +120,7 @@ async def course_tree(session: AsyncSession, course: Node, principal: Principal 
     for n in nodes:
         if n.kind == "module":
             modules_by_section[n.parent_id].append(
-                ModuleOut(id=n.id, title=n.title, description=n.description, materials=by_module[n.id])
+                ModuleOut(id=n.id, title=n.title, description=n.description, materials=by_module[n.id], origin_id=n.origin_id)
             )
     sections = [
         SectionOut(id=n.id, title=n.title, description=n.description, modules=modules_by_section[n.id])
@@ -127,11 +128,18 @@ async def course_tree(session: AsyncSession, course: Node, principal: Principal 
         if n.kind == "section"
     ]
     summary = (await summaries(session, [course]))[0]
+    revision = None
+    if course.revision_of is None and principal and (course.owner_id == principal.user_id or access.is_staff(principal)):
+        draft = await session.scalar(select(Node).where(Node.revision_of == course.id))
+        if draft is not None:
+            revision = RevisionRef(id=draft.id, status=draft.status, review_comment=draft.review_comment)
     return CourseOut(
         **summary.model_dump(),
         sections=sections,
         can_edit=access.can_edit(course, principal),
         viewed_count=len(progress),
+        revision_of=course.revision_of,
+        revision=revision,
     )
 
 
@@ -188,6 +196,8 @@ async def module_content(session: AsyncSession, module: Node, course: Node, prin
         course_id=course.id,
         course_title=course.title,
         course_theme=course.theme,
+        origin_id=module.origin_id,
+        revision_of=course.revision_of,
         section_title=section.title,
         materials=[material_out(m, urls, progress, favorites) for m in materials],
         prev_module_id=order[idx - 1].id if idx > 0 else None,

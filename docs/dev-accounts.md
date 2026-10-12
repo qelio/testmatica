@@ -8,6 +8,7 @@
 | Администратор | admin@testmatica.local       | admin-pass-1   |
 | Модератор     | moderator@testmatica.local   | mod-pass-1     |
 | Педагог       | maria@example.com            | maria-pass-1   |
+| Педагог 2     | petr@example.com             | petr-pass-1    |
 | Ученица       | olya@example.com             | olya-pass-1    |
 
 Новый аккаунт с нужной ролью:

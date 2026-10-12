@@ -41,7 +41,8 @@ async def my_courses(
 ) -> list[CourseSummary]:
     """Моя библиотека: все курсы автора в любом статусе."""
     rows = await session.execute(
-        select(Node).where(Node.kind == "course", Node.owner_id == principal.user_id).order_by(Node.updated_at.desc())
+        select(Node).where(Node.kind == "course", Node.owner_id == principal.user_id, Node.revision_of.is_(None))
+        .order_by(Node.updated_at.desc())
     )
     return await views.summaries(session, rows.scalars().all())
 
@@ -53,7 +54,8 @@ async def shared_courses(
     """Для ученика: приватные библиотеки его педагогов."""
     teachers = select(RelLink.teacher_id).where(RelLink.student_id == principal.user_id)
     rows = await session.execute(
-        select(Node).where(Node.kind == "course", Node.owner_id.in_(teachers)).order_by(Node.updated_at.desc())
+        select(Node).where(Node.kind == "course", Node.owner_id.in_(teachers), Node.revision_of.is_(None))
+        .order_by(Node.updated_at.desc())
     )
     return await views.summaries(session, rows.scalars().all())
 

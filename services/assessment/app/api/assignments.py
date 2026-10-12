@@ -54,7 +54,7 @@ from ..schemas import (
     StartIn,
     SubmissionOut,
 )
-from ..courses import course_readable, module_info
+from ..courses import course_test_for, module_info
 from .quizzes import own_test
 from .solving import _file_urls
 
@@ -66,12 +66,11 @@ teacher = auth.require(ROLE_TEACHER, ROLE_MODERATOR)
 
 
 async def assignable_test(session: AsyncSession, test_id: UUID, p: Principal) -> Test:
-    """Назначить можно свой тест или общий тест курса, который педагог видит (решение №44)."""
+    """Назначить можно свой тест или тест автора курса — публичный или «для педагогов», принятый вместе с курсом,
+    если педагог видит курс (решения №44, 46)."""
     test = await session.get(Test, test_id)
-    if test is not None and test.owner_id != p.user_id and test.shared and test.module_id:
-        module = await module_info(test.module_id, p.user_id)
-        if module is not None and await course_readable(session, module, p.user_id):
-            return test
+    if test is not None and test.owner_id != p.user_id and await course_test_for(session, test, p) is not None:
+        return test
     return await own_test(session, test_id, p)
 
 

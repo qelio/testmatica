@@ -75,6 +75,7 @@ class Node(Base):
         Index("ix_nodes_course", "course_id"),
         Index("ix_nodes_owner", "owner_id"),
         Index("ix_nodes_catalog", "status", "subject_id"),
+        Index("uq_nodes_revision", "revision_of", unique=True),  # у курса — не больше одного черновика изменений
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
@@ -93,6 +94,11 @@ class Node(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Оформление курса для учеников (решение №42): classic — как вся платформа, comics — игровое «Комикс».
     theme: Mapped[str] = mapped_column(String(12), default="classic", server_default="classic")
+    # Черновик изменений опубликованного курса (решение №46): у корня черновика — id опубликованного курса,
+    # у копий разделов и модулей — id оригинала (новые — без него). Ученики видят опубликованную версию,
+    # пока модератор не примет черновик.
+    revision_of: Mapped[UUID | None] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    origin_id: Mapped[UUID | None]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -118,6 +124,7 @@ class Material(Base):
     file_size: Mapped[int | None]
     url: Mapped[str | None] = mapped_column(String(500))
     task_id: Mapped[UUID | None]  # для kind = task
+    origin_id: Mapped[UUID | None]  # в черновике изменений — id материала опубликованной версии (решение №46)
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
