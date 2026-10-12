@@ -147,6 +147,11 @@ async def test_rubric(client):
     assert (await client.post("/topics", json={"parent_id": SECTION, "title": "X"}, headers=bearer(teacher))).status_code == 403
     quad = (await client.post("/topics", json={"parent_id": SECTION, "title": "  Квадратные   уравнения "}, headers=mod)).json()
     assert quad["title"] == "Квадратные уравнения" and quad["subject_id"] == SUBJECT and quad["position"] == 1
+    # Формулировки ФИПИ бывают длиннее 120 символов.
+    long_title = "Определение истинности составного высказывания при известных значениях истинности входящих в него элементарных высказываний"
+    long = await client.post("/topics", json={"parent_id": SECTION, "title": long_title}, headers=mod)
+    assert long.status_code == 201 and long.json()["title"] == long_title
+    assert (await client.delete(f"/topics/{long.json()['id']}", headers=mod)).status_code == 204
     deep = await client.post("/topics", json={"parent_id": TOPIC, "title": "Слишком глубоко"}, headers=mod)
     assert deep.json()["error"]["code"] == "too_deep"
     geo = (await client.post("/topics", json={"subject_id": str(uuid4()), "subject_name": "Геометрия", "title": "Треугольники"},

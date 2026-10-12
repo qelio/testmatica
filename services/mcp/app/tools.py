@@ -17,7 +17,8 @@ INSTRUCTIONS = """Ты работаешь с образовательной пл
 Тексты — Markdown; формулы — LaTeX: $…$ в строке и $$…$$ отдельной строкой. Картинки — ![подпись](https://…)
 или вшитые ![подпись](data:image/png;base64,…): и те и другие переносятся в хранилище платформы. Картинку из файла
 загрузи upload_image (base64) и вставь полученный Markdown в текст материала, условие, варианты или разбор задачи.
-Перед созданием задачи найди тему рубрикатора (list_topics) и при необходимости задания ЕГЭ/ОГЭ (list_exam_items),
+Перед созданием задачи найди тему рубрикатора (list_topics; нет подходящей — create_topic, если ключ модератора
+или администратора) и при необходимости задания ЕГЭ/ОГЭ (list_exam_items),
 проверь, нет ли похожей задачи (search_tasks). У каждой задачи короткий номер — «(100345)»; по нему её можно найти
 и исправить. Теория: курс → раздел → модуль → материалы (текст, карточка теории, задача из банка).
 Опубликованный курс напрямую не правится: start_course_changes → правки в черновике → submit_course (модератор
@@ -91,6 +92,35 @@ async def list_topics(
          "title": t["title"], "is_section": not t["parent_id"]}
         for t in rows
     ]
+
+
+@mcp.tool()
+async def create_topic(
+    ctx: Context,
+    title: Annotated[str, Field(min_length=1, max_length=300, description="Название темы (формулировки ФИПИ — как есть)")],
+    section_id: Annotated[UUID | None, Field(description="Раздел из list_topics (is_section=true), куда добавить тему")] = None,
+    subject_id: Annotated[UUID | None, Field(description="Для нового раздела: предмет из list_subjects")] = None,
+) -> dict:
+    """Добавить тему в раздел рубрикатора (section_id) или новый раздел предмета (subject_id, без section_id).
+    Рубрикатор общий для всей платформы — менять его могут только модератор и администратор.
+    Сначала проверь list_topics, нет ли такой темы, и покажи педагогу, что и куда добавишь."""
+    key = _key(ctx)
+    if section_id:
+        body: dict[str, Any] = {"parent_id": str(section_id), "title": title}
+    elif subject_id:
+        subject = next((s for s in await call(key, "content", "GET", "/subjects") if s["id"] == str(subject_id)), None)
+        if subject is None:
+            raise ToolError("Предмет не найден — возьмите id из list_subjects")
+        body = {"subject_id": str(subject_id), "subject_name": subject["name"], "title": title}
+    else:
+        raise ToolError("Укажите section_id (тема в разделе) или subject_id (новый раздел)")
+    try:
+        t = await call(key, "assessment", "POST", "/topics", json=body)
+    except ToolError as e:
+        if "прав" in str(e).lower() or "403" in str(e):
+            raise ToolError("Темы рубрикатора добавляют только модератор и администратор") from None
+        raise
+    return {"id": t["id"], "title": t["title"], "subject": t["subject_name"], "is_section": not t["parent_id"]}
 
 
 @mcp.tool()

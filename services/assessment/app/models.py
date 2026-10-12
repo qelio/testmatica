@@ -67,7 +67,7 @@ class Topic(Base):
     subject_id: Mapped[UUID]
     subject_name: Mapped[str] = mapped_column(String(80))
     parent_id: Mapped[UUID | None] = mapped_column(ForeignKey("topics.id", ondelete="RESTRICT"))
-    title: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(300))  # формулировки ФИПИ бывают длинными
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
