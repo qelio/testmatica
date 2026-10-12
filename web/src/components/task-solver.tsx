@@ -115,6 +115,11 @@ function Solver({
     (task.type === "code" && !code.trim()) ||
     (task.type === "long" && !text.trim() && !uploads.ids.length) ||
     (task.type === "long" && task.file_mode === "required" && !uploads.ids.length);
+  const submitButton = (
+    <Button type="submit" loading={busy || checking} disabled={disabled}>
+      {task.type === "code" ? "Отправить на проверку" : "Ответить"}
+    </Button>
+  );
 
   return (
     <div className="space-y-4">
@@ -155,14 +160,18 @@ function Solver({
             </fieldset>
           )}
           {task.type === "short" && (
-            <input
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Ваш ответ"
-              aria-label="Ответ"
-              maxLength={500}
-              className="h-11 w-full max-w-sm rounded-xl border border-line bg-surface px-3.5 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-            />
+            // Короткий ответ — поле и кнопка в одну строку с отступом.
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Ваш ответ"
+                aria-label="Ответ"
+                maxLength={500}
+                className="h-11 w-full max-w-sm min-w-0 flex-1 rounded-xl border border-line bg-surface px-3.5 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+              {submitButton}
+            </div>
           )}
           {task.type === "long" && (
             <div className="space-y-2">
@@ -191,9 +200,7 @@ function Solver({
               </p>
             </div>
           )}
-          <Button type="submit" loading={busy || checking} disabled={disabled}>
-            {task.type === "code" ? "Отправить на проверку" : "Ответить"}
-          </Button>
+          {task.type !== "short" && <div>{submitButton}</div>}
         </form>
       )}
 

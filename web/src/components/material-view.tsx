@@ -85,7 +85,7 @@ export function MaterialView({ material, n, onFavorite }: { material: Material; 
           {n !== undefined && <span className="tm-only tm-num">{n}</span>}
           <div>
             <Badge tone={material.kind === "card" ? "brand" : "neutral"}>{KIND_LABELS[material.kind]}</Badge>
-            <h2 className="mt-2 text-xl font-semibold">{material.title}</h2>
+            <h2 className="mt-1 text-xl font-semibold leading-snug">{material.title}</h2>
           </div>
         </div>
         {signedIn && (
