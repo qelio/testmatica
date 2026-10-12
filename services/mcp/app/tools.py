@@ -21,8 +21,9 @@ INSTRUCTIONS = """Ты работаешь с образовательной пл
 проверь, нет ли похожей задачи (search_tasks). У каждой задачи короткий номер — «(100345)»; по нему её можно найти
 и исправить. Теория: курс → раздел → модуль → материалы (текст, карточка теории, задача из банка).
 Тесты собираются из задач банка; тест можно привязать к модулю курса (свой курс или опубликованный —
-search_library_courses): тогда он виден в модуле и оформлен как курс. shared=true (публичный — часть курса, для всех, кто его проходит) —
-только у автора курса: такой тест ученики проходят сами; без него — личный тест педагога (проверочная, контрольная).
+search_library_courses): тогда он оформлен как курс. У автора курса тест — часть курса: shared=true — публичный (ученики
+проходят его сами), shared=false — «для педагогов» (проверочная, контрольная: видят и назначают все педагоги); другим
+он виден после того, как модератор примет его вместе с курсом. Тест к чужому курсу — личный, виден только его автору.
 Всё создаётся как личные материалы педагога; в публичный банк — через модерацию в интерфейсе.
 После работы перечисли созданное со ссылками."""
 
@@ -364,7 +365,8 @@ class TestFields(BaseModel):
     description: str = Field("", description="Описание для учеников")
     items: list[TestItem] = Field(default_factory=list, description="Задания в порядке теста")
     module_id: UUID | None = Field(None, description="Модуль курса (get_course), к которому относится тест; оформление — как у курса")
-    shared: bool = Field(False, description="Публичный — часть курса, для всех, кто его проходит (только автор курса); иначе тест личный")
+    shared: bool = Field(False, description="Для теста автора курса: true — публичный (ученикам и педагогам), false — для педагогов; "
+                                            "тест к чужому курсу — всегда личный (false)")
     order_mode: Literal["fixed", "random"] = Field("fixed", description="fixed — как в списке; random — у каждого свой порядок")
     shuffle_options: bool = Field(False, description="Перемешивать варианты ответа")
     time_mode: Literal["none", "total", "per_task"] = Field("none", description="Таймер: нет, на весь тест, на каждое задание")
@@ -377,7 +379,8 @@ def _test_brief(t: dict) -> dict:
         "id": t["id"], "title": t["title"], "grade_level": t.get("grade_level"),
         "tasks_count": t.get("tasks_count", len(t.get("items") or [])), "max_score": t.get("max_score"),
         "module": {"id": module["id"], "title": module["title"], "course_title": module.get("course_title")} if module else None,
-        "shared": t.get("shared", False), "url": link(f"/dashboard/tests/{t['id']}"),
+        "shared": t.get("shared", False), "visibility": t.get("visibility"), "published": t.get("published", False),
+        "pending_review": t.get("pending", False), "url": link(f"/dashboard/tests/{t['id']}"),
     }
 
 
@@ -406,20 +409,21 @@ async def search_library_courses(ctx: Context, query: str = "", subject_id: UUID
 
 @mcp.tool()
 async def list_my_tests(ctx: Context, module_id: Annotated[UUID | None, Field(description="Только привязанные к модулю")] = None) -> list[dict]:
-    """Мои тесты (с привязкой к модулю курса и признаком «публичный»)."""
+    """Мои тесты: привязка к модулю курса и вид — публичный, для педагогов или личный."""
     rows = await call(_key(ctx), "assessment", "GET", "/tests", params={"module_id": str(module_id)} if module_id else None)
     return [_test_brief(t) for t in rows]
 
 
 @mcp.tool()
 async def list_module_tests(ctx: Context, module_id: UUID) -> dict:
-    """Тесты модуля курса: публичные (часть курса, видны ученикам) и мои личные к нему."""
+    """Тесты модуля курса: автора курса (публичные и для педагогов, принятые с курсом) и мои личные к нему."""
     key = _key(ctx)
     shared = await call(key, "assessment", "GET", "/course-tests", params={"module_id": str(module_id)})
     mine = await call(key, "assessment", "GET", "/tests", params={"module_id": str(module_id)})
     shared_ids = {t["id"] for t in shared}
     return {
-        "shared": [{"id": t["id"], "title": t["title"], "tasks_count": t["tasks_count"], "url": link(f"/dashboard/tests/{t['id']}")} for t in shared],
+        "course": [{"id": t["id"], "title": t["title"], "visibility": t["visibility"], "tasks_count": t["tasks_count"],
+                    "url": link(f"/dashboard/tests/{t['id']}")} for t in shared],
         "mine": [_test_brief(t) for t in mine if t["id"] not in shared_ids],
     }
 

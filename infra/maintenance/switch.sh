@@ -4,7 +4,7 @@
 #   infra/maintenance/switch.sh on   — домен на статическую страницу в Object Storage (бакеты testmatica.ru и
 #                                      www.testmatica.ru, HTTPS — сертификат testmatica-stub из Certificate Manager);
 #                                      перед этим загружает свежую infra/maintenance/index.html
-#   infra/maintenance/switch.sh off  — домен обратно на ВМ (её публичный адрес из Terraform)
+#   infra/maintenance/switch.sh off  — домен обратно на сервер (адрес — из infra/timeweb)
 #
 # Записи живут 5 минут (TTL 300) — переключение доходит до всех примерно за 5–10 минут.
 # live.testmatica.ru (видеосвязь) не трогается. Нужен yc с доступом к каталогу testmatica.
@@ -16,11 +16,13 @@ STUB_HOST=$DOMAIN.website.yandexcloud.net.
 WWW_HOST=www.$DOMAIN.website.yandexcloud.net.
 HERE=$(cd "$(dirname "$0")" && pwd)
 
+# Адрес боевого сервера — из Terraform для Timeweb (решение №45; токен — infra/timeweb/twc.env).
 vm_ip() {
-  yc vpc address list --format json | python3 -c "
-import sys, json
-ips = [a['external_ipv4_address']['address'] for a in json.load(sys.stdin) if a.get('external_ipv4_address')]
-print(ips[0] if len(ips) == 1 else sys.exit('Ожидался один публичный адрес ВМ, найдено: %s' % ips))"
+  ip=$(sh "$HERE/../timeweb/tf.sh" output -raw server_ip 2>/dev/null) || true
+  case "$ip" in
+    *.*.*.*) echo "$ip" ;;
+    *) echo "Не удалось узнать адрес сервера: sh infra/timeweb/tf.sh output server_ip" >&2; exit 1 ;;
+  esac
 }
 
 case "${1:-}" in

@@ -69,10 +69,20 @@ class SectionOut(BaseModel):
     modules: list[ModuleOut]
 
 
+class RevisionRef(BaseModel):
+    """Черновик изменений опубликованного курса (решение №46) — автору и модераторам."""
+
+    id: UUID
+    status: str
+    review_comment: str | None
+
+
 class CourseOut(CourseSummary):
     sections: list[SectionOut]
     can_edit: bool
     viewed_count: int
+    revision_of: UUID | None = Field(None, description="Это черновик изменений курса с этим id")
+    revision: RevisionRef | None = Field(None, description="У опубликованного курса — его черновик изменений, если есть")
 
 
 class FileInfo(BaseModel):
@@ -106,6 +116,8 @@ class ModuleContent(BaseModel):
     course_title: str
     course_theme: str
     section_title: str
+    origin_id: UUID | None = Field(None, description="В черновике изменений — модуль опубликованной версии")
+    revision_of: UUID | None = Field(None, description="Модуль черновика изменений курса с этим id")
     materials: list[MaterialOut]
     prev_module_id: UUID | None
     next_module_id: UUID | None

@@ -10,7 +10,7 @@ from testmatica_common.auth import ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import access, views
-from ..courses import course_readable, module_info
+from ..courses import course_readable, course_test_for, is_teacher, module_info
 from ..deps import auth, db
 from ..models import SELF, Assignment, AssignmentStudent, Test
 from ..schemas import AssignmentOut, AttemptOut, CourseTestOut, QuizSummary
@@ -38,19 +38,23 @@ async def course_tests(
     principal: Principal | None = Depends(auth.optional),
     session: AsyncSession = Depends(db.session),
 ) -> list[CourseTestOut]:
-    """Тесты «для всех» под модулем — тем, кто видит курс; ученику — с его самостоятельной работой."""
+    """Тесты автора курса под модулем (решение №46), принятые вместе с курсом: публичные — всем, кто видит курс
+    (ученику — с его самостоятельной работой), «для педагогов» — ещё и педагогам."""
     user_id = principal.user_id if principal else None
-    if await _readable_module(session, module_id, user_id) is None:
+    module = await _readable_module(session, module_id, user_id)
+    if module is None:
         return []
-    tests = (await session.execute(
-        select(Test).where(Test.module_id == module_id, Test.shared.is_(True)).order_by(Test.created_at)
-    )).scalars().all()
+    query = select(Test).where(Test.module_id == module_id, Test.owner_id == UUID(module["owner_id"]), Test.published_at.is_not(None))
+    if not is_teacher(principal):
+        query = query.where(Test.shared.is_(True))
+    tests = (await session.execute(query.order_by(Test.shared.desc(), Test.created_at))).scalars().all()
     out = []
     for t in tests:
         own = await _latest_self(session, t, user_id) if user_id else None
         out.append(CourseTestOut(
             id=t.id, title=t.title, description=t.description, owner_id=t.owner_id, tasks_count=len(t.items),
             max_score=sum(i.points for i in t.items), time_mode=t.time_mode, time_limit_s=t.time_limit_s,
+            visibility="public" if t.shared else "teachers",
             self_assignment=await assignment_out(session, own, principal, teacher_view=False) if own else None,
         ))
     await session.commit()  # просроченные попытки могли сдаться при просмотре
@@ -61,16 +65,17 @@ async def course_tests(
 async def course_test(
     test_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)
 ) -> QuizSummary:
-    """Публичный тест курса — для формы назначения: его назначает любой педагог, которому виден курс."""
+    """Тест автора курса (публичный или «для педагогов») — для формы назначения: его назначает любой педагог,
+    которому виден курс."""
     test = await session.get(Test, test_id)
-    if test is None or not test.shared or test.module_id is None or \
-            await _readable_module(session, test.module_id, principal.user_id) is None:
+    if not is_teacher(principal) or await course_test_for(session, test, principal) is None:
         raise ApiError(404, "test_not_found", "Тест не найден")
     mine = await session.scalar(
         select(func.count()).select_from(Assignment).where(Assignment.test_id == test.id, Assignment.teacher_id == principal.user_id)
     )
     return QuizSummary(
-        id=test.id, title=test.title, grade_level=test.grade_level, module=module_ref(test), shared=True,
+        id=test.id, title=test.title, grade_level=test.grade_level, module=module_ref(test), shared=test.shared,
+        visibility="public" if test.shared else "teachers", published=True,
         tasks_count=len(test.items), max_score=sum(i.points for i in test.items), time_mode=test.time_mode,
         time_limit_s=test.time_limit_s, assignments_count=mine or 0, updated_at=test.updated_at,
     )
@@ -83,8 +88,8 @@ async def start_self(
     """Пройти общий тест самому: без срока и журнала, попыток сколько угодно. Тест изменился — новая работа
     с новым составом, прежние попытки остаются в старой."""
     test = await session.get(Test, test_id)
-    if test is None or not test.shared or test.module_id is None or \
-            await _readable_module(session, test.module_id, principal.user_id) is None:
+    # Сам проходят только публичные (принятые с курсом) тесты автора курса.
+    if test is None or not test.shared or await course_test_for(session, test, principal) is None:
         raise ApiError(404, "test_not_found", "Тест не найден")
     if not test.items:
         raise ApiError(422, "test_empty", "В тесте пока нет заданий")

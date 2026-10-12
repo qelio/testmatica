@@ -8,8 +8,9 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
 
+from .courses import apply_pending, test_task_ids
 from .deps import outbox
-from .models import IN_PROGRESS, PENDING, PRIVATE, PUBLISHED, REJECTED, Assignment, Attempt, CourseTask, Person, RelLink, Task
+from .models import IN_PROGRESS, PENDING, PRIVATE, PUBLISHED, REJECTED, Assignment, Attempt, CourseTask, Person, RelLink, Task, Test
 
 
 async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
@@ -48,28 +49,46 @@ async def _publish(session: AsyncSession, task: Task, approved: bool, comment: s
 
 
 async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
-    """Приватные задачи курса модерируются вместе с курсом и публикуются вместе с ним."""
+    """Задачи курса модерируются вместе с курсом и публикуются вместе с ним: задачи из материалов и из тестов автора
+    к модулям курса — публичных и «для педагогов» (решение №46). Принят курс или его черновик изменений —
+    тесты автора становятся видны другим, их предложенные изменения переносятся в сами тесты."""
     d = envelope.data
     course_id = UUID(d["course_id"])
+    author = UUID(d["author_id"]) if d.get("author_id") else None
+    live = UUID(d["revision_of"]) if d.get("revision_of") else course_id
+    tests = (await session.execute(
+        select(Test).where(Test.course_id == live, Test.owner_id == author).with_for_update()
+    )).scalars().all() if author else []
+    from_tests = {tid for t in tests for tid in test_task_ids(t)}
     if envelope.type == "content.course.submitted":
-        for tid in d.get("task_ids", []):
-            task = await session.get(Task, UUID(tid), with_for_update=True)
-            if task and task.owner_id == UUID(d["author_id"]) and task.status in (PRIVATE, REJECTED):
+        for tid in {UUID(x) for x in d.get("task_ids", [])} | from_tests:
+            task = await session.get(Task, tid, with_for_update=True)
+            if task and task.owner_id == author and task.status in (PRIVATE, REJECTED):
                 task.status = PENDING
                 await session.execute(insert(CourseTask).values(course_id=course_id, task_id=task.id).on_conflict_do_nothing())
         return
-    bundle = (await session.execute(select(CourseTask.task_id).where(CourseTask.course_id == course_id))).scalars().all()
-    for tid in bundle:
-        task = await session.get(Task, tid, with_for_update=True)
-        if task is None or task.status != PENDING:
-            continue
-        if envelope.type == "content.course.published":
-            await _publish(session, task, True, None, envelope.actor_id)
-        elif envelope.type == "content.course.rejected":
-            await _publish(session, task, False, "Вернулась на доработку вместе с курсом", envelope.actor_id)
-        elif envelope.type in ("content.course.unpublished", "content.course.deleted"):
-            task.status = PRIVATE
-    await session.execute(delete(CourseTask).where(CourseTask.course_id == course_id))
+    key = UUID(d["revision_id"]) if d.get("revision_id") else course_id  # проверялся черновик — задачи по нему
+    bundle = set((await session.execute(select(CourseTask.task_id).where(CourseTask.course_id == key))).scalars())
+    if envelope.type == "content.course.published":
+        # Курсы штатных редакторов публикуются без проверки — их задачи публикуются сразу, без очереди.
+        for tid in bundle | {UUID(x) for x in d.get("task_ids", [])} | from_tests:
+            task = await session.get(Task, tid, with_for_update=True)
+            if task is not None and task.owner_id == author and task.status in (PRIVATE, REJECTED, PENDING):
+                await _publish(session, task, True, None, envelope.actor_id)
+        now = datetime.now(UTC)
+        for t in tests:
+            apply_pending(t)
+            t.published_at = t.published_at or now
+    else:
+        for tid in bundle:
+            task = await session.get(Task, tid, with_for_update=True)
+            if task is None or task.status != PENDING:
+                continue
+            if envelope.type == "content.course.rejected":
+                await _publish(session, task, False, "Вернулась на доработку вместе с курсом", envelope.actor_id)
+            elif envelope.type in ("content.course.unpublished", "content.course.deleted"):
+                task.status = PRIVATE
+    await session.execute(delete(CourseTask).where(CourseTask.course_id == key))
 
 
 async def on_moderation_decision(envelope: Envelope, session: AsyncSession) -> None:

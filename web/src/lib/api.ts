@@ -779,6 +779,10 @@ export type CourseTree = CourseSummary & {
   sections: { id: string; title: string; description: string; modules: { id: string; title: string; description: string; materials: MaterialBrief[] }[] }[];
   can_edit: boolean;
   viewed_count: number;
+  /** Это черновик изменений опубликованного курса с этим id (решение №46). */
+  revision_of: string | null;
+  /** У опубликованного курса — его черновик изменений (автору и модераторам). */
+  revision: { id: string; status: CourseStatus; review_comment: string | null } | null;
 };
 
 export type Material = {
@@ -804,6 +808,9 @@ export type ModuleContent = {
   course_title: string;
   course_theme: CourseTheme;
   section_title: string;
+  /** В черновике изменений — модуль опубликованной версии (к нему привязаны тесты). */
+  origin_id: string | null;
+  revision_of: string | null;
   materials: Material[];
   prev_module_id: string | null;
   next_module_id: string | null;
@@ -837,6 +844,8 @@ export const content = {
   course: (id: string, authed: boolean) => api<CourseTree>(`${CT}/courses/${id}`, readOpts(authed)),
   module: (id: string, authed: boolean) => api<ModuleContent>(`${CT}/modules/${id}`, readOpts(authed)),
 
+  /** Черновик изменений опубликованного курса: создаёт или возвращает существующий (решение №46). */
+  startRevision: (courseId: string) => api<CourseTree>(`${CT}/courses/${courseId}/revision`, { method: "POST" }),
   createCourse: (data: { title: string; subject_id?: string | null; description?: string; theme?: CourseTheme }) =>
     api<CourseTree>(`${CT}/courses`, { method: "POST", body: data }),
   addChild: (parentId: string, title: string) =>
@@ -1040,6 +1049,9 @@ export type QuizSettings = {
 export type QuizItemInput = { task_id: string; points: number; solution_file: boolean };
 /** Оформление теста: «как у курса» у привязанного к модулю, иначе обычное (решение №44). */
 export type TestTheme = "classic" | "course";
+/** Вид теста при модуле (решение №46): автора курса — public (ученикам и педагогам) или teachers (всем педагогам),
+ *  любого другого педагога — private (только ему). */
+export type TestVisibility = "public" | "teachers" | "private";
 /** Модуль курса библиотеки, к которому привязан тест или работа (решение №43). */
 export type ModuleRef = { id: string; title: string; course_id: string; course_title: string | null };
 type TestSettings = Omit<QuizSettings, "theme">;
@@ -1059,6 +1071,11 @@ export type Quiz = TestSettings & {
   theme: TestTheme;
   module: ModuleRef | null;
   shared: boolean;
+  visibility: TestVisibility | null;
+  /** Тест автора курса принят модератором вместе с курсом — его видят другие. */
+  published: boolean;
+  /** Показаны изменения, которые ждут проверки вместе с черновиком курса. */
+  pending: boolean;
   /** Для какого класса (1–11); у старых тестов — null. */
   grade_level: number | null;
   items: { task_id: string; points: number; solution_file: boolean; task: TaskSummary }[];
@@ -1072,6 +1089,9 @@ export type QuizSummary = {
   grade_level: number | null;
   module: ModuleRef | null;
   shared: boolean;
+  visibility: TestVisibility | null;
+  published: boolean;
+  pending: boolean;
   tasks_count: number;
   max_score: number;
   time_mode: TimeMode;
@@ -1089,6 +1109,7 @@ export type CourseTest = {
   max_score: number;
   time_mode: TimeMode;
   time_limit_s: number | null;
+  visibility: "public" | "teachers";
   self_assignment: Assignment | null;
 };
 

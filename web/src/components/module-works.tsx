@@ -5,15 +5,22 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Alert, Badge, Button } from "@/components/ui";
-import { assessment, type CourseTest } from "@/lib/api";
+import { assessment, type CourseTest, type TestVisibility } from "@/lib/api";
 import { lastAttempt, studentStatus } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 import { errorText, useLoad } from "@/lib/hooks";
 
-/** Тесты под модулем курса (решения №43, 44).
- *  Всем, кто видит курс, — публичные тесты курса: ученик проходит их сам. Ученику — ещё и работы по теме от его педагога.
- *  Педагогу — общие тесты и свои личные к модулю (проверочные, контрольные) с кнопкой «Назначить». */
+const VISIBILITY: Record<TestVisibility, { label: string; tone: "ok" | "brand" | "neutral" }> = {
+  public: { label: "публичный", tone: "ok" },
+  teachers: { label: "для педагогов", tone: "brand" },
+  private: { label: "личный", tone: "neutral" },
+};
+const ORDER: TestVisibility[] = ["public", "teachers", "private"];
+
+/** Тесты под модулем курса (решения №43, 44, 46).
+ *  Ученикам — публичные тесты автора курса (проходят сами) и работы по теме от их педагога.
+ *  Педагогам — тесты автора курса, принятые с курсом (публичные и «для педагогов»), и свои личные — с кнопкой «Назначить». */
 export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId: string }) {
   const { status, user } = useAuth();
   const signedIn = status === "authenticated";
@@ -29,8 +36,28 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
   if (status === "loading") return null;
 
   if (teacher) {
-    const sharedIds = new Set(shared.data?.map((t) => t.id));
-    const personal = (mine.data ?? []).filter((t) => !t.shared && !sharedIds.has(t.id));
+    // Свои тесты — с состоянием проверки; тесты автора курса — только принятые.
+    const ownIds = new Set(mine.data?.map((t) => t.id));
+    const rows = [
+      ...(mine.data ?? []).map((t) => ({
+        id: t.id,
+        title: t.title,
+        tasks: t.tasks_count,
+        own: true,
+        visibility: t.visibility ?? "private",
+        note:
+          t.visibility === "private" || !t.visibility
+            ? null
+            : t.pending
+              ? "изменения на проверке"
+              : t.published
+                ? null
+                : "появится после проверки курса",
+      })),
+      ...(shared.data ?? [])
+        .filter((t) => !ownIds.has(t.id))
+        .map((t) => ({ id: t.id, title: t.title, tasks: t.tasks_count, own: false, visibility: t.visibility as TestVisibility, note: null })),
+    ].sort((a, b) => ORDER.indexOf(a.visibility) - ORDER.indexOf(b.visibility));
     return (
       <section className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -42,18 +69,15 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
             + Новый тест к теме
           </Link>
         </div>
-        {!shared.data?.length && !personal.length ? (
+        {!rows.length ? (
           <p className="text-sm text-fg-soft">
-            Привяжите тест к этому модулю в его настройках. Публичный (только у автора курса) — часть курса: виден ученикам, его
-            проходят сами; личный — только ваш, его вы назначаете своим ученикам.
+            Привяжите тест к этому модулю в его настройках. У автора курса тест публичный (ученики проходят его сами) или «для
+            педагогов» (его назначают все педагоги); тест любого другого педагога — личный, виден только ему.
           </p>
         ) : (
           <ul className="divide-y divide-line">
-            {shared.data?.map((t) => (
-              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own={t.owner_id === user?.id} assign={canAssign} badge="публичный" />
-            ))}
-            {personal.map((t) => (
-              <TeacherRow key={t.id} id={t.id} title={t.title} tasks={t.tasks_count} own assign={canAssign} badge="личный" />
+            {rows.map((t) => (
+              <TeacherRow key={t.id} {...t} assign={canAssign} />
             ))}
           </ul>
         )}
@@ -106,15 +130,18 @@ function TeacherRow({
   tasks,
   own,
   assign,
-  badge,
+  visibility,
+  note,
 }: {
   id: string;
   title: string;
   tasks: number;
   own: boolean;
   assign: boolean;
-  badge: string;
+  visibility: TestVisibility;
+  note: string | null;
 }) {
+  const v = VISIBILITY[visibility];
   return (
     <li className="flex flex-wrap items-center gap-3 py-2.5">
       <span className="min-w-0 flex-1">
@@ -125,9 +152,12 @@ function TeacherRow({
         ) : (
           <span className="font-medium">{title}</span>
         )}
-        <span className="ml-2 text-sm text-fg-soft">заданий: {tasks}</span>
+        <span className="ml-2 text-sm text-fg-soft">
+          заданий: {tasks}
+          {note && ` · ${note}`}
+        </span>
       </span>
-      <Badge tone={badge === "публичный" ? "ok" : "neutral"}>{badge}</Badge>
+      <Badge tone={v.tone}>{v.label}</Badge>
       {assign && tasks > 0 && (
         <Link href={`/dashboard/assignments/new?test=${id}`} className="text-sm font-medium text-brand hover:underline">
           Назначить

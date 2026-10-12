@@ -27,6 +27,8 @@ async def can_read(session: AsyncSession, course: Node, principal: Principal | N
         return False
     if course.owner_id == principal.user_id or is_staff(principal):
         return True
+    if course.revision_of is not None:
+        return False  # черновик изменений видят только автор и модераторы (решение №46)
     if course.status == REMOVED:
         return False  # снятый администратором курс ученикам автора тоже не показываем
     return await linked(session, course.owner_id, principal.user_id)

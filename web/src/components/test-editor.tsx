@@ -168,16 +168,43 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
           onModule={change(setModuleId)}
         />
         {moduleId && courseAuthor && (
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" checked={shared} onChange={(e) => change(setShared)(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
-            <span>
-              Публичный — часть курса, для всех, кто его проходит
-              <span className="block text-xs text-fg-soft">
-                Тест виден под модулем всем ученикам курса, его можно пройти самостоятельно; в публичную библиотеку попадает вместе
-                с курсом. Без галочки — личный: проверочная или контрольная, которую видите и назначаете только вы.
-              </span>
-            </span>
-          </label>
+          <fieldset className="space-y-2 text-sm">
+            <legend className="mb-1 font-medium">Кто видит тест</legend>
+            {(
+              [
+                [true, "Публичный", "Ученики видят его под модулем и проходят сами; педагоги назначают своим ученикам."],
+                [false, "Для педагогов", "Проверочная или контрольная: видят и назначают все педагоги платформы, ученики — нет."],
+              ] as const
+            ).map(([value, label, hint]) => (
+              <label key={label} className="flex items-start gap-2">
+                <input type="radio" name="test-visibility" checked={shared === value} onChange={() => change(setShared)(value)}
+                  className="mt-0.5 h-4 w-4 accent-brand" />
+                <span>
+                  {label}
+                  <span className="block text-xs text-fg-soft">{hint}</span>
+                </span>
+              </label>
+            ))}
+            <p className="text-xs text-fg-soft">
+              Тест — часть курса: другим он виден после того, как модератор примет его вместе с курсом, а задачи из него станут
+              публичными.
+            </p>
+          </fieldset>
+        )}
+        {moduleId && tree.data && !courseAuthor && (
+          <p className="text-xs text-fg-soft">Личный тест к модулю чужого курса — его видите и назначаете только вы.</p>
+        )}
+        {test?.pending && (
+          <Alert kind="info">
+            Показаны изменения, которые ждут проверки модератора вместе с черновиком курса. Пока ученики и педагоги видят прежнюю
+            версию теста. Отправить черновик — на странице курса.
+          </Alert>
+        )}
+        {test && courseAuthor && !test.published && tree.data?.status === "published" && (
+          <Alert kind="info">
+            Тест появится у учеников и педагогов, когда модератор примет изменения курса: откройте курс → «Предложить изменения»
+            → «Отправить изменения на проверку».
+          </Alert>
         )}
         <p className="text-xs text-fg-soft">
           {moduleId && tree.data

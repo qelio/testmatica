@@ -1,6 +1,5 @@
 """Реакция на события identity, classroom и moderation."""
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import delete
@@ -8,8 +7,9 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
 
+from . import revisions
 from .deps import outbox
-from .models import PENDING, PUBLISHED, REJECTED, Node, Person, RelLink
+from .models import PENDING, REJECTED, Node, Person, RelLink
 
 
 async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
@@ -35,7 +35,8 @@ async def on_classroom_event(envelope: Envelope, session: AsyncSession) -> None:
 
 
 async def on_moderation_decision(envelope: Envelope, session: AsyncSession) -> None:
-    """Решение модератора по курсу. Если автор успел отозвать курс — решение уже неактуально."""
+    """Решение модератора по курсу. Если автор успел отозвать курс — решение уже неактуально.
+    Черновик изменений опубликованного курса (решение №46): принят — переносится в опубликованную версию."""
     d = envelope.data
     if d.get("kind") != "course":
         return
@@ -43,10 +44,12 @@ async def on_moderation_decision(envelope: Envelope, session: AsyncSession) -> N
     if course is None or course.kind != "course" or course.status != PENDING:
         return
     approved = d["decision"] == "approve"
-    course.status = PUBLISHED if approved else REJECTED
+    revision_id = str(course.id) if course.revision_of else None
     course.review_comment = d.get("comment")
     if approved:
-        course.published_at = datetime.now(UTC)
+        course = await revisions.publish(session, course)
+    else:
+        course.status = REJECTED
     await outbox.event(
         session,
         "content.course.published" if approved else "content.course.rejected",
@@ -55,6 +58,9 @@ async def on_moderation_decision(envelope: Envelope, session: AsyncSession) -> N
             "title": course.title,
             "author_id": str(course.owner_id),
             "comment": d.get("comment"),
+            # Принятый или отклонённый черновик изменений: assessment по нему применяет или возвращает изменения тестов.
+            "revision_id": revision_id,
+            "revision_of": str(course.revision_of) if course.revision_of else (str(course.id) if revision_id else None),
         },
         actor_id=UUID(d["moderator_id"]) if d.get("moderator_id") else None,
     )
