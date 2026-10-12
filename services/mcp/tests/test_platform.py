@@ -220,3 +220,40 @@ async def test_course_changes_and_submit_tools(monkeypatch):
     res = await tools.submit_tasks_to_bank(ctx, ["100001", "(100002)"])
     assert [t["number"] for t in res["sent"]] == [100001] and res["failed"] == [{"task": "(100002)", "error": "Выберите тему"}]
     assert ("POST", "/tasks/t100001/submit") in sent
+
+
+async def test_create_topic(monkeypatch):
+    """Тема в разделе рубрикатора или новый раздел — только модератор и администратор."""
+    from types import SimpleNamespace
+
+    from app import tools
+
+    bodies: list[dict] = []
+    role = {"staff": True}
+
+    def services(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/subjects":
+            return httpx.Response(200, json=[{"id": "11111111-1111-1111-1111-111111111111", "name": "Информатика"}])
+        body = json.loads(request.content)
+        bodies.append(body)
+        if not role["staff"]:
+            return httpx.Response(403, json={"error": {"code": "forbidden", "message": "Недостаточно прав"}})
+        return httpx.Response(201, json={"id": "t9", "title": body["title"], "subject_name": "Информатика", "parent_id": body.get("parent_id")})
+
+    platform._tokens.clear()
+    monkeypatch.setattr(platform.identity, "transport", httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"access_token": "tok", "expires_in": 900, "user_id": "u", "full_name": "М"})))
+    monkeypatch.setattr(platform, "transport", httpx.MockTransport(services))
+    ctx = SimpleNamespace(headers={"authorization": "Bearer tm_good"})
+    long_title = "Определение истинности составного высказывания при известных значениях истинности входящих в него элементарных высказываний"
+
+    topic = await tools.create_topic(ctx, long_title, section_id="22222222-2222-2222-2222-222222222222")
+    assert topic == {"id": "t9", "title": long_title, "subject": "Информатика", "is_section": False}
+    assert bodies[-1] == {"parent_id": "22222222-2222-2222-2222-222222222222", "title": long_title}
+    section = await tools.create_topic(ctx, "(9 класс) Алгоритмы", subject_id="11111111-1111-1111-1111-111111111111")
+    assert section["is_section"] and bodies[-1]["subject_name"] == "Информатика"
+    with pytest.raises(ToolError, match="section_id"):
+        await tools.create_topic(ctx, "Тема")
+    role["staff"] = False
+    with pytest.raises(ToolError, match="только модератор и администратор"):
+        await tools.create_topic(ctx, "Тема", section_id="22222222-2222-2222-2222-222222222222")

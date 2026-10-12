@@ -86,13 +86,13 @@ class TopicIn(BaseModel):
     subject_id: UUID | None = Field(None, description="Для раздела; тема наследует предмет раздела")
     subject_name: str | None = Field(None, max_length=80)
     parent_id: UUID | None = None
-    title: str = Field(min_length=1, max_length=120)
+    title: str = Field(min_length=1, max_length=300)
 
     _title = field_validator("title")(_clean)
 
 
 class TopicUpdate(BaseModel):
-    title: str | None = Field(None, min_length=1, max_length=120)
+    title: str | None = Field(None, min_length=1, max_length=300)
     position: int | None = Field(None, ge=0)
 
     _title = field_validator("title")(_clean)
