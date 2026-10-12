@@ -1076,6 +1076,8 @@ export type Quiz = TestSettings & {
   published: boolean;
   /** Показаны изменения, которые ждут проверки вместе с черновиком курса. */
   pending: boolean;
+  /** false — чужой тест автора курса: только просмотр и назначение (решение №46). */
+  can_edit: boolean;
   /** Для какого класса (1–11); у старых тестов — null. */
   grade_level: number | null;
   items: { task_id: string; points: number; solution_file: boolean; task: TaskSummary }[];

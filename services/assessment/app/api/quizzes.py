@@ -10,7 +10,7 @@ from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import access, views
-from ..courses import in_review, module_info, modules_info, visibility, write_test
+from ..courses import course_test_for, in_review, module_info, modules_info, visibility, write_test
 from ..deps import auth, db
 from ..handlers import _publish as publish_task
 from ..models import SOLUTION_FILE_TYPES, Assignment, Task, Test, TestItem
@@ -33,11 +33,14 @@ def module_ref(test: Test) -> ModuleRef | None:
     return ModuleRef(id=test.module_id, title=test.module_title or "", course_id=test.course_id, course_title=test.course_title)
 
 
-async def _assignments_count(session: AsyncSession, ids) -> dict[UUID, int]:
+async def _assignments_count(session: AsyncSession, ids, teacher_id: UUID | None = None) -> dict[UUID, int]:
     ids = list(ids)
     if not ids:
         return {}
-    rows = await session.execute(select(Assignment.test_id, func.count()).where(Assignment.test_id.in_(ids)).group_by(Assignment.test_id))
+    query = select(Assignment.test_id, func.count()).where(Assignment.test_id.in_(ids))
+    if teacher_id is not None:
+        query = query.where(Assignment.teacher_id == teacher_id)
+    rows = await session.execute(query.group_by(Assignment.test_id))
     return dict(rows.all())
 
 
@@ -49,9 +52,11 @@ def _pending_view(test: Test) -> Test:
     return view
 
 
-async def quiz_out(session: AsyncSession, test: Test) -> QuizOut:
+async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None = None) -> QuizOut:
+    """viewer — чужой педагог (тест автора курса, решение №46): принятая версия только для просмотра,
+    назначения — его собственные."""
     await session.refresh(test)
-    view = _pending_view(test) if test.pending else test
+    view = _pending_view(test) if test.pending and viewer is None else test
     tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_([i.task_id for i in view.items])))).scalars()}
     summaries = {s.id: s for s in await views.summaries(session, list(tasks.values()))}
     module = (await modules_info([view.module_id], test.owner_id)).get(view.module_id) if view.module_id else None
@@ -63,8 +68,8 @@ async def quiz_out(session: AsyncSession, test: Test) -> QuizOut:
         items=[QuizItemOut(task_id=i.task_id, points=i.points, solution_file=i.solution_file, task=summaries[i.task_id])
                for i in view.items if i.task_id in summaries],
         max_score=sum(i.points for i in view.items),
-        assignments_count=(await _assignments_count(session, [test.id])).get(test.id, 0),
-        updated_at=test.updated_at,
+        assignments_count=(await _assignments_count(session, [test.id], viewer.user_id if viewer else None)).get(test.id, 0),
+        updated_at=test.updated_at, can_edit=viewer is None,
     )
 
 
@@ -158,7 +163,13 @@ async def create(body: QuizIn, principal: Principal = Depends(author), session: 
 
 @router.get("/{test_id}", response_model=QuizOut)
 async def get(test_id: UUID, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)) -> QuizOut:
-    return await quiz_out(session, await own_test(session, test_id, principal))
+    """Свой тест — для правки; тест автора курса, который виден педагогу, — только для просмотра (решение №46)."""
+    test = await session.get(Test, test_id)
+    if test is not None and test.owner_id == principal.user_id:
+        return await quiz_out(session, test)
+    if await course_test_for(session, test, principal) is None:
+        raise ApiError(404, "test_not_found", "Тест не найден")
+    return await quiz_out(session, test, viewer=principal)
 
 
 @router.put("/{test_id}", response_model=QuizOut)

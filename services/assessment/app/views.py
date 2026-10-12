@@ -58,9 +58,10 @@ async def summaries(session: AsyncSession, tasks: Sequence[Task]) -> list[TaskSu
     return [summary(t, authors, paths, labels) for t in tasks]
 
 
-async def full(session: AsyncSession, t: Task, p: Principal | None) -> TaskOut:
+async def full(session: AsyncSession, t: Task, p: Principal | None, key: bool | None = None) -> TaskOut:
+    """key=True — показать ответы (задача из теста курса, который видит педагог)."""
     await session.refresh(t)
-    key = access.can_see_key(t, p)
+    key = access.can_see_key(t, p) if key is None else key
     authors = await names(session, [t.owner_id])
     return TaskOut(
         **summary(t, authors, await topic_paths(session, [t.topic_id]), await exam_labels(session, t.exam_item_ids)).model_dump(),

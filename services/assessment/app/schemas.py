@@ -398,6 +398,7 @@ class QuizOut(BaseModel):
     visibility: str | None = Field(None, description="public, teachers или private — при модуле курса (решение №46)")
     published: bool = Field(False, description="Тест автора курса принят модератором вместе с курсом — его видят другие")
     pending: bool = Field(False, description="Показаны изменения, которые ждут проверки вместе с черновиком курса")
+    can_edit: bool = Field(True, description="False — чужой тест автора курса: только просмотр и назначение")
     items: list[QuizItemOut]
     max_score: int
     assignments_count: int
