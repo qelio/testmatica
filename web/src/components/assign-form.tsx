@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { EMPTY_VARIANTS, VariantSplit, variantsReady, VariantTests, type VariantsValue } from "@/components/assign-variants";
+import {
+  EMPTY_VARIANTS,
+  type TestGroup,
+  TestOptions,
+  VariantSplit,
+  variantsReady,
+  VariantTests,
+  type VariantsValue,
+} from "@/components/assign-variants";
 import { Alert, Button, Field, Select } from "@/components/ui";
 import { academic, type Assignment, type AssignmentKind, assessment, billing, classroom, type GradeScale, schedule } from "@/lib/api";
 import { fmtDateTime, fromInputs } from "@/lib/dates";
@@ -11,6 +19,8 @@ import { errorText, useLoad } from "@/lib/hooks";
 
 export type AssignPreset = {
   testId?: string;
+  /** Модуль курса, откуда пришли: его тесты — в списках теста и вариантов (решение №48). */
+  moduleId?: string;
   kind?: AssignmentKind;
   targetType?: "group" | "student";
   targetId?: string;
@@ -116,8 +126,19 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
     () => (preset.testId ? assessment.courseTest(preset.testId).catch(() => null) : Promise.resolve(null)),
     [preset.testId],
   );
-  const fromCourse = course.data && !own.data?.some((t) => t.id === course.data!.id) ? course.data : null;
-  const tests = { data: own.data ? [...own.data, ...(fromCourse ? [fromCourse] : [])] : null };
+  // Тесты автора курса к модулю (публичные и «для педагогов») — их можно назначить и вариантами одной работы.
+  const moduleId = preset.moduleId ?? course.data?.module?.id;
+  const moduleTests = useLoad(() => (moduleId ? assessment.courseTests(moduleId, true) : Promise.resolve([])), [moduleId]);
+  const ownIds = new Set(own.data?.map((t) => t.id));
+  const fromModule = (moduleTests.data ?? []).filter((t) => !ownIds.has(t.id));
+  const fromCourse =
+    course.data && !ownIds.has(course.data.id) && !fromModule.some((t) => t.id === course.data!.id) ? course.data : null;
+  const courseLabel = course.data?.module ? `«${course.data.module.title}» курса «${course.data.module.course_title ?? "библиотеки"}»` : null;
+  const testGroups: TestGroup[] = [
+    { label: null, tests: own.data ?? [] },
+    { label: courseLabel ? `Из модуля ${courseLabel}` : "Из модуля курса", tests: [...fromModule, ...(fromCourse ? [fromCourse] : [])] },
+  ];
+  const tests = { data: own.data ? testGroups.flatMap((g) => g.tests) : null };
   const groups = useLoad(() => classroom.groups(), []);
   const students = useLoad(() => classroom.students(), []);
   // Уроки за месяц назад и на два вперёд — к какому привязать тест и куда ставить оценку.
@@ -213,6 +234,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
               type="button"
               role="radio"
               aria-checked={active}
+              aria-label={m.title}
               onClick={() => switchMode(m.mode)}
               className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors ${active ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-line bg-surface hover:bg-muted"}`}
             >
@@ -230,22 +252,11 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
       <form className="space-y-5 rounded-2xl border border-line bg-surface p-5" onSubmit={submit}>
         {error && <Alert>{error}</Alert>}
         {byVariants ? (
-          <VariantTests value={variants} onChange={setVariants} tests={tests.data ?? []} />
+          <VariantTests value={variants} onChange={setVariants} groups={testGroups} />
         ) : (
           <Select label="Тест" value={testId} required onChange={(e) => setTestId(e.target.value)}>
             <option value="">{tests.data && !tests.data.length ? "Сначала создайте тест" : "Выберите тест"}</option>
-            {own.data?.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title} · заданий: {t.tasks_count}
-              </option>
-            ))}
-            {fromCourse && (
-              <optgroup label={`Из курса «${fromCourse.module?.course_title ?? "библиотеки"}»`}>
-                <option value={fromCourse.id}>
-                  {fromCourse.title} · заданий: {fromCourse.tasks_count}
-                </option>
-              </optgroup>
-            )}
+            <TestOptions groups={testGroups} />
           </Select>
         )}
         <Field

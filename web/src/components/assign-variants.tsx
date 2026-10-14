@@ -1,7 +1,7 @@
 "use client";
 
 import { Select } from "@/components/ui";
-import { classroom, type QuizSummary } from "@/lib/api";
+import { classroom } from "@/lib/api";
 import { useLoad } from "@/lib/hooks";
 
 export type VariantsValue = {
@@ -12,6 +12,31 @@ export type VariantsValue = {
   picks: Record<string, number>;
 };
 
+/** Тест в списках выбора; группы — свои тесты и тесты модуля курса (решение №48). */
+export type TestOption = { id: string; title: string; tasks_count: number; max_score: number };
+export type TestGroup = { label: string | null; tests: TestOption[] };
+
+/** Варианты списка тестов: свои — без заголовка, остальные — группами. */
+export function TestOptions({ groups, hide = [] }: { groups: TestGroup[]; hide?: string[] }) {
+  return groups.map((g, n) => {
+    const options = g.tests
+      .filter((t) => !hide.includes(t.id))
+      .map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.title} · заданий: {t.tasks_count}
+        </option>
+      ));
+    if (!options.length) return null;
+    return g.label ? (
+      <optgroup key={n} label={g.label}>
+        {options}
+      </optgroup>
+    ) : (
+      options
+    );
+  });
+}
+
 export const EMPTY_VARIANTS: VariantsValue = { testIds: ["", ""], manual: false, picks: {} };
 const MAX_VARIANTS = 10;
 
@@ -21,7 +46,7 @@ export function variantsReady(v: VariantsValue): boolean {
 }
 
 /** Тесты вариантов (решение №48) — вместо поля «Тест» в назначении по вариантам. */
-export function VariantTests({ value, onChange, tests }: { value: VariantsValue; onChange: (v: VariantsValue) => void; tests: QuizSummary[] }) {
+export function VariantTests({ value, onChange, groups }: { value: VariantsValue; onChange: (v: VariantsValue) => void; groups: TestGroup[] }) {
   const set = (patch: Partial<VariantsValue>) => onChange({ ...value, ...patch });
 
   function setTest(i: number, id: string) {
@@ -48,13 +73,7 @@ export function VariantTests({ value, onChange, tests }: { value: VariantsValue;
           <div className="min-w-0 flex-1">
             <Select label={`Вариант ${i + 1}`} value={id} required onChange={(e) => setTest(i, e.target.value)}>
               <option value="">Выберите тест</option>
-              {tests
-                .filter((t) => t.id === id || !value.testIds.includes(t.id))
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title} · заданий: {t.tasks_count}
-                  </option>
-                ))}
+              <TestOptions groups={groups} hide={value.testIds.filter((t) => t && t !== id)} />
             </Select>
           </div>
           {value.testIds.length > 2 && (

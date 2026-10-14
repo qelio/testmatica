@@ -36,6 +36,7 @@ function Form() {
         targetType: targetType === "group" || targetType === "student" ? targetType : undefined,
         targetId: q.get("target") ?? undefined,
         lessonId: q.get("lesson") ?? undefined,
+        moduleId: q.get("module") ?? undefined,
       }}
       onAssigned={(a) => router.push(`/dashboard/assignments/${a.id}`)}
     />
