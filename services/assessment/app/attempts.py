@@ -19,6 +19,9 @@ from .models import (
     CHECKING,
     CHOICE,
     CODE,
+    CODE_AFTER,
+    CODE_LIVE,
+    CODE_MANUAL,
     CORRECT,
     DEFAULT_GRADE_SCALE,
     ERROR,
@@ -73,11 +76,19 @@ def all_items(a: Assignment) -> list[dict]:
     return [i for v in a.variants for i in v["items"]] if a.variants else a.items
 
 
+def code_check(a: Assignment, student_id, task_id: str) -> str:
+    """Как проверяется задача с кодом в работе (решение №49); у старых работ — после сдачи."""
+    item = next((i for i in items_for(a, student_id) if i["task_id"] == task_id), None)
+    return (item or {}).get("code_check") or CODE_AFTER
+
+
 def needs_review(a: Assignment, student_id=None) -> bool:
-    """К каким-то заданиям ученик прикладывает файл с решением — итог только после проверки педагогом.
-    student_id — по варианту ученика, иначе по всем вариантам."""
+    """Итог только после проверки педагогом: так выбрано при назначении (решение №49), к заданиям прикладывают файл
+    с решением или код проверяет педагог. student_id — по варианту ученика, иначе по всем вариантам."""
+    if a.result_after_review:
+        return True
     items = items_for(a, student_id) if student_id is not None else all_items(a)
-    return any(item.get("solution_file") for item in items)
+    return any(item.get("solution_file") or item.get("code_check") == CODE_MANUAL for item in items)
 
 
 def solution_tasks(a: Assignment, student_id) -> set[str]:
@@ -127,7 +138,7 @@ def sync_timer(attempt: Attempt, a: Assignment, now: datetime, deadline: datetim
 
 
 def build_submission(task: Task, answer: dict, files: list[dict], student_id: UUID, attempt_id: UUID, now: datetime,
-                     solution_file: bool = False) -> Submission | None:
+                     solution_file: bool = False, manual_code: bool = False) -> Submission | None:
     """Черновик → отправка. Пустой или некорректный ответ — не отправка: за задание 0 баллов.
     solution_file — к короткому ответу или выбору прикладывают файл с решением: он идёт в отправку для педагога,
     а файл без ответа — отправка с ответом «нет» (0 баллов, педагог может засчитать)."""
@@ -151,7 +162,8 @@ def build_submission(task: Task, answer: dict, files: list[dict], student_id: UU
         code = answer.get("code") or ""
         if not code.strip():
             return None
-        sub.answer, sub.status = {"code": code}, CHECKING
+        # Код, который проверяет педагог (решение №49), — без прогона тестов.
+        sub.answer, sub.status = {"code": code}, PENDING_REVIEW if manual_code else CHECKING
     else:
         text = (answer.get("text") or "").strip()
         if not text and not files:
@@ -180,7 +192,14 @@ async def finalize(session: AsyncSession, attempt: Attempt, a: Assignment, auto:
         task, draft = tasks.get(UUID(task_id)), drafts.get(UUID(task_id))
         if task is None or draft is None:
             continue
-        sub = build_submission(task, draft.answer, draft.files, attempt.student_id, attempt.id, now, task_id in with_file)
+        mode = code_check(a, attempt.student_id, task_id) if task.type == CODE else None
+        sub = build_submission(task, draft.answer, draft.files, attempt.student_id, attempt.id, now, task_id in with_file,
+                               manual_code=mode == CODE_MANUAL)
+        if sub is not None and mode == CODE_LIVE and (best := await best_check(session, attempt.id, task.id)) is not None:
+            # Проверка по кнопке: в оценку — лучшая (решение №49). Прошла все тесты — засчитана без нового прогона;
+            # иначе итоговый код проверяется ещё раз — вдруг его доправили после последней проверки.
+            sub.answer, sub.status, sub.score, sub.checked_at = best.answer, CORRECT, 1.0, best.checked_at
+            sub.run_log, sub.failed_case, sub.failure = best.run_log, None, None
         if sub is not None:
             session.add(sub)
             if sub.status == CHECKING:
@@ -255,6 +274,15 @@ async def recompute(session: AsyncSession, attempt: Attempt, a: Assignment | Non
              "assigned_at": a.created_at.isoformat() if a.created_at else None,
              "grade_type_id": str(a.grade_type_id) if a.grade_type_id else None},
         )
+
+
+async def best_check(session: AsyncSession, attempt_id: UUID, task_id: UUID) -> Submission | None:
+    """Проверка по кнопке, прошедшая все тесты, — первая такая (решение №49)."""
+    return await session.scalar(
+        select(Submission).where(Submission.context_type == "check", Submission.context_id == attempt_id,
+                                 Submission.task_id == task_id, Submission.status == CORRECT)
+        .order_by(Submission.created_at).limit(1)
+    )
 
 
 async def on_submission_changed(session: AsyncSession, sub: Submission) -> None:

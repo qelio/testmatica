@@ -460,6 +460,11 @@ class TestItem(BaseModel):
     task: str = Field(description="Номер задачи (100345) или id")
     points: int = Field(1, ge=1, le=100, description="Баллы за задание")
     solution_file: bool = Field(False, description="Ученик прикладывает файл с решением (только short и choice); проверяет педагог")
+    code_check: Literal["after", "live", "manual"] = Field(
+        "after", description="Только для задач с кодом: after — тесты после сдачи; live — ученик сам нажимает «Проверить» "
+                             "сколько угодно раз (видит, сколько тестов не прошло), в оценку — лучшая проверка; manual — "
+                             "без тестов, код проверяет педагог",
+    )
 
 
 class TestFields(BaseModel):
@@ -491,7 +496,7 @@ async def _test_body(key: str, fields: TestFields) -> dict:
     items = []
     for item in fields.items:
         task = await _resolve_task(key, item.task)
-        items.append({"task_id": task["id"], "points": item.points, "solution_file": item.solution_file})
+        items.append({"task_id": task["id"], "points": item.points, "solution_file": item.solution_file, "code_check": item.code_check})
     body = fields.model_dump(mode="json", exclude={"items", "time_limit_min"})
     body["description"] = await localize_images(key, body["description"])
     body["items"] = items
@@ -537,7 +542,7 @@ async def _get_test(key: str, test_id: UUID) -> dict:
         "description": t["description"], "order_mode": t["order_mode"], "shuffle_options": t["shuffle_options"],
         "time_mode": t["time_mode"], "time_limit_min": t["time_limit_s"] / 60 if t["time_limit_s"] else None,
         "items": [{"task": str(i["task"]["number"]), "title": i["task"]["title"], "points": i["points"],
-                   "solution_file": i["solution_file"]} for i in t["items"]],
+                   "solution_file": i["solution_file"], "code_check": i.get("code_check", "after")} for i in t["items"]],
     }
 
 
@@ -569,7 +574,7 @@ async def update_test(
     if unknown:
         raise ToolError(f"Неизвестные поля: {', '.join(sorted(unknown))}")
     base = {f: current.get(f) for f in TestFields.model_fields if f not in ("items", "module_id")}
-    base["items"] = [{k: i[k] for k in ("task", "points", "solution_file")} for i in current["items"]]
+    base["items"] = [{k: i[k] for k in ("task", "points", "solution_file", "code_check")} for i in current["items"]]
     base["module_id"] = current["module"]["id"] if current["module"] else None
     merged = TestFields.model_validate(base | changes)
     updated = await call(key, "assessment", "PUT", f"/tests/{test_id}", json=await _test_body(key, merged))

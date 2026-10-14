@@ -9,20 +9,39 @@ import { TaskNumber } from "@/components/task-number";
 import { TaskPicker } from "@/components/task-picker";
 import { PreviewToggle, TaskPreview } from "@/components/task-preview";
 import { Alert, Badge, Button, Field, Select } from "@/components/ui";
-import { assessment, content, type CourseSummary, type CourseTree, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TimeMode } from "@/lib/api";
+import { assessment, type CodeCheckMode, content, type CourseSummary, type CourseTree, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TimeMode } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { themeLabel } from "@/lib/course-themes";
 import { GRADE_LEVELS } from "@/lib/assignments";
 import { TASK_TYPE_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
 
-type Item = { task_id: string; points: number; solution_file: boolean; title: string; task?: TaskSummary; type?: TaskType };
+type Item = {
+  task_id: string;
+  points: number;
+  solution_file: boolean;
+  code_check: CodeCheckMode;
+  title: string;
+  task?: TaskSummary;
+  type?: TaskType;
+};
+
+/** Как проверяется код в тесте (решение №49). */
+const CODE_CHECKS: { value: CodeCheckMode; title: string; hint: string }[] = [
+  { value: "after", title: "тесты после сдачи", hint: "Тесты прогоняются, когда ученик сдал работу" },
+  { value: "live", title: "по кнопке «Проверить»", hint: "Ученик сам проверяет сколько угодно раз и видит, сколько тестов не прошло; в оценку — лучшая проверка" },
+  { value: "manual", title: "проверяет педагог", hint: "Без тестов: ученик пишет код, вы проверяете вручную" },
+];
 
 /** К каким типам задач можно запросить файл с решением (решение №34). */
 const SOLUTION_TYPES = new Set<TaskType>(["short", "choice"]);
 
 const TEXTAREA =
   "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
+
+function isCode(item: Item): boolean {
+  return (item.task?.type ?? item.type) === "code";
+}
 
 function canAskFile(item: Item): boolean {
   const type = item.task?.type ?? item.type;
@@ -50,7 +69,15 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
   const tree = useLoad(() => (courseId ? content.course(courseId, true) : Promise.resolve(null)), [courseId]);
   const courseAuthor = !!tree.data && tree.data.owner_id === user?.id;
   const [items, setItems] = useState<Item[]>(
-    () => test?.items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file, title: i.task.title, task: i.task })) ?? [],
+    () =>
+      test?.items.map((i) => ({
+        task_id: i.task_id,
+        points: i.points,
+        solution_file: i.solution_file,
+        code_check: i.code_check ?? "after",
+        title: i.task.title,
+        task: i.task,
+      })) ?? [],
   );
   const [picking, setPicking] = useState(false);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
@@ -86,13 +113,28 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
       time_limit_s: timeMode === "none" ? null : Math.round(minutes * 60),
       module_id: moduleId || null,
       shared: shared && !!moduleId && courseAuthor,
-      items: items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file && canAskFile(i) })),
+      items: items.map((i) => ({
+        task_id: i.task_id,
+        points: i.points,
+        solution_file: i.solution_file && canAskFile(i),
+        code_check: isCode(i) ? i.code_check : "after",
+      })),
     };
     try {
       const saved = test ? await assessment.updateTest(test.id, body) : await assessment.createTest(body);
       setDirty(false);
       if (!test) router.replace(`/dashboard/tests/${saved.id}`);
-      else setItems(saved.items.map((i) => ({ task_id: i.task_id, points: i.points, solution_file: i.solution_file, title: i.task.title, task: i.task })));
+      else
+        setItems(
+          saved.items.map((i) => ({
+            task_id: i.task_id,
+            points: i.points,
+            solution_file: i.solution_file,
+            code_check: i.code_check ?? "after",
+            title: i.task.title,
+            task: i.task,
+          })),
+        );
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -225,7 +267,7 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
             {items.map((item, i) => (
               <li key={item.task_id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
                 <span className="w-6 text-right text-sm text-fg-soft tabular-nums">{i + 1}</span>
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-1 basis-60">
                   <span className="block truncate font-medium">
                     {item.task && <TaskNumber n={item.task.number} />}
                     {item.title}
@@ -246,6 +288,25 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
                       className="h-4 w-4 accent-brand"
                     />
                     файл с решением
+                  </label>
+                )}
+                {isCode(item) && (
+                  <label className="flex items-center gap-1.5 text-sm text-fg-soft" title={CODE_CHECKS.find((c) => c.value === item.code_check)?.hint}>
+                    проверка
+                    <select
+                      value={item.code_check}
+                      onChange={(e) =>
+                        change(setItems)(items.map((x, n) => (n === i ? { ...x, code_check: e.target.value as CodeCheckMode } : x)))
+                      }
+                      className="h-9 rounded-lg border border-line bg-surface px-2 text-fg"
+                      aria-label={`Как проверяется код в задании ${i + 1}`}
+                    >
+                      {CODE_CHECKS.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                 )}
                 <label className="flex items-center gap-1.5 text-sm text-fg-soft">
@@ -294,7 +355,7 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
               selected={null}
               autoOnly={false}
               exclude={items.map((i) => i.task_id)}
-              onSelect={(id, taskTitle, type) => change(setItems)([...items, { task_id: id, points: 1, solution_file: false, title: taskTitle, type }])}
+              onSelect={(id, taskTitle, type) => change(setItems)([...items, { task_id: id, points: 1, solution_file: false, code_check: "after", title: taskTitle, type }])}
             />
             <Button type="button" variant="ghost" onClick={() => setPicking(false)}>
               Готово

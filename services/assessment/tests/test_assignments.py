@@ -760,3 +760,82 @@ async def test_variants_in_one_assignment(client, fakes):
     # Без вариантов — как раньше.
     plain = await assign(client, teacher, first, target_type="group", target_id=gid)
     assert plain["variants"] is None and {s["variant"] for s in plain["students"]} == {None}
+
+
+async def test_code_check_modes(client, fakes):
+    """Три способа проверки кода в тесте (решение №49): после сдачи, по кнопке «Проверить» (сколько угодно раз,
+    ученик видит, сколько тестов не прошло; в оценку — лучшая проверка) и педагогом (без тестов)."""
+    teacher, olya = uuid4(), uuid4()
+    tasks = []
+    for title in ("Код после сдачи", "Код по кнопке", "Код педагогу"):
+        resp = await client.post("/tasks", json=CODE | {"title": title}, headers=bearer(teacher))
+        tasks.append(resp.json())
+    after, live, manual = tasks
+    body = {"title": "Программирование", "grade_level": 9, "items": [
+        {"task_id": after["id"]}, {"task_id": live["id"], "code_check": "live"}, {"task_id": manual["id"], "code_check": "manual"},
+    ]}
+    test = (await client.post("/tests", json=body, headers=bearer(teacher))).json()
+    assert [i["code_check"] for i in test["items"]] == ["after", "live", "manual"]
+    await link(teacher, olya)
+    a = await assign(client, teacher, test, target_type="student", target_id=str(olya))
+    assert a["needs_review"]  # код проверяет педагог — итог после проверки
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(olya))).json()
+    by = {t["task"]["id"]: t for t in attempt["tasks"]}
+    assert (by[after["id"]]["code_check"], by[live["id"]]["code_check"], by[manual["id"]]["code_check"]) == ("after", "live", "manual")
+
+    url = f"/attempts/{attempt['id']}/tasks/{{}}/check"
+    no = await client.post(url.format(after["id"]), json={"code": "print(1)"}, headers=student(olya))
+    assert no.status_code == 409 and no.json()["error"]["code"] == "check_not_allowed"
+    # Проверка по кнопке: неверно — видно, сколько тестов не прошло; пока идёт — вторую не запустить.
+    first = (await client.post(url.format(live["id"]), json={"code": "print(41)"}, headers=student(olya))).json()
+    assert next(t for t in first["tasks"] if t["task"]["id"] == live["id"])["check"]["status"] == "checking"
+    busy = await client.post(url.format(live["id"]), json={"code": "print(41)"}, headers=student(olya))
+    assert busy.status_code == 409 and busy.json()["error"]["code"] == "check_running"
+    await run_code_checks()
+    seen = (await client.get(f"/attempts/{attempt['id']}", headers=student(olya))).json()
+    check = next(t for t in seen["tasks"] if t["task"]["id"] == live["id"])["check"]
+    assert (check["status"], check["failed"], check["total"], check["count"], check["passed_once"]) == ("incorrect", 1, 2, 1, False)
+    # Верно — засчитается, даже если потом код испортить: в оценку — лучшая проверка.
+    await client.post(url.format(live["id"]), json={"code": "print('correct')"}, headers=student(olya))
+    await run_code_checks()
+    await client.post(url.format(live["id"]), json={"code": "print(0)"}, headers=student(olya))
+    await run_code_checks()
+    seen = (await client.get(f"/attempts/{attempt['id']}", headers=student(olya))).json()
+    check = next(t for t in seen["tasks"] if t["task"]["id"] == live["id"])["check"]
+    assert (check["status"], check["count"], check["passed_once"]) == ("incorrect", 3, True)
+    assert "run_log" not in str(check)
+
+    await answer(client, attempt, after, olya, code="print('correct')")
+    await answer(client, attempt, manual, olya, code="print(5)")
+    runs = len(fakes.runs)
+    done = (await client.post(f"/attempts/{attempt['id']}/submit", headers=student(olya))).json()
+    await run_code_checks()
+    assert len(fakes.runs) == runs + 1  # прогон — только у кода «после сдачи»; по кнопке — без нового прогона, педагогу — без тестов
+    result = (await client.get(f"/attempts/{attempt['id']}", headers=bearer(teacher))).json()
+    status = {t["task"]["id"]: t["result"]["status"] for t in result["tasks"]}
+    assert (status[after["id"]], status[live["id"]], status[manual["id"]]) == ("correct", "correct", "pending_review")
+    assert not result["checked"] and done["needs_review"]
+    # Педагог проверил код — итог виден.
+    reviewed = (await client.post(f"/attempts/{attempt['id']}/review", json={"tasks": {manual["id"]: True}},
+                                  headers=bearer(teacher))).json()
+    assert reviewed["checked"] and reviewed["score"] == 3
+
+
+async def test_result_after_review(client, fakes):
+    """«Оценка после проверки педагогом» (решение №49): даже автоматически проверенную работу ученик видит с итогом
+    только после проверки."""
+    teacher, olya = uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:1])
+    await link(teacher, olya)
+    a = await assign(client, teacher, test, target_type="student", target_id=str(olya), result_after_review=True)
+    assert a["result_after_review"] and a["needs_review"]
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(olya))).json()
+    right = next(o["id"] for o in (await client.get(f"/tasks/{tasks[0]['id']}", headers=bearer(teacher))).json()["options"] if o["is_correct"])
+    await answer(client, attempt, tasks[0], olya, option_ids=[right])
+    done = (await client.post(f"/attempts/{attempt['id']}/submit", headers=student(olya))).json()
+    assert not done["checked"] and done["grade"] is None and done["score"] is None
+    reviewed = (await client.post(f"/attempts/{attempt['id']}/review", json={"tasks": {}}, headers=bearer(teacher))).json()
+    assert reviewed["checked"] and reviewed["grade"] == 5
+    mine = (await client.get(f"/attempts/{attempt['id']}", headers=student(olya))).json()
+    assert mine["score"] == 1 and mine["grade"] == 5

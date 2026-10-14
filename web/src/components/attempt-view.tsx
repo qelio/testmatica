@@ -62,11 +62,78 @@ function Countdown({ until, offset, label, onExpire }: { until: string; offset: 
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
+/** Проверка кода по кнопке (решение №49): сколько угодно раз, ученик видит только, сколько тестов не прошло. */
+function CodeCheckButton({ attemptId, item, code, beforeCheck }: { attemptId: string; item: AttemptTask; code: string; beforeCheck: () => void }) {
+  const [check, setCheck] = useState(item.check);
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const checking = check?.status === "checking";
+
+  // Пока песочница проверяет — спрашиваем результат.
+  useEffect(() => {
+    if (!checking) return;
+    const t = setInterval(async () => {
+      try {
+        const fresh = await assessment.attempt(attemptId);
+        setCheck(fresh.tasks.find((x) => x.task.id === item.task.id)?.check ?? null);
+      } catch {
+        // сеть мигнула — спросим ещё раз
+      }
+    }, 2000);
+    return () => clearInterval(t);
+  }, [checking, attemptId, item.task.id]);
+
+  async function run() {
+    beforeCheck();
+    setBusy(true);
+    setError(undefined);
+    try {
+      const res = await assessment.checkCode(attemptId, item.task.id, code);
+      setCheck(res.tasks.find((x) => x.task.id === item.task.id)?.check ?? null);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  let text: React.ReactNode = null;
+  if (checking) text = <span className="text-fg-soft">Проверяю…</span>;
+  else if (check?.status === "error") text = <span className="text-danger">Не удалось проверить — попробуйте ещё раз</span>;
+  else if (check?.status === "correct") text = <span className="text-ok">Все тесты пройдены ✓</span>;
+  else if (check?.status === "incorrect")
+    text = (
+      <span className="text-danger">
+        Не прошли тесты: {check.failed} из {check.total}
+      </span>
+    );
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <Button type="button" variant="secondary" onClick={run} loading={busy || checking} disabled={!code.trim()} className="h-9">
+        Проверить
+      </Button>
+      <span className="text-sm" aria-live="polite">
+        {text}
+      </span>
+      {check && check.count > 0 && (
+        <span className="text-xs text-fg-soft">
+          проверок: {check.count}
+          {check.passed_once && check.status !== "correct" && " · уже было решено верно — это и засчитается"}
+        </span>
+      )}
+      {error && <span className="w-full text-sm text-danger">{error}</span>}
+    </div>
+  );
+}
+
 function AnswerInput({
   item,
+  attemptId,
   onSave,
 }: {
   item: AttemptTask;
+  attemptId: string;
   onSave: (answer: Answer, fileIds: string[]) => Promise<AttemptTask | undefined>;
 }) {
   const task = item.task;
@@ -185,8 +252,18 @@ function AnswerInput({
             minHeight="200px"
           />
           <p className="text-xs text-fg-soft">
-            Python · лимит {task.time_limit_s} с, {task.memory_limit_mb} МБ · проверка тестами — после сдачи работы
+            Python ·{" "}
+            {item.code_check === "manual"
+              ? "код проверит педагог"
+              : `лимит ${task.time_limit_s} с, ${task.memory_limit_mb} МБ · ${
+                  item.code_check === "live"
+                    ? "проверяйте сколько угодно раз — в оценку пойдёт лучшая проверка"
+                    : "проверка тестами — после сдачи работы"
+                }`}
           </p>
+          {item.code_check === "live" && (
+            <CodeCheckButton attemptId={attemptId} item={item} code={code} beforeCheck={() => clearTimeout(timer.current)} />
+          )}
         </div>
       )}
       {withFiles && (
@@ -337,6 +414,12 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
             <TaskHead item={item} n={i + 1} />
             <Markdown text={item.task.statement} />
             <AnswerReadonly item={item} teacher={teacher} />
+            {teacher && item.check && (
+              <p className="text-xs text-fg-soft">
+                Проверял по кнопке «Проверить»: {item.check.count} раз
+                {item.check.passed_once ? " · хоть раз прошёл все тесты" : " · все тесты ни разу не прошли"}
+              </p>
+            )}
             {item.result && (
               <div className="space-y-2 border-t border-line pt-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -442,7 +525,8 @@ function TeacherReview({ attempt, marks, onSaved }: { attempt: Attempt; marks: R
   const changes = Object.keys(marks).length;
   const gradeChanged = (grade ? Number(grade) : null) !== attempt.grade_override;
   const confirm = attempt.needs_review && !attempt.reviewed_at;
-  const pendingLong = attempt.tasks.filter((t) => t.result?.status === "pending_review").length;
+  const pendingLong = attempt.tasks.filter((t) => t.result?.status === "pending_review" && t.task.type === "long").length;
+  const pendingCode = attempt.tasks.filter((t) => t.result?.status === "pending_review" && t.task.type === "code").length;
   const s = attempt.grade_scale;
 
   async function save() {
@@ -470,6 +554,7 @@ function TeacherReview({ attempt, marks, onSaved }: { attempt: Attempt; marks: R
             {earned} из {attempt.max_score} б. · {Math.round(percent)}% · по критериям — {auto} (5 от {s["5"]}%, 4 от {s["4"]}%, 3 от {s["3"]}%)
           </p>
           {pendingLong > 0 && <p className="text-tutor">Развёрнутых ответов ждут оценки: {pendingLong} — оцените их в карточках ниже.</p>}
+          {pendingCode > 0 && <p className="text-tutor">Код ждёт вашей проверки: {pendingCode} — отметьте «Верно» или «Неверно» ниже.</p>}
         </div>
         <label className="text-sm">
           <span className="mb-1 block font-medium">Оценка</span>
@@ -618,7 +703,7 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
           <li key={item.task.id} className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
             <TaskHead item={item} n={firstNumber + i} />
             <Markdown text={item.task.statement} />
-            <AnswerInput item={item} onSave={(answer, fileIds) => saveAnswer(item.task.id, answer, fileIds)} />
+            <AnswerInput item={item} attemptId={attempt.id} onSave={(answer, fileIds) => saveAnswer(item.task.id, answer, fileIds)} />
           </li>
         ))}
       </ol>
