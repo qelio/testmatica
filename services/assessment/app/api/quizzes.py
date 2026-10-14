@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
@@ -34,14 +34,24 @@ def module_ref(test: Test) -> ModuleRef | None:
 
 
 async def _assignments_count(session: AsyncSession, ids, teacher_id: UUID | None = None) -> dict[UUID, int]:
+    """Сколько раз тест назначали: сам или вариантом в чужой работе (решение №48)."""
     ids = list(ids)
     if not ids:
         return {}
-    query = select(Assignment.test_id, func.count()).where(Assignment.test_id.in_(ids))
+    plain = select(Assignment.test_id, func.count()).where(Assignment.test_id.in_(ids), Assignment.variants.is_(None))
+    variant = func.jsonb_array_elements(Assignment.variants).table_valued("value").lateral("v")
+    variant_test = variant.c.value.op("->>")("test_id")
+    in_variants = (
+        select(variant_test, func.count()).select_from(Assignment).join(variant, true())
+        .where(func.jsonb_typeof(Assignment.variants) == "array", variant_test.in_([str(i) for i in ids]))
+    )
     if teacher_id is not None:
-        query = query.where(Assignment.teacher_id == teacher_id)
-    rows = await session.execute(query.group_by(Assignment.test_id))
-    return dict(rows.all())
+        plain = plain.where(Assignment.teacher_id == teacher_id)
+        in_variants = in_variants.where(Assignment.teacher_id == teacher_id)
+    counts = dict((await session.execute(plain.group_by(Assignment.test_id))).all())
+    for test_id, n in (await session.execute(in_variants.group_by(variant_test))).all():
+        counts[UUID(test_id)] = counts.get(UUID(test_id), 0) + n
+    return counts
 
 
 def _pending_view(test: Test) -> Test:

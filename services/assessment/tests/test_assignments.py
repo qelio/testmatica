@@ -699,3 +699,64 @@ async def test_staff_course_tests_publish_at_once(client, fakes):
     assert (await client.get(f"/tasks/{tasks[1]['id']}", headers=bearer(admin))).json()["status"] == "published"
     assert [x["title"] for x in (await client.get("/course-tests", params={"module_id": mod}, headers=bearer(teacher))).json()] \
         == ["Проверка"]
+
+
+async def test_variants_in_one_assignment(client, fakes):
+    """Варианты (решение №48): одна работа, у учеников разные тесты — вручную или поровну автоматически.
+    Ученик проходит свой вариант, баллы — по нему; вариант меняется, пока ученик не начал."""
+    teacher = uuid4()
+    pupils = [uuid4() for _ in range(5)]
+    tasks = await make_tasks(client, teacher)
+    first = await make_test(client, teacher, tasks[:1], title="Вариант 1")  # выбор ответа, 1 балл
+    second = await make_test(client, teacher, tasks[1:3], title="Вариант 2")  # короткий и код, по 1 баллу
+    gid = await group_of(fakes, teacher, *pupils)
+
+    resp = await client.post(f"/tests/{first['id']}/assign", headers=bearer(teacher),
+                             json={"target_type": "group", "target_id": gid, "variant_test_ids": [first["id"]]})
+    assert resp.status_code == 422 and resp.json()["error"]["code"] == "variant_duplicate"
+    a = await assign(client, teacher, first, target_type="group", target_id=gid, variant_test_ids=[second["id"]],
+                     variants={str(pupils[0]): 2})
+    assert [(v["number"], v["test_title"], v["tasks_count"], v["max_score"]) for v in a["variants"]] \
+        == [(1, "Вариант 1", 1, 1), (2, "Вариант 2", 2, 2)]
+    by = {s["student_id"]: s["variant"] for s in a["students"]}
+    assert by[str(pupils[0])] == 2 and sorted(by.values()).count(1) in (2, 3) and sorted(by.values()).count(2) in (2, 3)
+
+    # Ученик видит и проходит только свой вариант.
+    two = pupils[0]
+    mine = (await client.get(f"/assignments/{a['id']}", headers=student(two))).json()
+    assert (mine["tasks_count"], mine["max_score"], mine["variants"]) == (2, 2, None)
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(two))).json()
+    assert sorted(t["task"]["id"] for t in attempt["tasks"]) == sorted(t["id"] for t in tasks[1:3])
+    await answer(client, attempt, tasks[1], two, text="3.5")
+    done = (await client.post(f"/attempts/{attempt['id']}/submit", headers=student(two))).json()
+    assert done["max_score"] == 2
+
+    one = next(p for p in pupils if by[str(p)] == 1)
+    first_attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(one))).json()
+    assert [t["task"]["id"] for t in first_attempt["tasks"]] == [tasks[0]["id"]]
+
+    # Вариант меняется, пока ученик не начал; начал — уже нет.
+    idle = next(p for p in pupils if p not in (two, one))
+    url = f"/assignments/{a['id']}/students/{idle}/variant"
+    changed = (await client.put(url, json={"variant": 2}, headers=bearer(teacher))).json()
+    assert next(s["variant"] for s in changed["students"] if s["student_id"] == str(idle)) == 2
+    assert (await client.put(url, json={"variant": 3}, headers=bearer(teacher))).status_code == 422
+    locked = await client.put(f"/assignments/{a['id']}/students/{one}/variant", json={"variant": 2}, headers=bearer(teacher))
+    assert locked.status_code == 409 and locked.json()["error"]["code"] == "variant_locked"
+    assert (await client.put(url, json={"variant": 1}, headers=student(idle))).status_code == 403
+
+    # Свои настройки у каждого варианта; назначение засчитано обоим тестам — удалить тест варианта нельзя.
+    timed = await make_test(client, teacher, tasks[1:2], title="Вариант 3", time_mode="total", time_limit_s=600)
+    b = await assign(client, teacher, first, target_type="group", target_id=gid, variant_test_ids=[timed["id"]],
+                     variants={str(p): 2 for p in pupils})
+    assert [v["settings"]["time_mode"] for v in b["variants"]] == ["none", "total"]
+    started = (await client.post(f"/assignments/{b['id']}/start", headers=student(pupils[1]))).json()
+    assert started["settings"]["time_limit_s"] == 600 and started["ends_at"]
+    tests = {t["id"]: t["assignments_count"] for t in (await client.get("/tests", headers=bearer(teacher))).json()}
+    assert (tests[first["id"]], tests[second["id"]], tests[timed["id"]]) == (2, 1, 1)
+    deleted = await client.delete(f"/tests/{second['id']}", headers=bearer(teacher))
+    assert deleted.status_code == 409 and deleted.json()["error"]["code"] == "test_assigned"
+
+    # Без вариантов — как раньше.
+    plain = await assign(client, teacher, first, target_type="group", target_id=gid)
+    assert plain["variants"] is None and {s["variant"] for s in plain["students"]} == {None}

@@ -454,11 +454,23 @@ class AssignIn(BaseModel):
     grade_to_journal: bool = Field(False, description="Оценка в журнал — отдельной колонкой работы, без привязки к уроку")
     grade_type_id: UUID | None = None
     proctoring: bool = Field(False, description="Прокторинг — тариф «Базовый»; ученик даёт согласие при старте")
+    variant_test_ids: list[UUID] = Field(
+        default_factory=list, max_length=9,
+        description="Варианты (решение №48): тесты 2-го, 3-го… вариантов; 1-й — сам тест. Работа одна, у учеников разные тесты",
+    )
+    variants: dict[UUID, int] = Field(
+        default_factory=dict,
+        description="Вручную: ученик → номер варианта (с 1). Остальным варианты раздаются автоматически — поровну, вперемешку",
+    )
 
     _title = field_validator("title")(_clean)
 
     @model_validator(mode="after")
     def _rules(self) -> "AssignIn":
+        if len(set(self.variant_test_ids)) != len(self.variant_test_ids):
+            raise ValueError("Один тест выбран в нескольких вариантах")
+        if any(not 1 <= v <= len(self.variant_test_ids) + 1 for v in self.variants.values()):
+            raise ValueError("Номер варианта вне списка вариантов")
         for value in (self.opens_at, self.deadline):
             if value is not None and value.tzinfo is None:
                 raise ValueError("Время нужно передавать с часовым поясом")
@@ -494,9 +506,23 @@ class AttemptBrief(BaseModel):
     checked: bool
 
 
+class VariantOut(BaseModel):
+    number: int
+    test_id: UUID
+    test_title: str
+    tasks_count: int
+    max_score: int
+    settings: dict[str, Any] = Field(description="Таймер, порядок, оформление — как у теста варианта")
+
+
+class VariantSet(BaseModel):
+    variant: int = Field(ge=1, le=10)
+
+
 class AssignmentStudentOut(BaseModel):
     student_id: UUID
     full_name: str
+    variant: int | None = Field(None, description="Номер варианта (решение №48); null — у работы нет вариантов")
     allowed_attempts: int
     attempts: list[AttemptBrief]
     proctor_alerts: int = Field(0, description="Прокторинг: сколько раз уходил со вкладки или прекращал показ экрана")
@@ -525,8 +551,9 @@ class AssignmentOut(BaseModel):
     closed: bool
     max_attempts: int | None = Field(description="Попыток на ученика; null — без ограничений")
     settings: dict[str, Any]
-    tasks_count: int
+    tasks_count: int = Field(description="Заданий — у ученика в его варианте, у педагога — в 1-м варианте")
     max_score: int
+    variants: list[VariantOut] | None = Field(None, description="Педагогу — варианты работы (решение №48)")
     grade_scale: dict[str, int] = Field(description="С какого процента 5, 4, 3: {\"5\": 85, \"4\": 65, \"3\": 45}")
     needs_review: bool = Field(False, description="К заданиям прикладывают файлы с решением — итог после проверки педагогом")
     grade_to_journal: bool

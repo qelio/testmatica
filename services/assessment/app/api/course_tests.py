@@ -15,7 +15,7 @@ from ..deps import auth, db
 from ..models import SELF, Assignment, AssignmentStudent, Test
 from ..schemas import AssignmentOut, AttemptOut, CourseTestOut, QuizSummary
 from .assignments import assignment_out, copy_of, start, test_theme
-from .quizzes import module_ref
+from .quizzes import _assignments_count, module_ref
 
 router = APIRouter(tags=["course-tests"])
 
@@ -70,9 +70,7 @@ async def course_test(
     test = await session.get(Test, test_id)
     if not is_teacher(principal) or await course_test_for(session, test, principal) is None:
         raise ApiError(404, "test_not_found", "Тест не найден")
-    mine = await session.scalar(
-        select(func.count()).select_from(Assignment).where(Assignment.test_id == test.id, Assignment.teacher_id == principal.user_id)
-    )
+    mine = (await _assignments_count(session, [test.id], principal.user_id)).get(test.id, 0)
     return QuizSummary(
         id=test.id, title=test.title, grade_level=test.grade_level, module=module_ref(test), shared=test.shared,
         visibility="public" if test.shared else "teachers", published=True,

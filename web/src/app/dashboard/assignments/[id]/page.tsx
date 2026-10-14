@@ -68,13 +68,37 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
           </Link>
         </p>
       )}
-      {isTeacher && (
+      {isTeacher && !a.variants && (
         <p className="mt-1 text-sm">
           Тест:{" "}
           <Link href={`/dashboard/tests/${a.test_id}`} className="text-brand hover:underline">
             {a.test_title}
           </Link>
         </p>
+      )}
+      {isTeacher && a.variants && (
+        <ul className="mt-1 space-y-0.5 text-sm">
+          {a.variants.map((v) => (
+            <li key={v.number}>
+              Вариант {v.number}:{" "}
+              <Link href={`/dashboard/tests/${v.test_id}`} className="text-brand hover:underline">
+                {v.test_title}
+              </Link>
+              <span className="text-fg-soft">
+                {" "}
+                {[
+                  "",
+                  `заданий: ${v.tasks_count}`,
+                  `баллов: ${v.max_score}`,
+                  fmtLimit(v.settings),
+                  `учеников: ${a.students.filter((s) => s.variant === v.number).length}`,
+                ]
+                  .filter((x) => x !== null)
+                  .join(" · ")}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
       <p className="mt-1 text-sm text-fg-soft">
         {[
@@ -83,9 +107,9 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
           a.opens_at && !a.not_open_yet ? `открыт с ${fmtDateTime(a.opens_at)}` : null,
           a.deadline ? `сдать до ${fmtDateTime(a.deadline)}` : null,
           attemptsText(a),
-          `заданий: ${a.tasks_count}`,
-          `баллов: ${a.max_score}`,
-          fmtLimit(a.settings),
+          isTeacher && a.variants ? `вариантов: ${a.variants.length}` : `заданий: ${a.tasks_count}`,
+          isTeacher && a.variants ? null : `баллов: ${a.max_score}`,
+          isTeacher && a.variants ? null : fmtLimit(a.settings),
           a.grade_to_journal ? "оценка в журнал" : null,
           a.proctoring ? "с прокторингом" : null,
         ]
@@ -182,6 +206,7 @@ function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
           <thead>
             <tr className="border-b border-line text-left text-xs text-fg-soft">
               <th className="px-4 py-2.5 font-medium">Ученик</th>
+              {a.variants && <th className="px-3 py-2.5 text-center font-medium">Вариант</th>}
               <th className="px-3 py-2.5 font-medium">Статус</th>
               <th className="px-3 py-2.5 text-center font-medium">Баллы</th>
               <th className="px-3 py-2.5 text-center font-medium">Оценка</th>
@@ -268,6 +293,35 @@ function StudentRow({
             </span>
           )}
         </td>
+        {a.variants && (
+          <td className={`${cell} text-center`}>
+            {row.attempts.length ? (
+              <span className="font-medium tabular-nums" title="Ученик уже начал — вариант не поменять">
+                {row.variant}
+              </span>
+            ) : (
+              <select
+                value={row.variant ?? 1}
+                onChange={async (e) => {
+                  try {
+                    await assessment.setVariant(a.id, row.student_id, Number(e.target.value));
+                    onChanged();
+                  } catch (err) {
+                    onError(errorText(err));
+                  }
+                }}
+                className="h-8 rounded-lg border border-line bg-surface px-1.5 text-sm"
+                aria-label={`Вариант ученика ${row.full_name}`}
+              >
+                {a.variants.map((v) => (
+                  <option key={v.number} value={v.number}>
+                    {v.number}
+                  </option>
+                ))}
+              </select>
+            )}
+          </td>
+        )}
         <td className={cell}>
           <Badge tone={st.tone}>{st.text}</Badge>
           {last?.status === "in_progress" && (
@@ -335,7 +389,7 @@ function StudentRow({
       </tr>
       {reassigning && (
         <tr className="border-b border-line/70">
-          <td colSpan={7} className="px-4 py-3">
+          <td colSpan={a.variants ? 8 : 7} className="px-4 py-3">
             <form
               className="flex flex-wrap items-end gap-2"
               onSubmit={async (e) => {
