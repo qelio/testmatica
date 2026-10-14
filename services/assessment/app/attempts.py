@@ -49,22 +49,48 @@ def grade_for(percent: float, scale: dict[str, int] | None = None) -> int:
     return next((g for g in (5, 4, 3) if percent >= scale[str(g)]), 2)
 
 
-def needs_review(a: Assignment) -> bool:
-    """К каким-то заданиям ученик прикладывает файл с решением — итог только после проверки педагогом."""
-    return any(item.get("solution_file") for item in a.items)
+def variant_of(a: Assignment, student_id) -> int | None:
+    """Номер варианта ученика (решение №48); None — у работы нет вариантов."""
+    if not a.variants:
+        return None
+    row = next((r for r in a.students if r.student_id == student_id), None)
+    return row.variant if row is not None and row.variant else 1
 
 
-def solution_tasks(a: Assignment) -> set[str]:
-    return {item["task_id"] for item in a.items if item.get("solution_file")}
+def items_for(a: Assignment, student_id) -> list[dict]:
+    """Состав работы для ученика — его варианта."""
+    v = variant_of(a, student_id)
+    return a.items if v is None else a.variants[v - 1]["items"]
 
 
-def per_task_limit(a: Assignment) -> timedelta | None:
-    s = a.settings
+def settings_for(a: Assignment, student_id) -> dict:
+    """Настройки работы для ученика: у варианта — свои, как у его теста (таймер, порядок, оформление)."""
+    v = variant_of(a, student_id)
+    return a.settings if v is None else a.variants[v - 1].get("settings", a.settings)
+
+
+def all_items(a: Assignment) -> list[dict]:
+    return [i for v in a.variants for i in v["items"]] if a.variants else a.items
+
+
+def needs_review(a: Assignment, student_id=None) -> bool:
+    """К каким-то заданиям ученик прикладывает файл с решением — итог только после проверки педагогом.
+    student_id — по варианту ученика, иначе по всем вариантам."""
+    items = items_for(a, student_id) if student_id is not None else all_items(a)
+    return any(item.get("solution_file") for item in items)
+
+
+def solution_tasks(a: Assignment, student_id) -> set[str]:
+    return {item["task_id"] for item in items_for(a, student_id) if item.get("solution_file")}
+
+
+def per_task_limit(a: Assignment, student_id) -> timedelta | None:
+    s = settings_for(a, student_id)
     return timedelta(seconds=s["time_limit_s"]) if s.get("time_mode") == "per_task" and s.get("time_limit_s") else None
 
 
 def current_ends_at(attempt: Attempt, a: Assignment) -> datetime | None:
-    limit = per_task_limit(a)
+    limit = per_task_limit(a, attempt.student_id)
     if limit is None or attempt.current_started_at is None:
         return None
     return attempt.current_started_at + limit
@@ -90,7 +116,7 @@ def sync_timer(attempt: Attempt, a: Assignment, now: datetime, deadline: datetim
         return True
     if deadline and now >= deadline + GRACE:
         return True
-    limit = per_task_limit(a)
+    limit = per_task_limit(a, attempt.student_id)
     if limit is not None and attempt.current_started_at is not None:
         while now >= attempt.current_started_at + limit + GRACE:
             attempt.current_index += 1
@@ -149,7 +175,7 @@ async def finalize(session: AsyncSession, attempt: Attempt, a: Assignment, auto:
     now = datetime.now(UTC)
     tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_([UUID(i) for i in attempt.task_order])))).scalars()}
     drafts = {d.task_id: d for d in (await session.execute(select(AttemptAnswer).where(AttemptAnswer.attempt_id == attempt.id))).scalars()}
-    code_subs, with_file = [], solution_tasks(a)
+    code_subs, with_file = [], solution_tasks(a, attempt.student_id)
     for task_id in attempt.task_order:
         task, draft = tasks.get(UUID(task_id)), drafts.get(UUID(task_id))
         if task is None or draft is None:
@@ -198,12 +224,12 @@ async def recompute(session: AsyncSession, attempt: Attempt, a: Assignment | Non
         return
     a = a or await session.get(Assignment, attempt.assignment_id)
     subs = await latest_submissions(session, attempt.id)
-    points = {item["task_id"]: item["points"] for item in a.items}
+    points = {item["task_id"]: item["points"] for item in items_for(a, attempt.student_id)}
     before = (attempt.checked, attempt.score, attempt.grade)
     attempt.max_score = float(sum(points.values()))
     attempt.score = round(sum(_earned(subs.get(UUID(t)), points.get(t, 1)) for t in attempt.task_order), 2)
     # С файлами решений итог — только после проверки педагогом, даже если всё проверилось автоматически.
-    attempt.checked = not any(s.status in NOT_FINAL for s in subs.values()) and (attempt.reviewed_at is not None or not needs_review(a))
+    attempt.checked = not any(s.status in NOT_FINAL for s in subs.values()) and (attempt.reviewed_at is not None or not needs_review(a, attempt.student_id))
     if attempt.checked:
         attempt.percent = round(attempt.score / attempt.max_score * 100, 1) if attempt.max_score else 0.0
         attempt.grade = attempt.grade_override or grade_for(attempt.percent, a.grade_scale)
@@ -256,6 +282,7 @@ async def expire_job() -> None:
                     func.coalesce(AssignmentStudent.deadline, Assignment.deadline) < now - GRACE,
                     Assignment.closed_at.is_not(None),
                     Assignment.settings["time_mode"].astext == "per_task",
+                    Assignment.variants.is_not(None),  # у вариантов таймер свой — проверяет sync_timer
                 ),
             )
             .with_for_update(of=Attempt, skip_locked=True)

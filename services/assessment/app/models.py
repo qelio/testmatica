@@ -350,8 +350,11 @@ class Assignment(Base):
     max_attempts: Mapped[int | None] = mapped_column(SmallInteger)
     # {order_mode, shuffle_options, time_mode, time_limit_s, theme}
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    # [{task_id, points, solution_file}] — в порядке теста
+    # [{task_id, points, solution_file}] — в порядке теста (при вариантах — первый вариант)
     items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    # Варианты (решение №48): одна работа, у учеников разные тесты. [{test_id, test_title, items, settings}] — по порядку,
+    # первый — тест работы; null — без вариантов. У варианта свои состав и настройки (как у его теста), критерии — общие.
+    variants: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB(none_as_null=True))
     # Критерии оценки: с какого процента ставится 5, 4 и 3 (ниже — 2).
     grade_scale: Mapped[dict[str, int]] = mapped_column(JSONB, default=lambda: dict(DEFAULT_GRADE_SCALE),
                                                         server_default='{"5": 85, "4": 65, "3": 45}')
@@ -377,6 +380,7 @@ class AssignmentStudent(Base):
     allowed_attempts: Mapped[int] = mapped_column(SmallInteger, default=1)
     # Личный дедлайн — при переназначении после общего дедлайна.
     deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    variant: Mapped[int | None] = mapped_column(SmallInteger)  # номер варианта с 1 (решение №48); null — без вариантов
 
 
 class Attempt(Base):

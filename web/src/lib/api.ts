@@ -1164,8 +1164,11 @@ export type Assignment = {
   max_attempts: number | null;
   attempts_left: number | null;
   settings: QuizSettings;
+  /** Заданий — у ученика в его варианте, у педагога — в 1-м варианте. */
   tasks_count: number;
   max_score: number;
+  /** Педагогу — варианты работы (решение №48); null — без вариантов. */
+  variants?: AssignmentVariant[] | null;
   /** С какого процента 5, 4, 3. */
   grade_scale: GradeScaleStored;
   /** К заданиям прикладывают файлы с решением — итог после вашей проверки. */
@@ -1174,10 +1177,27 @@ export type Assignment = {
   grade_type_id: string | null;
   proctoring: boolean;
   created_at: string;
-  students: { student_id: string; full_name: string; allowed_attempts: number; attempts: AttemptBrief[]; proctor_alerts: number }[];
+  students: {
+    student_id: string;
+    full_name: string;
+    /** Номер варианта; null — у работы нет вариантов. */
+    variant: number | null;
+    allowed_attempts: number;
+    attempts: AttemptBrief[];
+    proctor_alerts: number;
+  }[];
   can_start: boolean;
   /** Время сервера — для точных таймеров. */
   server_time?: string;
+};
+export type AssignmentVariant = {
+  number: number;
+  test_id: string;
+  test_title: string;
+  tasks_count: number;
+  max_score: number;
+  /** Таймер, порядок, оформление — как у теста варианта. */
+  settings: QuizSettings;
 };
 /** self — самостоятельное прохождение общего теста курса (решение №44). */
 export type AssignmentKind = "test" | "homework" | "live" | "self";
@@ -1196,6 +1216,10 @@ export type AssignInput = {
   grade_to_journal?: boolean;
   grade_type_id?: string | null;
   proctoring?: boolean;
+  /** Тесты 2-го, 3-го… вариантов (решение №48); 1-й — сам тест. */
+  variant_test_ids?: string[];
+  /** Вручную: ученик → номер варианта; остальным — поровну автоматически. */
+  variants?: Record<string, number>;
 };
 export type AttemptTask = {
   task: TaskFull;
@@ -1344,6 +1368,8 @@ export const assessment = {
     const qs = new URLSearchParams({ student_id: studentId, ...(deadline ? { deadline } : {}) });
     return api<Assignment>(`${AS}/assignments/${id}/reassign?${qs}`, { method: "POST" });
   },
+  setVariant: (id: string, studentId: string, variant: number) =>
+    api<Assignment>(`${AS}/assignments/${id}/students/${studentId}/variant`, { method: "PUT", body: { variant } }),
   closeAssignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}/close`, { method: "POST" }),
   start: (assignmentId: string, consent = false) =>
     api<Attempt>(`${AS}/assignments/${assignmentId}/start`, { method: "POST", body: { consent } }),

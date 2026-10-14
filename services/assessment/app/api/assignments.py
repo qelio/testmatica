@@ -53,6 +53,8 @@ from ..schemas import (
     RemoveStudentsIn,
     StartIn,
     SubmissionOut,
+    VariantOut,
+    VariantSet,
 )
 from ..courses import course_test_for, module_info
 from .quizzes import own_test
@@ -93,6 +95,23 @@ def copy_of(test: Test, theme: str) -> dict:
     }
 
 
+def distribute(student_ids: list[UUID], count: int, manual: dict[UUID, int]) -> dict[UUID, int]:
+    """Варианты ученикам (решение №48): заданные вручную — как есть, остальным — поровну и вперемешку."""
+    out = {s: manual[s] for s in student_ids if s in manual}
+    used = [0] * count
+    for v in out.values():
+        used[v - 1] += 1
+    rnd = random.SystemRandom()
+    rest = [s for s in student_ids if s not in out]
+    rnd.shuffle(rest)
+    for s in rest:
+        fewest = min(used)
+        v = rnd.choice([i for i, n in enumerate(used) if n == fewest])
+        used[v] += 1
+        out[s] = v + 1
+    return out
+
+
 @router.post("/tests/{test_id}/assign", response_model=AssignmentOut, status_code=201)
 async def assign(
     test_id: UUID, body: AssignIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
@@ -119,6 +138,23 @@ async def assign(
         raise ApiError(403, "plan_required", "Прокторинг доступен на тарифе «Базовый»")
 
     theme = await test_theme(test, principal.user_id)
+    # Варианты: тесты 2-го, 3-го… вариантов; у каждого ученика — свой (решение №48).
+    variant_tests = [test]
+    for vid in body.variant_test_ids:
+        if vid == test.id:
+            raise ApiError(422, "variant_duplicate", "Один тест выбран в нескольких вариантах")
+        vt = await assignable_test(session, vid, principal)
+        if not vt.items:
+            raise ApiError(422, "test_empty", f"В тесте «{vt.title}» нет задач")
+        variant_tests.append(vt)
+    numbers, variants = {}, None
+    if len(variant_tests) > 1:
+        numbers = distribute(student_ids, len(variant_tests), body.variants)
+        # У каждого варианта — свои состав и настройки (таймер, порядок, оформление), как у его теста.
+        variants = []
+        for vt in variant_tests:
+            copy = copy_of(vt, theme if vt is test else await test_theme(vt, principal.user_id))
+            variants.append({"test_id": str(vt.id), "test_title": vt.title, "items": copy["items"], "settings": copy["settings"]})
 
     a = Assignment(
         **copy_of(test, theme), teacher_id=principal.user_id, title=body.title or test.title, kind=body.kind,
@@ -126,8 +162,8 @@ async def assign(
         opens_at=body.opens_at, deadline=body.deadline, max_attempts=body.max_attempts,
         grade_scale=body.grade_scale.stored(),
         grade_to_journal=body.grade_to_journal, grade_type_id=body.grade_type_id if body.grade_to_journal else None,
-        proctoring=body.proctoring,
-        students=[AssignmentStudent(student_id=s, allowed_attempts=body.max_attempts or 1) for s in student_ids],
+        proctoring=body.proctoring, variants=variants,
+        students=[AssignmentStudent(student_id=s, allowed_attempts=body.max_attempts or 1, variant=numbers.get(s)) for s in student_ids],
     )
     session.add(a)
     await session.flush()
@@ -208,6 +244,7 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
         (
             AssignmentStudentOut(
                 student_id=r.student_id, full_name=names.get(r.student_id, "Ученик"), allowed_attempts=r.allowed_attempts,
+                variant=attempts.variant_of(a, r.student_id),
                 attempts=[_brief(t, answered.get(t.id, 0), correct if teacher_view or t.checked else None, a)
                           for t in all_attempts if t.student_id == r.student_id],
                 proctor_alerts=alerts.get(r.student_id, 0),
@@ -217,6 +254,7 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
         key=lambda s: s.full_name,
     )
     own = rows[0] if rows and not teacher_view else None
+    items = attempts.items_for(a, p.user_id) if own is not None else a.items  # ученику — его вариант
     deadline = attempts.deadline_for(a, own) if own else a.deadline
     not_open_yet = bool(a.opens_at and now < a.opens_at)
     can_start, attempts_left = False, None
@@ -238,9 +276,15 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
         teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, opens_at=a.opens_at,
         module=ModuleRef(id=a.module_id, title=a.module_title or "", course_id=a.course_id) if a.module_id else None,
         deadline=deadline, not_open_yet=not_open_yet, overdue=bool(deadline and now >= deadline), closed=a.closed_at is not None,
-        max_attempts=a.max_attempts, attempts_left=attempts_left, settings=a.settings,
-        tasks_count=len(a.items), max_score=sum(i["points"] for i in a.items), grade_scale=a.grade_scale,
-        needs_review=attempts.needs_review(a), grade_to_journal=a.grade_to_journal,
+        max_attempts=a.max_attempts, attempts_left=attempts_left,
+        settings=attempts.settings_for(a, p.user_id) if own is not None else a.settings,
+        tasks_count=len(items), max_score=sum(i["points"] for i in items), grade_scale=a.grade_scale,
+        variants=[
+            VariantOut(number=n, test_id=v["test_id"], test_title=v["test_title"], tasks_count=len(v["items"]),
+                       max_score=sum(i["points"] for i in v["items"]), settings=v.get("settings", a.settings))
+            for n, v in enumerate(a.variants, 1)
+        ] if a.variants and teacher_view else None,
+        needs_review=attempts.needs_review(a, None if teacher_view else p.user_id), grade_to_journal=a.grade_to_journal,
         grade_type_id=a.grade_type_id, created_at=a.created_at, students=students, can_start=can_start, server_time=now,
     )
 
@@ -297,6 +341,30 @@ async def _assignment(session: AsyncSession, assignment_id: UUID, p: Principal, 
         if any(r.student_id == p.user_id for r in a.students):
             return a, False
     raise ApiError(404, "assignment_not_found", "Задание не найдено")
+
+
+@router.put("/assignments/{assignment_id}/students/{student_id}/variant", response_model=AssignmentOut)
+async def set_variant(
+    assignment_id: UUID, student_id: UUID, body: VariantSet, principal: Principal = Depends(teacher),
+    session: AsyncSession = Depends(db.session),
+) -> AssignmentOut:
+    """Поменять ученику вариант (решение №48) — пока он не начал работу."""
+    a, is_teacher = await _assignment(session, assignment_id, principal, write=True)
+    if not is_teacher or a.kind == SELF:
+        raise ApiError(404, "assignment_not_found", "Задание не найдено")
+    if not a.variants or body.variant > len(a.variants):
+        raise ApiError(422, "variant_invalid", "Такого варианта в работе нет")
+    row = next((r for r in a.students if r.student_id == student_id), None)
+    if row is None:
+        raise ApiError(404, "student_not_found", "Ученику эта работа не выдана")
+    started = await session.scalar(
+        select(func.count()).select_from(Attempt).where(Attempt.assignment_id == a.id, Attempt.student_id == student_id)
+    )
+    if started:
+        raise ApiError(409, "variant_locked", "Ученик уже начал работу — вариант не поменять")
+    row.variant = body.variant
+    await session.commit()
+    return await assignment_out(session, a, principal, teacher_view=True)
 
 
 @router.get("/assignments/{assignment_id}", response_model=AssignmentOut)
@@ -457,23 +525,24 @@ async def start(
             raise ApiError(409, "already_submitted", "Попытки закончились. Пройти ещё раз можно, если педагог переназначит")
         if a.proctoring and not (body and body.consent):
             raise ApiError(409, "consent_required", "Тест с прокторингом: нужно согласие на мониторинг экрана")
-        order = [i["task_id"] for i in a.items]
+        settings = attempts.settings_for(a, principal.user_id)
+        order = [i["task_id"] for i in attempts.items_for(a, principal.user_id)]
         rnd = random.SystemRandom()
-        if a.settings.get("order_mode") == "random":
+        if settings.get("order_mode") == "random":
             rnd.shuffle(order)
         option_orders = {}
-        if a.settings.get("shuffle_options"):
+        if settings.get("shuffle_options"):
             tasks = (await session.execute(select(Task).where(Task.id.in_([UUID(i) for i in order]), Task.type == CHOICE))).scalars()
             for t in tasks:
                 ids = [str(o.id) for o in t.options]
                 rnd.shuffle(ids)
                 option_orders[str(t.id)] = ids
-        limit = a.settings.get("time_limit_s")
+        limit = settings.get("time_limit_s")
         current = Attempt(
             assignment_id=a.id, student_id=principal.user_id, number=len(mine) + 1, status=IN_PROGRESS, started_at=now,
-            ends_at=now + timedelta(seconds=limit) if a.settings.get("time_mode") == "total" else None,
+            ends_at=now + timedelta(seconds=limit) if settings.get("time_mode") == "total" else None,
             task_order=order, option_orders=option_orders,
-            current_started_at=now if a.settings.get("time_mode") == "per_task" else None,
+            current_started_at=now if settings.get("time_mode") == "per_task" else None,
             proctor_consent_at=now if a.proctoring else None,
         )
         session.add(current)
@@ -514,9 +583,10 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
     drafts = {d.task_id: d for d in (await session.execute(select(AttemptAnswer).where(AttemptAnswer.attempt_id == t.id))).scalars()}
     subs = await attempts.latest_submissions(session, t.id) if submitted else {}
     urls = await _file_urls([*subs.values(), *[_Files(d.files) for d in drafts.values()]])
-    points = {i["task_id"]: i["points"] for i in a.items}
-    with_file = attempts.solution_tasks(a)
-    per_task = a.settings.get("time_mode") == "per_task"
+    points = {i["task_id"]: i["points"] for i in attempts.items_for(a, t.student_id)}
+    with_file = attempts.solution_tasks(a, t.student_id)
+    settings = attempts.settings_for(a, t.student_id)
+    per_task = settings.get("time_mode") == "per_task"
 
     out: list[AttemptTask] = []
     for n, task_id in enumerate(t.task_order):
@@ -544,10 +614,10 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
         ))
     return AttemptOut(
         id=t.id, assignment_id=a.id, self_study=a.kind == SELF, title=a.title, student_id=t.student_id, number=t.number, status=t.status,
-        settings=a.settings, started_at=t.started_at, ends_at=t.ends_at, current_index=t.current_index,
+        settings=settings, started_at=t.started_at, ends_at=t.ends_at, current_index=t.current_index,
         current_ends_at=attempts.current_ends_at(t, a) if not submitted else None, submitted_at=t.submitted_at,
         auto_submitted=t.auto_submitted, score=t.score if t.checked or teacher_view else None, max_score=t.max_score,
-        percent=t.percent, grade=t.grade, checked=t.checked, needs_review=attempts.needs_review(a), reviewed_at=t.reviewed_at,
+        percent=t.percent, grade=t.grade, checked=t.checked, needs_review=attempts.needs_review(a, t.student_id), reviewed_at=t.reviewed_at,
         grade_override=t.grade_override, grade_scale=a.grade_scale, server_time=datetime.now(UTC), proctoring=a.proctoring,
         finished_by_teacher=t.finished_by_teacher, screen_ok=_screen_ok(t, a), tasks=out,
     )
@@ -609,14 +679,14 @@ async def save_answer(
         raise SCREEN_REQUIRED
     if str(task_id) not in t.task_order:
         raise ApiError(404, "task_not_found", "Такого задания нет в работе")
-    if a.settings.get("time_mode") == "per_task" and t.task_order.index(str(task_id)) != t.current_index:
+    if attempts.settings_for(a, t.student_id).get("time_mode") == "per_task" and t.task_order.index(str(task_id)) != t.current_index:
         raise ApiError(409, "task_locked", "К этому заданию уже нельзя вернуться")
     task = await session.get(Task, task_id)
     draft = await session.get(AttemptAnswer, (t.id, task_id)) or AttemptAnswer(attempt_id=t.id, task_id=task_id, files=[])
 
     files = [f for f in draft.files if UUID(f["id"]) in body.file_ids]
     new_ids = [i for i in body.file_ids if str(i) not in {f["id"] for f in files}]
-    files_allowed = (task.type == LONG and task.file_mode != "none") or str(task_id) in attempts.solution_tasks(a)
+    files_allowed = (task.type == LONG and task.file_mode != "none") or str(task_id) in attempts.solution_tasks(a, t.student_id)
     if (new_ids or files) and not files_allowed:
         raise ApiError(422, "files_not_allowed", "К этому заданию нельзя прикрепить файл")
     if new_ids:
@@ -637,7 +707,7 @@ async def save_answer(
 async def next_task(attempt_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)) -> AttemptOut:
     """Таймер на каждое задание: перейти к следующему (вернуться нельзя). После последнего — сдача."""
     t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
-    if is_teacher or a.settings.get("time_mode") != "per_task":
+    if is_teacher or attempts.settings_for(a, t.student_id).get("time_mode") != "per_task":
         raise ApiError(409, "not_sequential", "В этой работе задания открыты все сразу")
     if await _synced(session, t, a):
         if not _screen_ok(t, a):

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
+import { AssignVariants, NO_VARIANTS, type VariantsValue } from "@/components/assign-variants";
 import { Alert, Button, Field, Select } from "@/components/ui";
 import { academic, type Assignment, type AssignmentKind, assessment, billing, classroom, type GradeScale, schedule } from "@/lib/api";
 import { fmtDateTime, fromInputs } from "@/lib/dates";
@@ -138,6 +139,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
   const [proctoring, setProctoring] = useState(false);
   const [gradeTypeId, setGradeTypeId] = useState("");
   const [scale, setScale] = useState<GradeScale>(DEFAULT_SCALE);
+  const [variants, setVariants] = useState<VariantsValue>(NO_VARIANTS);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -148,6 +150,9 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
       l.status !== "cancelled" &&
       (targetType === "group" ? l.group_id === targetId : l.kind === "individual" && l.participants?.some((p) => p.id === targetId)),
   );
+
+  const variantIds = variants.on ? variants.testIds.filter(Boolean) : [];
+  const variantsReady = !variants.on || (variantIds.length > 0 && variantIds.length === variants.testIds.length);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -169,6 +174,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
           grade_to_journal: toJournal,
           grade_type_id: toJournal ? gradeTypeId || null : null,
           proctoring,
+          ...(variantIds.length ? { variant_test_ids: variantIds, variants: variants.manual ? variants.picks : {} } : {}),
         }),
       );
     } catch (err) {
@@ -270,6 +276,16 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
         </Select>
       )}
 
+      <AssignVariants
+        value={variants}
+        onChange={setVariants}
+        tests={tests.data ?? []}
+        mainTestId={testId}
+        targetType={targetType}
+        targetId={targetId}
+        studentName={students.data?.find((s) => s.student_id === targetId)?.full_name}
+      />
+
       <div className="grid gap-3 sm:grid-cols-2">
         <When label="Откроется (пусто — сразу)" date={openDate} time={openTime} onDate={setOpenDate} onTime={setOpenTime} />
         <When label="Закроется (пусто — без срока)" date={closeDate} time={closeTime} onDate={setCloseDate} onTime={setCloseTime} />
@@ -346,7 +362,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
       <Button
         type="submit"
         loading={busy}
-        disabled={!testId || !targetId || (withLesson && !lessonId) || !(scale.five > scale.four && scale.four > scale.three)}
+        disabled={!testId || !targetId || !variantsReady || (withLesson && !lessonId) || !(scale.five > scale.four && scale.four > scale.three)}
         className="w-full"
       >
         {kind === "live" && !openDate ? "Запустить тест" : "Назначить"}
