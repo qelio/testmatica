@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { AssignVariants, NO_VARIANTS, type VariantsValue } from "@/components/assign-variants";
+import { EMPTY_VARIANTS, VariantSplit, variantsReady, VariantTests, type VariantsValue } from "@/components/assign-variants";
 import { Alert, Button, Field, Select } from "@/components/ui";
 import { academic, type Assignment, type AssignmentKind, assessment, billing, classroom, type GradeScale, schedule } from "@/lib/api";
 import { fmtDateTime, fromInputs } from "@/lib/dates";
@@ -25,6 +25,10 @@ const KINDS: { kind: AssignmentKind; title: string; hint: string }[] = [
     title: "Тест на уроке",
     hint: "Проходят во время занятия, вы видите прогресс каждого. Когда закончите — завершите тест, незавершённые работы сдадутся.",
   },
+];
+const MODES: { mode: "plain" | "variants"; title: string; hint: string }[] = [
+  { mode: "plain", title: "Обычное", hint: "Один тест — всем ученикам." },
+  { mode: "variants", title: "По вариантам", hint: "Одна работа, но у учеников разные тесты." },
 ];
 const ATTEMPTS: { value: string; title: string }[] = [
   { value: "1", title: "Одна" },
@@ -139,20 +143,22 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
   const [proctoring, setProctoring] = useState(false);
   const [gradeTypeId, setGradeTypeId] = useState("");
   const [scale, setScale] = useState<GradeScale>(DEFAULT_SCALE);
-  const [variants, setVariants] = useState<VariantsValue>(NO_VARIANTS);
+  // Обычное назначение — один тест; по вариантам — у учеников разные тесты (решение №48).
+  const [mode, setMode] = useState<"plain" | "variants">("plain");
+  const [variants, setVariants] = useState<VariantsValue>(EMPTY_VARIANTS);
+  const byVariants = mode === "variants";
+  const mainId = byVariants ? variants.testIds[0] : testId;
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
   const withLesson = kind !== "test";
-  const selectedTest = tests.data?.find((t) => t.id === testId);
+  const selectedTest = tests.data?.find((t) => t.id === mainId);
   const targetLessons = (lessons.data ?? []).filter(
     (l) =>
       l.status !== "cancelled" &&
       (targetType === "group" ? l.group_id === targetId : l.kind === "individual" && l.participants?.some((p) => p.id === targetId)),
   );
 
-  const variantIds = variants.on ? variants.testIds.filter(Boolean) : [];
-  const variantsReady = !variants.on || (variantIds.length > 0 && variantIds.length === variants.testIds.length);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -161,7 +167,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
     const lesson = withLesson ? lessonId || null : null;
     try {
       onAssigned(
-        await assessment.assign(testId, {
+        await assessment.assign(mainId, {
           kind,
           title: title.trim() || null,
           target_type: targetType,
@@ -174,7 +180,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
           grade_to_journal: toJournal,
           grade_type_id: toJournal ? gradeTypeId || null : null,
           proctoring,
-          ...(variantIds.length ? { variant_test_ids: variantIds, variants: variants.manual ? variants.picks : {} } : {}),
+          ...(byVariants ? { variant_test_ids: variants.testIds.slice(1), variants: variants.manual ? variants.picks : {} } : {}),
         }),
       );
     } catch (err) {
@@ -184,189 +190,227 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
     }
   }
 
+  function switchMode(next: "plain" | "variants") {
+    if (next === mode) return;
+    // Выбранный тест переходит между режимами: обычный тест ↔ 1-й вариант.
+    if (next === "variants" && testId && !variants.testIds[0]) setVariants({ ...variants, testIds: [testId, ...variants.testIds.slice(1)] });
+    if (next === "plain" && variants.testIds[0]) setTestId(variants.testIds[0]);
+    setMode(next);
+  }
+
   const tab = (active: boolean) =>
     `flex-1 rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap ${active ? "bg-surface shadow-sm" : "text-fg-soft hover:text-fg"}`;
 
   return (
-    <form className="space-y-5" onSubmit={submit}>
-      {error && <Alert>{error}</Alert>}
-      <Select label="Тест" value={testId} required onChange={(e) => setTestId(e.target.value)}>
-        <option value="">{tests.data && !tests.data.length ? "Сначала создайте тест" : "Выберите тест"}</option>
-        {own.data?.map((t) => (
-          <option key={t.id} value={t.id}>
-            {t.title} · заданий: {t.tasks_count}
-          </option>
-        ))}
-        {fromCourse && (
-          <optgroup label={`Из курса «${fromCourse.module?.course_title ?? "библиотеки"}»`}>
-            <option value={fromCourse.id}>
-              {fromCourse.title} · заданий: {fromCourse.tasks_count}
-            </option>
-          </optgroup>
-        )}
-      </Select>
-      <Field
-        label="Название для учеников"
-        maxLength={200}
-        value={title}
-        placeholder={tests.data?.find((t) => t.id === testId)?.title ?? "Например: ДЗ к уроку 12 марта"}
-        hint="Так назначение увидят ученики, в журнале и уведомлениях. Не заполните — будет как у теста."
-        onChange={(e) => setTitle(e.target.value)}
-      />
-
-      <div className="space-y-2">
-        <div className="flex flex-wrap rounded-xl border border-line bg-muted p-1" role="radiogroup" aria-label="Как назначить">
-          {KINDS.map((k) => (
-            <button key={k.kind} type="button" role="radio" aria-checked={kind === k.kind} className={tab(kind === k.kind)} onClick={() => setKind(k.kind)}>
-              {k.title}
-            </button>
-          ))}
-        </div>
-        <p className="text-sm text-fg-soft">{KINDS.find((k) => k.kind === kind)?.hint}</p>
-      </div>
-
-      <div className="grid grid-cols-[auto_1fr] items-end gap-3">
-        <Select
-          label="Кому"
-          value={targetType}
-          onChange={(e) => {
-            setTargetType(e.target.value as "group" | "student");
-            setTargetId("");
-            setLessonId("");
-          }}
-        >
-          <option value="group">Группе</option>
-          <option value="student">Ученику</option>
-        </Select>
-        <Select
-          label={targetType === "group" ? "Группа" : "Ученик"}
-          value={targetId}
-          required
-          onChange={(e) => {
-            setTargetId(e.target.value);
-            setLessonId("");
-          }}
-        >
-          <option value="">Выберите</option>
-          {targetType === "group"
-            ? groups.data?.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.title}
-                </option>
-              ))
-            : students.data
-                ?.filter((s) => s.status === "active")
-                .map((s) => (
-                  <option key={s.student_id} value={s.student_id}>
-                    {s.full_name}
-                  </option>
-                ))}
-        </Select>
-      </div>
-
-      {withLesson && (
-        <Select label="Урок" value={lessonId} required disabled={!targetId} onChange={(e) => setLessonId(e.target.value)}>
-          <option value="">{targetId ? (targetLessons.length ? "Выберите урок" : "Уроков рядом нет") : "Сначала выберите, кому"}</option>
-          {targetLessons.map((l) => (
-            <option key={l.id} value={l.id}>
-              {fmtDateTime(l.starts_at)}
-              {l.topic ? ` · ${l.topic}` : l.subject ? ` · ${l.subject}` : ""}
-            </option>
-          ))}
-        </Select>
-      )}
-
-      <AssignVariants
-        value={variants}
-        onChange={setVariants}
-        tests={tests.data ?? []}
-        mainTestId={testId}
-        targetType={targetType}
-        targetId={targetId}
-        studentName={students.data?.find((s) => s.student_id === targetId)?.full_name}
-      />
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <When label="Откроется (пусто — сразу)" date={openDate} time={openTime} onDate={setOpenDate} onTime={setOpenTime} />
-        <When label="Закроется (пусто — без срока)" date={closeDate} time={closeTime} onDate={setCloseDate} onTime={setCloseTime} />
-      </div>
-
-      <fieldset>
-        <legend className="mb-1.5 text-sm font-medium">Сколько раз можно пройти</legend>
-        <div className="flex flex-wrap gap-1.5">
-          {ATTEMPTS.map((o) => (
+    <div className="space-y-4">
+      {/* Обычное назначение или по вариантам (решение №48) — над формой, крупными плитками. */}
+      <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Как назначить: один тест или варианты">
+        {MODES.map((m) => {
+          const active = mode === m.mode;
+          return (
             <button
-              key={o.value || "none"}
+              key={m.mode}
               type="button"
-              aria-pressed={attempts === o.value}
-              onClick={() => setAttempts(o.value)}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${attempts === o.value ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+              role="radio"
+              aria-checked={active}
+              onClick={() => switchMode(m.mode)}
+              className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors ${active ? "border-brand bg-brand/5 ring-2 ring-brand/20" : "border-line bg-surface hover:bg-muted"}`}
             >
-              {o.title}
+              <span aria-hidden className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${active ? "border-brand" : "border-line"}`}>
+                {active && <span className="h-2.5 w-2.5 rounded-full bg-brand" />}
+              </span>
+              <span>
+                <span className="block font-medium">{m.title}</span>
+                <span className="block text-sm text-fg-soft">{m.hint}</span>
+              </span>
             </button>
-          ))}
-        </div>
-        {attempts !== "1" && <p className="mt-1.5 text-xs text-fg-soft">В итог и в журнал идёт лучшая из попыток.</p>}
-      </fieldset>
-
-      <GradeCriteria scale={scale} onChange={setScale} maxScore={selectedTest?.max_score} />
-
-      <label className="flex items-start gap-3">
-        <input type="checkbox" checked={toJournal} onChange={(e) => setToJournal(e.target.checked)} className="mt-1 h-4 w-4 accent-brand" />
-        <span className="text-sm">
-          <span className="font-medium">Выставить оценку в журнал</span>
-          <span className="block text-fg-soft">
-            Когда работа проверена, оценка появится в журнале {targetType === "group" ? "группы" : "ученика"} отдельной колонкой с названием
-            работы — не в колонке урока.
-          </span>
-        </span>
-      </label>
-      {toJournal && (
-        <Select label="Тип оценки" value={gradeTypeId} required onChange={(e) => setGradeTypeId(e.target.value)}>
-          <option value="">Выберите</option>
-          {gradeTypes.data?.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </Select>
-      )}
-
-      <label className={`flex items-start gap-3 ${plan.data === "basic" ? "" : "opacity-60"}`}>
-        <input
-          type="checkbox"
-          checked={proctoring}
-          disabled={plan.data !== "basic"}
-          onChange={(e) => setProctoring(e.target.checked)}
-          className="mt-1 h-4 w-4 accent-brand"
-        />
-        <span className="text-sm">
-          <span className="font-medium">Прокторинг</span>
-          <span className="block text-fg-soft">
-            Ученик соглашается на мониторинг и показывает весь экран; вы видите экраны всех, сигналы о смене вкладки и можете включить
-            камеру. Экран записывается, запись хранится 2 недели.
-            {plan.data && plan.data !== "basic" && (
-              <>
-                {" "}
-                Доступно на тарифе{" "}
-                <Link href="/dashboard/subscription" className="text-brand hover:underline">
-                  «Базовый»
-                </Link>
-                .
-              </>
+          );
+        })}
+      </div>
+      <form className="space-y-5 rounded-2xl border border-line bg-surface p-5" onSubmit={submit}>
+        {error && <Alert>{error}</Alert>}
+        {byVariants ? (
+          <VariantTests value={variants} onChange={setVariants} tests={tests.data ?? []} />
+        ) : (
+          <Select label="Тест" value={testId} required onChange={(e) => setTestId(e.target.value)}>
+            <option value="">{tests.data && !tests.data.length ? "Сначала создайте тест" : "Выберите тест"}</option>
+            {own.data?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title} · заданий: {t.tasks_count}
+              </option>
+            ))}
+            {fromCourse && (
+              <optgroup label={`Из курса «${fromCourse.module?.course_title ?? "библиотеки"}»`}>
+                <option value={fromCourse.id}>
+                  {fromCourse.title} · заданий: {fromCourse.tasks_count}
+                </option>
+              </optgroup>
             )}
-          </span>
-        </span>
-      </label>
+          </Select>
+        )}
+        <Field
+          label="Название для учеников"
+          maxLength={200}
+          value={title}
+          placeholder={selectedTest?.title ?? "Например: ДЗ к уроку 12 марта"}
+          hint="Так назначение увидят ученики, в журнале и уведомлениях. Не заполните — будет как у теста."
+          onChange={(e) => setTitle(e.target.value)}
+        />
 
-      <Button
-        type="submit"
-        loading={busy}
-        disabled={!testId || !targetId || !variantsReady || (withLesson && !lessonId) || !(scale.five > scale.four && scale.four > scale.three)}
-        className="w-full"
-      >
-        {kind === "live" && !openDate ? "Запустить тест" : "Назначить"}
-      </Button>
-    </form>
+        <div className="space-y-2">
+          <div className="flex flex-wrap rounded-xl border border-line bg-muted p-1" role="radiogroup" aria-label="Как назначить">
+            {KINDS.map((k) => (
+              <button key={k.kind} type="button" role="radio" aria-checked={kind === k.kind} className={tab(kind === k.kind)} onClick={() => setKind(k.kind)}>
+                {k.title}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-fg-soft">{KINDS.find((k) => k.kind === kind)?.hint}</p>
+        </div>
+
+        <div className="grid grid-cols-[auto_1fr] items-end gap-3">
+          <Select
+            label="Кому"
+            value={targetType}
+            onChange={(e) => {
+              setTargetType(e.target.value as "group" | "student");
+              setTargetId("");
+              setLessonId("");
+            }}
+          >
+            <option value="group">Группе</option>
+            <option value="student">Ученику</option>
+          </Select>
+          <Select
+            label={targetType === "group" ? "Группа" : "Ученик"}
+            value={targetId}
+            required
+            onChange={(e) => {
+              setTargetId(e.target.value);
+              setLessonId("");
+            }}
+          >
+            <option value="">Выберите</option>
+            {targetType === "group"
+              ? groups.data?.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.title}
+                  </option>
+                ))
+              : students.data
+                  ?.filter((s) => s.status === "active")
+                  .map((s) => (
+                    <option key={s.student_id} value={s.student_id}>
+                      {s.full_name}
+                    </option>
+                  ))}
+          </Select>
+        </div>
+
+        {withLesson && (
+          <Select label="Урок" value={lessonId} required disabled={!targetId} onChange={(e) => setLessonId(e.target.value)}>
+            <option value="">{targetId ? (targetLessons.length ? "Выберите урок" : "Уроков рядом нет") : "Сначала выберите, кому"}</option>
+            {targetLessons.map((l) => (
+              <option key={l.id} value={l.id}>
+                {fmtDateTime(l.starts_at)}
+                {l.topic ? ` · ${l.topic}` : l.subject ? ` · ${l.subject}` : ""}
+              </option>
+            ))}
+          </Select>
+        )}
+
+        {byVariants && (
+          <VariantSplit
+            value={variants}
+            onChange={setVariants}
+            targetType={targetType}
+            targetId={targetId}
+            studentName={students.data?.find((s) => s.student_id === targetId)?.full_name}
+          />
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <When label="Откроется (пусто — сразу)" date={openDate} time={openTime} onDate={setOpenDate} onTime={setOpenTime} />
+          <When label="Закроется (пусто — без срока)" date={closeDate} time={closeTime} onDate={setCloseDate} onTime={setCloseTime} />
+        </div>
+
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-medium">Сколько раз можно пройти</legend>
+          <div className="flex flex-wrap gap-1.5">
+            {ATTEMPTS.map((o) => (
+              <button
+                key={o.value || "none"}
+                type="button"
+                aria-pressed={attempts === o.value}
+                onClick={() => setAttempts(o.value)}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${attempts === o.value ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+              >
+                {o.title}
+              </button>
+            ))}
+          </div>
+          {attempts !== "1" && <p className="mt-1.5 text-xs text-fg-soft">В итог и в журнал идёт лучшая из попыток.</p>}
+        </fieldset>
+
+        <GradeCriteria scale={scale} onChange={setScale} maxScore={selectedTest?.max_score} />
+
+        <label className="flex items-start gap-3">
+          <input type="checkbox" checked={toJournal} onChange={(e) => setToJournal(e.target.checked)} className="mt-1 h-4 w-4 accent-brand" />
+          <span className="text-sm">
+            <span className="font-medium">Выставить оценку в журнал</span>
+            <span className="block text-fg-soft">
+              Когда работа проверена, оценка появится в журнале {targetType === "group" ? "группы" : "ученика"} отдельной колонкой с названием
+              работы — не в колонке урока.
+            </span>
+          </span>
+        </label>
+        {toJournal && (
+          <Select label="Тип оценки" value={gradeTypeId} required onChange={(e) => setGradeTypeId(e.target.value)}>
+            <option value="">Выберите</option>
+            {gradeTypes.data?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </Select>
+        )}
+
+        <label className={`flex items-start gap-3 ${plan.data === "basic" ? "" : "opacity-60"}`}>
+          <input
+            type="checkbox"
+            checked={proctoring}
+            disabled={plan.data !== "basic"}
+            onChange={(e) => setProctoring(e.target.checked)}
+            className="mt-1 h-4 w-4 accent-brand"
+          />
+          <span className="text-sm">
+            <span className="font-medium">Прокторинг</span>
+            <span className="block text-fg-soft">
+              Ученик соглашается на мониторинг и показывает весь экран; вы видите экраны всех, сигналы о смене вкладки и можете включить
+              камеру. Экран записывается, запись хранится 2 недели.
+              {plan.data && plan.data !== "basic" && (
+                <>
+                  {" "}
+                  Доступно на тарифе{" "}
+                  <Link href="/dashboard/subscription" className="text-brand hover:underline">
+                    «Базовый»
+                  </Link>
+                  .
+                </>
+              )}
+            </span>
+          </span>
+        </label>
+
+        <Button
+          type="submit"
+          loading={busy}
+          disabled={!mainId || !targetId || (byVariants && !variantsReady(variants)) || (withLesson && !lessonId) || !(scale.five > scale.four && scale.four > scale.three)}
+          className="w-full"
+        >
+          {kind === "live" && !openDate ? "Запустить тест" : "Назначить"}
+        </Button>
+      </form>
+    </div>
   );
 }

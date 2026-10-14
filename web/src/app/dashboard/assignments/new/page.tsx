@@ -29,17 +29,15 @@ function Form() {
   const kind = q.get("kind");
   const targetType = q.get("target_type");
   return (
-    <div className="rounded-2xl border border-line bg-surface p-5">
-      <AssignForm
-        preset={{
-          testId: q.get("test") ?? undefined,
-          kind: kind === "test" || kind === "homework" || kind === "live" ? (kind as AssignmentKind) : undefined,
-          targetType: targetType === "group" || targetType === "student" ? targetType : undefined,
-          targetId: q.get("target") ?? undefined,
-          lessonId: q.get("lesson") ?? undefined,
-        }}
-        onAssigned={(a) => router.push(`/dashboard/assignments/${a.id}`)}
-      />
-    </div>
+    <AssignForm
+      preset={{
+        testId: q.get("test") ?? undefined,
+        kind: kind === "test" || kind === "homework" || kind === "live" ? (kind as AssignmentKind) : undefined,
+        targetType: targetType === "group" || targetType === "student" ? targetType : undefined,
+        targetId: q.get("target") ?? undefined,
+        lessonId: q.get("lesson") ?? undefined,
+      }}
+      onAssigned={(a) => router.push(`/dashboard/assignments/${a.id}`)}
+    />
   );
 }
