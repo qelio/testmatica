@@ -377,10 +377,10 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
         <label className="flex items-start gap-3">
           <input type="checkbox" checked={afterReview} onChange={(e) => setAfterReview(e.target.checked)} className="mt-1 h-4 w-4 accent-brand" />
           <span className="text-sm">
-            <span className="font-medium">Показать оценку только после моей проверки</span>
+            <span className="font-medium">Показать результаты только после моей проверки</span>
             <span className="block text-fg-soft">
-              Без галочки ученик видит баллы и оценку сразу, как только работа проверится автоматически. С галочкой — только после того,
-              как вы её проверите и подтвердите.
+              Без галочки ученик сразу после сдачи видит, что решено верно, баллы и оценку (всё, что проверилось автоматически). С галочкой
+              — ни «верно/неверно», ни разбора, ни оценки, пока вы не проверите работу и не подтвердите проверку.
             </span>
           </span>
         </label>

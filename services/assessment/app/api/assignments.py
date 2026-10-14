@@ -595,6 +595,8 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
     checks = await _checks(session, t.id)
     settings = attempts.settings_for(a, t.student_id)
     per_task = settings.get("time_mode") == "per_task"
+    # «Оценка после проверки педагогом» (решение №49): до проверки ученик не видит ни итога, ни «верно/неверно», ни разбора.
+    hidden = not teacher_view and a.result_after_review and t.reviewed_at is None
 
     out: list[AttemptTask] = []
     for n, task_id in enumerate(t.task_order):
@@ -608,7 +610,7 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
         if order := t.option_orders.get(task_id):
             pos = {oid: i for i, oid in enumerate(order)}
             view.options.sort(key=lambda o: pos.get(str(o.id), 0))
-        if submitted:
+        if submitted and not hidden:
             view.explanation = task.explanation  # разбор — после сдачи
         sub, draft = subs.get(task.id), drafts.get(task.id)
         answer = sub.answer if sub else (draft.answer if draft else None)
@@ -619,7 +621,7 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
             locked=submitted or (per_task and n < t.current_index), solution_file=task_id in with_file,
             code_check=(mode := attempts.code_check(a, t.student_id, task_id)) if task.type == CODE else None,
             check=_check_out(checks.get(task.id, []), len(task.tests)) if task.type == CODE and mode == CODE_LIVE else None,
-            result=views.submission_out(sub, with_log=teacher_view, urls=urls) if sub else None,
+            result=views.submission_out(sub, with_log=teacher_view, urls=urls) if sub and not hidden else None,
             earned=attempts._earned(sub, points.get(task_id, 1)) if submitted and (t.checked or teacher_view) else None,
         ))
     return AttemptOut(
@@ -629,7 +631,7 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
         auto_submitted=t.auto_submitted, score=t.score if t.checked or teacher_view else None, max_score=t.max_score,
         percent=t.percent, grade=t.grade, checked=t.checked, needs_review=attempts.needs_review(a, t.student_id), reviewed_at=t.reviewed_at,
         grade_override=t.grade_override, grade_scale=a.grade_scale, server_time=datetime.now(UTC), proctoring=a.proctoring,
-        finished_by_teacher=t.finished_by_teacher, screen_ok=_screen_ok(t, a), tasks=out,
+        finished_by_teacher=t.finished_by_teacher, screen_ok=_screen_ok(t, a), tasks=out, results_hidden=hidden and submitted,
     )
 
 

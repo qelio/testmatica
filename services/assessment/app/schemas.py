@@ -626,6 +626,7 @@ class AttemptOut(BaseModel):
     grade: int | None
     checked: bool
     needs_review: bool = Field(False, description="Работу проверяет педагог (файлы с решением)")
+    results_hidden: bool = Field(False, description="Ученику: «верно/неверно» и разбор — после проверки педагогом (решение №49)")
     reviewed_at: datetime | None = None
     grade_override: int | None = Field(None, description="Оценку поставил педагог вручную")
     grade_scale: dict[str, int] = Field(default_factory=dict)

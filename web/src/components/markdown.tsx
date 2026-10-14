@@ -46,6 +46,19 @@ function remarkAlign() {
   };
 }
 
+/** `<br>` в тексте (обычно в ячейках таблиц: «−32<br>14<br>17») — перенос строки. Остальной HTML не выполняется. */
+function remarkBr() {
+  return (tree: MdNode) => {
+    const walk = (node: MdNode) => {
+      if (!node.children) return;
+      node.children = node.children.map((child) =>
+        child.type === "html" && /^<br\s*\/?>$/i.test((child.value ?? "").trim()) ? { type: "break" } : (walk(child), child),
+      );
+    };
+    walk(tree);
+  };
+}
+
 /** Строка из одной формулы «$$…$$» — выносная формула по центру (remark-math ждёт $$ на отдельных строках). */
 function normalizeDisplayMath(text: string): string {
   return text.replace(/^[ \t]*\$\$([^\n]+?)\$\$[ \t]*$/gm, (_, formula: string) => `$$\n${formula.trim()}\n$$`);
@@ -88,7 +101,7 @@ const COMPONENTS: Components = {
   },
 };
 
-const REMARK = [remarkGfm, remarkMath, remarkDirective, remarkAlign];
+const REMARK = [remarkGfm, remarkMath, remarkDirective, remarkAlign, remarkBr];
 const REHYPE = [rehypeKatex];
 
 /** Текст материала: Markdown + таблицы + формулы ($…$ и $$…$$). Сырой HTML не выполняется. */

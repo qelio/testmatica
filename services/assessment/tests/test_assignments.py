@@ -835,7 +835,11 @@ async def test_result_after_review(client, fakes):
     await answer(client, attempt, tasks[0], olya, option_ids=[right])
     done = (await client.post(f"/attempts/{attempt['id']}/submit", headers=student(olya))).json()
     assert not done["checked"] and done["grade"] is None and done["score"] is None
+    # До проверки ученик не видит и «верно/неверно», и разбор; педагог — видит.
+    assert done["results_hidden"] and done["tasks"][0]["result"] is None and not done["tasks"][0]["task"]["explanation"]
+    teacher_view = (await client.get(f"/attempts/{attempt['id']}", headers=bearer(teacher))).json()
+    assert not teacher_view["results_hidden"] and teacher_view["tasks"][0]["result"]["status"] == "correct"
     reviewed = (await client.post(f"/attempts/{attempt['id']}/review", json={"tasks": {}}, headers=bearer(teacher))).json()
     assert reviewed["checked"] and reviewed["grade"] == 5
     mine = (await client.get(f"/attempts/{attempt['id']}", headers=student(olya))).json()
-    assert mine["score"] == 1 and mine["grade"] == 5
+    assert mine["score"] == 1 and mine["grade"] == 5 and not mine["results_hidden"] and mine["tasks"][0]["result"]["status"] == "correct"

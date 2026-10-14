@@ -1273,6 +1273,8 @@ export type Attempt = {
   checked: boolean;
   /** Работу проверяет педагог (файлы с решением). */
   needs_review: boolean;
+  /** Ученику: «верно/неверно» и разбор — после проверки педагогом (решение №49). */
+  results_hidden?: boolean;
   reviewed_at: string | null;
   /** Оценку поставил педагог вручную. */
   grade_override: number | null;

@@ -451,7 +451,9 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
                 {teacher && item.task.type === "long" && <ReviewForm sub={item.result} points={item.points} onChanged={reload} />}
               </div>
             )}
-            {!item.result && !inProgress && <p className="border-t border-line pt-3 text-sm text-fg-soft">Без ответа — 0 баллов</p>}
+            {!item.result && !inProgress && !attempt.results_hidden && (
+              <p className="border-t border-line pt-3 text-sm text-fg-soft">Без ответа — 0 баллов</p>
+            )}
             {reviewing && item.task.type !== "long" && (
               <CountToggle
                 value={marks[item.task.id] ?? isCorrect(item)}
@@ -612,6 +614,8 @@ function ResultHeader({ attempt, teacher }: { attempt: Attempt; teacher: boolean
           Работа сдана. Верно: {correct} из {attempt.tasks.length}. Это самостоятельное прохождение — развёрнутые ответы и файлы
           педагог не проверяет, сверьтесь с разбором решений.
         </span>
+      ) : attempt.results_hidden ? (
+        <span>Работа сдана. Результаты и оценку вы увидите, когда педагог проверит работу.</span>
       ) : attempt.checked ? (
         <>
           <span className="tm-grade text-3xl font-semibold">{attempt.grade}</span>
