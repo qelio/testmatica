@@ -78,9 +78,16 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
             {rows.map((t) => (
-              <TeacherRow key={t.id} {...t} assign={canAssign} />
+              <TeacherRow key={t.id} {...t} moduleId={moduleId} assign={canAssign} />
             ))}
           </ul>
+        )}
+        {canAssign && rows.length > 1 && (
+          <p className="rounded-xl bg-muted px-4 py-3 text-sm text-fg-soft">
+            <span className="font-medium text-fg">Можно назначить по вариантам.</span> Нажмите «Назначить» у любого теста и выберите «По
+            вариантам» — все тесты этой темы, в том числе тесты автора курса, будут в списке вариантов. Ученики получат одну работу, но
+            разные тесты.
+          </p>
         )}
       </section>
     );
@@ -130,11 +137,13 @@ function TeacherRow({
   title,
   tasks,
   points,
+  moduleId,
   assign,
   visibility,
   note,
 }: {
   id: string;
+  moduleId: string;
   title: string;
   tasks: number;
   points: number;
@@ -160,7 +169,7 @@ function TeacherRow({
           Открыть
         </Link>
         {assign && tasks > 0 && (
-          <Link href={`/dashboard/assignments/new?test=${id}`} className="text-sm font-medium text-brand hover:underline">
+          <Link href={`/dashboard/assignments/new?test=${id}&module=${moduleId}`} className="text-sm font-medium text-brand hover:underline">
             Назначить
           </Link>
         )}
