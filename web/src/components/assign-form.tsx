@@ -142,9 +142,16 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
   const groups = useLoad(() => classroom.groups(), []);
   const students = useLoad(() => classroom.students(), []);
   // Уроки за месяц назад и на два вперёд — к какому привязать тест и куда ставить оценку.
-  const lessons = useLoad(() => {
+  // Расписание отдаёт не больше 62 дней за запрос — поэтому двумя частями.
+  const lessons = useLoad(async () => {
     const now = Date.now();
-    return schedule.lessons(new Date(now - 30 * 864e5), new Date(now + 60 * 864e5));
+    const day = 864e5;
+    const parts = await Promise.all([
+      schedule.lessons(new Date(now - 30 * day), new Date(now + 15 * day)),
+      schedule.lessons(new Date(now + 15 * day), new Date(now + 60 * day)),
+    ]);
+    const seen = new Set<string>();
+    return parts.flat().filter((l) => !seen.has(l.id) && seen.add(l.id));
   }, []);
   const gradeTypes = useLoad(() => academic.gradeTypes(), []);
   const plan = useLoad(async () => (await billing.subscription()).plan, []);
