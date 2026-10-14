@@ -338,6 +338,10 @@ class QuizItemIn(BaseModel):
     task_id: UUID
     points: int = Field(1, ge=1, le=100)
     solution_file: bool = Field(False, description="Ученик прикрепляет файл с решением (короткий ответ и выбор); проверяет педагог")
+    code_check: Literal["after", "live", "manual"] = Field(
+        "after", description="Задача с кодом: after — тесты после сдачи; live — ученик проверяет сам по кнопке (в оценку — лучшая "
+                             "проверка); manual — проверяет педагог",
+    )
 
 
 class QuizIn(BaseModel):
@@ -371,6 +375,7 @@ class QuizItemOut(BaseModel):
     task_id: UUID
     points: int
     solution_file: bool = False
+    code_check: str = "after"
     task: TaskSummary
 
 
@@ -454,6 +459,7 @@ class AssignIn(BaseModel):
     grade_to_journal: bool = Field(False, description="Оценка в журнал — отдельной колонкой работы, без привязки к уроку")
     grade_type_id: UUID | None = None
     proctoring: bool = Field(False, description="Прокторинг — тариф «Базовый»; ученик даёт согласие при старте")
+    result_after_review: bool = Field(False, description="Итог и оценка — ученику только после проверки педагогом")
     variant_test_ids: list[UUID] = Field(
         default_factory=list, max_length=9,
         description="Варианты (решение №48): тесты 2-го, 3-го… вариантов; 1-й — сам тест. Работа одна, у учеников разные тесты",
@@ -556,6 +562,7 @@ class AssignmentOut(BaseModel):
     variants: list[VariantOut] | None = Field(None, description="Педагогу — варианты работы (решение №48)")
     grade_scale: dict[str, int] = Field(description="С какого процента 5, 4, 3: {\"5\": 85, \"4\": 65, \"3\": 45}")
     needs_review: bool = Field(False, description="К заданиям прикладывают файлы с решением — итог после проверки педагогом")
+    result_after_review: bool = Field(False, description="Так выбрано при назначении: итог и оценка — после проверки педагогом")
     grade_to_journal: bool
     grade_type_id: UUID | None
     created_at: datetime
@@ -575,8 +582,27 @@ class AttemptTask(BaseModel):
     files: list[FileRef]
     locked: bool = Field(description="Таймер на задание: время вышло или задание пройдено")
     solution_file: bool = Field(False, description="Нужно прикрепить файл с решением")
+    code_check: str | None = Field(None, description="Задача с кодом: after, live или manual (решение №49)")
+    check: "CodeCheckOut | None" = Field(None, description="Проверка по кнопке: последняя и сколько всего")
     result: SubmissionOut | None = None
     earned: float | None = None
+
+
+class CodeCheckIn(BaseModel):
+    code: str = Field(min_length=1, max_length=50_000)
+
+
+class CodeCheckOut(BaseModel):
+    """Проверка кода по кнопке «Проверить»: ученику — только сколько тестов не прошло (решение №49)."""
+
+    status: str = Field(description="checking, correct, incorrect или error")
+    failed: int | None = Field(None, description="Сколько тестов не прошло")
+    total: int | None = None
+    count: int = Field(description="Сколько раз проверял")
+    passed_once: bool = Field(False, description="Хоть одна проверка прошла все тесты — это и пойдёт в оценку")
+
+
+AttemptTask.model_rebuild()
 
 
 class AttemptOut(BaseModel):

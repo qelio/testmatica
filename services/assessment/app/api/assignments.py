@@ -15,6 +15,8 @@ from .. import access, attempts, views
 from ..deps import auth, classroom, db, media, outbox, plans, schedule
 from ..models import (
     CHECKING,
+    CODE,
+    CODE_LIVE,
     CHOICE,
     CORRECT,
     ERROR,
@@ -44,6 +46,8 @@ from ..schemas import (
     AttemptReviewIn,
     AttemptStatusOut,
     AttemptTask,
+    CodeCheckIn,
+    CodeCheckOut,
     DraftIn,
     FileRef,
     ModuleRef,
@@ -91,7 +95,8 @@ def copy_of(test: Test, theme: str) -> dict:
         "module_id": test.module_id, "course_id": test.course_id, "module_title": test.module_title,
         "settings": {"order_mode": test.order_mode, "shuffle_options": test.shuffle_options, "time_mode": test.time_mode,
                      "time_limit_s": test.time_limit_s, "theme": theme},
-        "items": [{"task_id": str(i.task_id), "points": i.points, "solution_file": i.solution_file} for i in test.items],
+        "items": [{"task_id": str(i.task_id), "points": i.points, "solution_file": i.solution_file, "code_check": i.code_check}
+                  for i in test.items],
     }
 
 
@@ -162,7 +167,7 @@ async def assign(
         opens_at=body.opens_at, deadline=body.deadline, max_attempts=body.max_attempts,
         grade_scale=body.grade_scale.stored(),
         grade_to_journal=body.grade_to_journal, grade_type_id=body.grade_type_id if body.grade_to_journal else None,
-        proctoring=body.proctoring, variants=variants,
+        proctoring=body.proctoring, variants=variants, result_after_review=body.result_after_review,
         students=[AssignmentStudent(student_id=s, allowed_attempts=body.max_attempts or 1, variant=numbers.get(s)) for s in student_ids],
     )
     session.add(a)
@@ -284,7 +289,8 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
                        max_score=sum(i["points"] for i in v["items"]), settings=v.get("settings", a.settings))
             for n, v in enumerate(a.variants, 1)
         ] if a.variants and teacher_view else None,
-        needs_review=attempts.needs_review(a, None if teacher_view else p.user_id), grade_to_journal=a.grade_to_journal,
+        needs_review=attempts.needs_review(a, None if teacher_view else p.user_id), result_after_review=a.result_after_review,
+        grade_to_journal=a.grade_to_journal,
         grade_type_id=a.grade_type_id, created_at=a.created_at, students=students, can_start=can_start, server_time=now,
     )
 
@@ -420,7 +426,8 @@ async def _drop_attempts(session: AsyncSession, a: Assignment, student_ids: set[
         query = query.where(Attempt.student_id.in_(student_ids))
     tried = (await session.execute(query)).scalars().all()
     if tried:
-        await session.execute(delete(Submission).where(Submission.context_type == "assignment",
+        # Отправки работы и проверки кода по кнопке (решение №49) — вместе с попытками.
+        await session.execute(delete(Submission).where(Submission.context_type.in_(("assignment", "check")),
                                                        Submission.context_id.in_([t.id for t in tried])))
         for t in tried:
             await session.delete(t)
@@ -585,6 +592,7 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
     urls = await _file_urls([*subs.values(), *[_Files(d.files) for d in drafts.values()]])
     points = {i["task_id"]: i["points"] for i in attempts.items_for(a, t.student_id)}
     with_file = attempts.solution_tasks(a, t.student_id)
+    checks = await _checks(session, t.id)
     settings = attempts.settings_for(a, t.student_id)
     per_task = settings.get("time_mode") == "per_task"
 
@@ -609,6 +617,8 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
             task=view, points=points.get(task_id, 1), answer=answer,
             files=[FileRef(**f, url=urls.get(f["id"])) for f in files],
             locked=submitted or (per_task and n < t.current_index), solution_file=task_id in with_file,
+            code_check=(mode := attempts.code_check(a, t.student_id, task_id)) if task.type == CODE else None,
+            check=_check_out(checks.get(task.id, []), len(task.tests)) if task.type == CODE and mode == CODE_LIVE else None,
             result=views.submission_out(sub, with_log=teacher_view, urls=urls) if sub else None,
             earned=attempts._earned(sub, points.get(task_id, 1)) if submitted and (t.checked or teacher_view) else None,
         ))
@@ -701,6 +711,77 @@ async def save_answer(
     session.add(draft)
     await session.commit()
     return await attempt_out(session, t, a, principal, teacher_view=False)
+
+
+@router.post("/attempts/{attempt_id}/tasks/{task_id}/check", response_model=AttemptOut)
+async def check_code(
+    attempt_id: UUID,
+    task_id: UUID,
+    body: CodeCheckIn,
+    principal: Principal = Depends(auth.principal),
+    session: AsyncSession = Depends(db.session),
+) -> AttemptOut:
+    """Проверить код по кнопке (решение №49) — если так задано в тесте. Ученик видит, сколько тестов не прошло;
+    проверять можно сколько угодно раз, в оценку пойдёт лучшая проверка. Код сохраняется как черновик."""
+    t, a, is_teacher = await _attempt(session, attempt_id, principal, lock=True)
+    if is_teacher:
+        raise ApiError(403, "forbidden", "Отвечает ученик")
+    if not await _synced(session, t, a):
+        await session.commit()
+        raise _closed(t)
+    if not _screen_ok(t, a):
+        raise SCREEN_REQUIRED
+    if str(task_id) not in t.task_order:
+        raise ApiError(404, "task_not_found", "Такого задания нет в работе")
+    if attempts.code_check(a, t.student_id, str(task_id)) != CODE_LIVE:
+        raise ApiError(409, "check_not_allowed", "Эту задачу проверят после сдачи работы")
+    if attempts.settings_for(a, t.student_id).get("time_mode") == "per_task" and t.task_order.index(str(task_id)) != t.current_index:
+        raise ApiError(409, "task_locked", "К этому заданию уже нельзя вернуться")
+    if not body.code.strip():
+        raise ApiError(422, "code_empty", "Напишите код")
+    running = await session.scalar(
+        select(func.count()).select_from(Submission).where(
+            Submission.context_type == "check", Submission.context_id == t.id, Submission.task_id == task_id,
+            Submission.status == CHECKING,
+        )
+    )
+    if running:
+        raise ApiError(409, "check_running", "Предыдущая проверка ещё идёт")
+    now = datetime.now(UTC)
+    draft = await session.get(AttemptAnswer, (t.id, task_id)) or AttemptAnswer(attempt_id=t.id, task_id=task_id, files=[])
+    draft.answer, draft.updated_at = {"code": body.code}, now
+    session.add(draft)
+    sub = Submission(task_id=task_id, student_id=t.student_id, context_type="check", context_id=t.id,
+                     answer={"code": body.code}, files=[], status=CHECKING, created_at=now)
+    session.add(sub)
+    await session.flush()
+    await outbox.command(session, queue="assessment.code", type="assessment.code.check",
+                         data={"submission_id": str(sub.id)}, actor_id=t.student_id)
+    await session.commit()
+    return await attempt_out(session, t, a, principal, teacher_view=False)
+
+
+async def _checks(session: AsyncSession, attempt_id: UUID) -> dict[UUID, list[Submission]]:
+    """Проверки по кнопке в попытке — по задачам, по порядку."""
+    out: dict[UUID, list[Submission]] = {}
+    for s in (await session.execute(
+        select(Submission).where(Submission.context_type == "check", Submission.context_id == attempt_id).order_by(Submission.created_at)
+    )).scalars():
+        out.setdefault(s.task_id, []).append(s)
+    return out
+
+
+def _check_out(checks: list[Submission], total: int) -> CodeCheckOut | None:
+    """total — тестов у задачи: песочница останавливается на первом упавшем, поэтому «не прошли» — все, кроме пройденных."""
+    if not checks:
+        return None
+    last = checks[-1]
+    done = last.status in (CORRECT, INCORRECT)
+    passed = sum(1 for c in last.run_log or [] if c.get("status") == "passed")
+    return CodeCheckOut(
+        status=last.status, failed=(0 if last.status == CORRECT else max(1, total - passed)) if done else None,
+        total=total if done else None, count=len(checks), passed_once=any(c.status == CORRECT for c in checks),
+    )
 
 
 @router.post("/attempts/{attempt_id}/next", response_model=AttemptOut)

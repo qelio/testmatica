@@ -13,7 +13,7 @@ from .. import access, views
 from ..courses import course_test_for, in_review, module_info, modules_info, visibility, write_test
 from ..deps import auth, db
 from ..handlers import _publish as publish_task
-from ..models import SOLUTION_FILE_TYPES, Assignment, Task, Test, TestItem
+from ..models import CODE, CODE_AFTER, CODE_MANUAL, SOLUTION_FILE_TYPES, Assignment, Task, Test, TestItem
 from ..schemas import ModuleRef, QuizIn, QuizItemOut, QuizOut, QuizSummary
 
 router = APIRouter(prefix="/tests", tags=["tests"])
@@ -75,7 +75,8 @@ async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None =
         shuffle_options=view.shuffle_options, time_mode=view.time_mode, time_limit_s=view.time_limit_s,
         theme=view.theme, module=module_ref(view), shared=view.shared, visibility=visibility(test.owner_id, view.shared, module),
         published=test.published_at is not None, pending=test.pending is not None,
-        items=[QuizItemOut(task_id=i.task_id, points=i.points, solution_file=i.solution_file, task=summaries[i.task_id])
+        items=[QuizItemOut(task_id=i.task_id, points=i.points, solution_file=i.solution_file, code_check=i.code_check,
+                               task=summaries[i.task_id])
                for i in view.items if i.task_id in summaries],
         max_score=sum(i.points for i in view.items),
         assignments_count=(await _assignments_count(session, [test.id], viewer.user_id if viewer else None)).get(test.id, 0),
@@ -118,6 +119,10 @@ async def _validate(session: AsyncSession, test: Test, body: QuizIn, p: Principa
             raise ApiError(422, "task_not_available", "Задача недоступна — возможно, её сняли с публикации")
         if item.solution_file and task.type not in SOLUTION_FILE_TYPES:
             raise ApiError(422, "solution_file_not_allowed", "Файл с решением можно запросить только к короткому ответу и выбору варианта")
+        if task.type != CODE:
+            item.code_check = CODE_AFTER  # способ проверки — только у кода
+        elif item.code_check != CODE_MANUAL and not task.tests:
+            raise ApiError(422, "code_tests_required", f"У задачи «{task.title}» нет тестов — выберите проверку педагогом")
     module = await module_info(body.module_id, p.user_id) if body.module_id else None
     # Курс сняли с публикации — прежняя привязка остаётся, новую не сделать.
     if body.module_id and not (module and module["usable"]) and body.module_id != test.module_id:

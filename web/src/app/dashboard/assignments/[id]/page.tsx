@@ -111,6 +111,7 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
           isTeacher && a.variants ? null : `баллов: ${a.max_score}`,
           isTeacher && a.variants ? null : fmtLimit(a.settings),
           a.grade_to_journal ? "оценка в журнал" : null,
+          a.result_after_review ? (isTeacher ? "оценка — после вашей проверки" : "оценка — после проверки педагогом") : null,
           a.proctoring ? "с прокторингом" : null,
         ]
           .filter(Boolean)

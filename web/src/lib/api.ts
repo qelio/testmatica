@@ -1046,7 +1046,9 @@ export type QuizSettings = {
   /** У работ, выданных до появления оформлений, — нет (значит, классика). */
   theme?: CourseTheme;
 };
-export type QuizItemInput = { task_id: string; points: number; solution_file: boolean };
+/** Как проверяется код в тесте (решение №49): после сдачи, по кнопке «Проверить», педагогом. */
+export type CodeCheckMode = "after" | "live" | "manual";
+export type QuizItemInput = { task_id: string; points: number; solution_file: boolean; code_check?: CodeCheckMode };
 /** Оформление теста: «как у курса» у привязанного к модулю, иначе обычное (решение №44). */
 export type TestTheme = "classic" | "course";
 /** Вид теста при модуле (решение №46): автора курса — public (ученикам и педагогам) или teachers (всем педагогам),
@@ -1080,7 +1082,7 @@ export type Quiz = TestSettings & {
   can_edit: boolean;
   /** Для какого класса (1–11); у старых тестов — null. */
   grade_level: number | null;
-  items: { task_id: string; points: number; solution_file: boolean; task: TaskSummary }[];
+  items: { task_id: string; points: number; solution_file: boolean; code_check: CodeCheckMode; task: TaskSummary }[];
   max_score: number;
   assignments_count: number;
   updated_at: string;
@@ -1173,6 +1175,8 @@ export type Assignment = {
   grade_scale: GradeScaleStored;
   /** К заданиям прикладывают файлы с решением — итог после вашей проверки. */
   needs_review: boolean;
+  /** Так выбрано при назначении: итог и оценка — ученику после вашей проверки (решение №49). */
+  result_after_review?: boolean;
   grade_to_journal: boolean;
   grade_type_id: string | null;
   proctoring: boolean;
@@ -1216,6 +1220,8 @@ export type AssignInput = {
   grade_to_journal?: boolean;
   grade_type_id?: string | null;
   proctoring?: boolean;
+  /** Итог и оценка — ученику только после проверки педагогом. */
+  result_after_review?: boolean;
   /** Тесты 2-го, 3-го… вариантов (решение №48); 1-й — сам тест. */
   variant_test_ids?: string[];
   /** Вручную: ученик → номер варианта; остальным — поровну автоматически. */
@@ -1229,8 +1235,20 @@ export type AttemptTask = {
   locked: boolean;
   /** Нужно прикрепить файл с решением. */
   solution_file: boolean;
+  /** Задача с кодом: как проверяется (решение №49). */
+  code_check: CodeCheckMode | null;
+  /** Проверка по кнопке: последняя — сколько тестов не прошло; сколько раз проверял. */
+  check: CodeCheck | null;
   result: Submission | null;
   earned: number | null;
+};
+export type CodeCheck = {
+  status: "checking" | "correct" | "incorrect" | "error";
+  failed: number | null;
+  total: number | null;
+  count: number;
+  /** Хоть одна проверка прошла все тесты — она и пойдёт в оценку. */
+  passed_once: boolean;
 };
 export type Attempt = {
   id: string;
@@ -1377,6 +1395,8 @@ export const assessment = {
     api<void>(`${AS}/attempts/${attemptId}/proctor-events`, { method: "POST", body: { kind } }),
   proctorEvents: (attemptId: string) => api<{ kind: string; at: string }[]>(`${AS}/attempts/${attemptId}/proctor-events`),
   attempt: (id: string) => api<Attempt>(`${AS}/attempts/${id}`),
+  checkCode: (attemptId: string, taskId: string, code: string) =>
+    api<Attempt>(`${AS}/attempts/${attemptId}/tasks/${taskId}/check`, { method: "POST", body: { code } }),
   attemptStatus: (id: string) =>
     api<{ status: "in_progress" | "submitted"; screen_ok: boolean; finished_by_teacher: boolean }>(`${AS}/attempts/${id}/status`),
   /** Педагог завершает работу ученика досрочно. */

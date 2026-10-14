@@ -29,6 +29,11 @@ ERROR = "error"  # сбой проверки (не вина ученика) — 
 PENDING_REVIEW = "pending_review"
 REVIEWED = "reviewed"
 
+# Как проверяется код в тесте (решение №49): after — тесты после сдачи; live — ученик сам нажимает «Проверить»
+# сколько угодно раз, в оценку — лучшая проверка; manual — без тестов, проверяет педагог.
+CODE_AFTER, CODE_LIVE, CODE_MANUAL = "after", "live", "manual"
+CODE_CHECKS = (CODE_AFTER, CODE_LIVE, CODE_MANUAL)
+
 
 class Base(DeclarativeBase):
     pass
@@ -219,7 +224,8 @@ class Submission(Base):
 
     __tablename__ = "submissions"
     __table_args__ = (
-        CheckConstraint("context_type IN ('practice', 'assignment')", name="context_valid"),
+        # check — проверка по кнопке «Проверить» в попытке (context_id = попытка), в итог не идёт напрямую (решение №49).
+        CheckConstraint("context_type IN ('practice', 'assignment', 'check')", name="context_valid"),
         CheckConstraint(
             "status IN ('checking', 'correct', 'incorrect', 'error', 'pending_review', 'reviewed')", name="status_valid"
         ),
@@ -312,6 +318,8 @@ class TestItem(Base):
     points: Mapped[int] = mapped_column(SmallInteger, default=1)
     # Короткий ответ или выбор: ученик прикрепляет файл с решением, работу проверяет педагог (решение №34).
     solution_file: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Задача с кодом: как проверяется (решение №49) — after, live или manual.
+    code_check: Mapped[str] = mapped_column(String(8), default=CODE_AFTER, server_default=CODE_AFTER)
 
 
 class Assignment(Base):
@@ -350,7 +358,7 @@ class Assignment(Base):
     max_attempts: Mapped[int | None] = mapped_column(SmallInteger)
     # {order_mode, shuffle_options, time_mode, time_limit_s, theme}
     settings: Mapped[dict[str, Any]] = mapped_column(JSONB)
-    # [{task_id, points, solution_file}] — в порядке теста (при вариантах — первый вариант)
+    # [{task_id, points, solution_file, code_check}] — в порядке теста (при вариантах — первый вариант)
     items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     # Варианты (решение №48): одна работа, у учеников разные тесты. [{test_id, test_title, items, settings}] — по порядку,
     # первый — тест работы; null — без вариантов. У варианта свои состав и настройки (как у его теста), критерии — общие.
@@ -363,6 +371,8 @@ class Assignment(Base):
     grade_type_id: Mapped[UUID | None]
     # Прокторинг (тариф «Базовый»): демонстрация экрана ученика, камера по запросу, сигналы о смене вкладки (ТЗ, раздел 7).
     proctoring: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Итог и оценку ученик видит только после проверки педагогом (решение №49), даже если всё проверилось автоматически.
+    result_after_review: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # тест на уроке завершён
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

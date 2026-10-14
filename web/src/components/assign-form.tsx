@@ -162,6 +162,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
   const [attempts, setAttempts] = useState("1");
   const [toJournal, setToJournal] = useState(false);
   const [proctoring, setProctoring] = useState(false);
+  const [afterReview, setAfterReview] = useState(false);
   const [gradeTypeId, setGradeTypeId] = useState("");
   const [scale, setScale] = useState<GradeScale>(DEFAULT_SCALE);
   // Обычное назначение — один тест; по вариантам — у учеников разные тесты (решение №48).
@@ -201,6 +202,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
           grade_to_journal: toJournal,
           grade_type_id: toJournal ? gradeTypeId || null : null,
           proctoring,
+          result_after_review: afterReview,
           ...(byVariants ? { variant_test_ids: variants.testIds.slice(1), variants: variants.manual ? variants.picks : {} } : {}),
         }),
       );
@@ -364,6 +366,17 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
         </fieldset>
 
         <GradeCriteria scale={scale} onChange={setScale} maxScore={selectedTest?.max_score} />
+
+        <label className="flex items-start gap-3">
+          <input type="checkbox" checked={afterReview} onChange={(e) => setAfterReview(e.target.checked)} className="mt-1 h-4 w-4 accent-brand" />
+          <span className="text-sm">
+            <span className="font-medium">Показать оценку только после моей проверки</span>
+            <span className="block text-fg-soft">
+              Без галочки ученик видит баллы и оценку сразу, как только работа проверится автоматически. С галочкой — только после того,
+              как вы её проверите и подтвердите.
+            </span>
+          </span>
+        </label>
 
         <label className="flex items-start gap-3">
           <input type="checkbox" checked={toJournal} onChange={(e) => setToJournal(e.target.checked)} className="mt-1 h-4 w-4 accent-brand" />
