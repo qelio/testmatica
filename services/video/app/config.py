@@ -34,6 +34,8 @@ class Settings(CommonSettings):
     # Ёмкость комнат (ТЗ, раздел 7).
     individual_capacity: int = 2
     group_capacity: int = 16
+    # Прокторинг — весь класс сразу (решение №50): на 17 учениках с педагогом прежний лимит 16 + 1 переполнялся.
+    proctor_capacity: int = 40
 
 
 settings = Settings()

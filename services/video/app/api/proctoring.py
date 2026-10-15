@@ -10,13 +10,15 @@ from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
 
 from .. import people, proctoring, storage
+from ..config import settings
 from ..deps import assessment, auth, db, livekit
 from ..models import FAILED, READY, RECORDING, ProctorRecording
 from ..schemas import ProctorJoinOut, ProctorRecordingOut, ProctorStudentOut
 
 router = APIRouter(prefix="/proctoring", tags=["proctoring"])
 
-MAX_PARTICIPANTS = 16 + 1  # до 15 учеников и педагог; +1 — запас на переподключение
+# Ученики класса, педагог и запас на переподключения (старое соединение уходит не сразу — departure_timeout).
+MAX_PARTICIPANTS = settings.proctor_capacity + 1 + 5
 
 
 async def _access(assignment_id: UUID, p: Principal) -> dict:

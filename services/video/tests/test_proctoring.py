@@ -25,7 +25,7 @@ async def test_proctoring_join_and_screen_recording(client, lk, proctored, s3):
     assert lk.tokens[-1]["metadata"] == {"role": "student", "teacher_id": str(teacher), "title": "Контрольная", "attempt_id": str(attempt)}
     assert (await client.post(f"/proctoring/{assignment}/join", headers=bearer(idle))).json()["error"]["code"] == "no_attempt"
     assert (await client.post(f"/proctoring/{assignment}/join", headers=bearer(stranger))).status_code == 404
-    assert lk.rooms[f"proctor-{assignment}"] == 17
+    assert lk.rooms[f"proctor-{assignment}"] == 46  # до 40 учеников, педагог и запас на переподключения
 
     # Ученик включил показ экрана — дорожка пишется в отдельный файл; камера не пишется.
     room = f"proctor-{assignment}"
