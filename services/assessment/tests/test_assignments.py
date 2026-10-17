@@ -843,3 +843,70 @@ async def test_result_after_review(client, fakes):
     assert reviewed["checked"] and reviewed["grade"] == 5
     mine = (await client.get(f"/attempts/{attempt['id']}", headers=student(olya))).json()
     assert mine["score"] == 1 and mine["grade"] == 5 and not mine["results_hidden"] and mine["tasks"][0]["result"]["status"] == "correct"
+
+
+async def test_review_partial_points(client, fakes):
+    """Педагог при проверке ставит любые баллы за задание — от 0 до максимума (например, 1 из 2 за почти верный код)."""
+    teacher, olya = uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:3])  # выбор 1 балл, короткий 1, код 2
+    await link(teacher, olya)
+    a = await assign(client, teacher, test, target_type="student", target_id=str(olya))
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(olya))).json()
+    await answer(client, attempt, tasks[2], olya, code="print(41)")
+    await client.post(f"/attempts/{attempt['id']}/submit", headers=student(olya))
+    await run_code_checks()
+    url = f"/attempts/{attempt['id']}/review"
+    bad = await client.post(url, json={"points": {tasks[2]["id"]: 3}}, headers=bearer(teacher))
+    assert bad.status_code == 422 and bad.json()["error"]["code"] == "points_out_of_range"
+    done = (await client.post(url, json={"points": {tasks[2]["id"]: 1.5, tasks[0]["id"]: 1}}, headers=bearer(teacher))).json()
+    code = next(t for t in done["tasks"] if t["task"]["id"] == tasks[2]["id"])
+    assert (code["earned"], code["result"]["status"], done["score"], done["max_score"]) == (1.5, "reviewed", 2.5, 4)
+
+
+async def test_staff_task_added_to_published_course(client, fakes):
+    """Задача, которую штатный редактор добавил в опубликованный курс, публикуется сразу; чужая — нет (решение №51)."""
+    editor, other = uuid4(), uuid4()
+    mine = (await make_tasks(client, editor))[0]
+    foreign = (await make_tasks(client, other))[0]
+    await apply(handlers.on_content_event, "content.course.tasks_added", course_id=uuid4(), author_id=editor,
+                task_ids=[mine["id"], foreign["id"]])
+    assert (await client.get(f"/tasks/{mine['id']}", headers=bearer(editor))).json()["status"] == "published"
+    assert (await client.get(f"/tasks/{foreign['id']}", headers=bearer(other))).json()["status"] == "private"
+
+
+async def test_update_assigned_work(client, fakes):
+    """Выданную работу можно поправить (решение №52): сроки, попытки, критерии, баллы — сданные попытки пересчитываются,
+    оценка в журнале обновляется; состав не меняется."""
+    teacher, olya = uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:2])  # выбор и короткий — по 1 баллу
+    await link(teacher, olya)
+    a = await assign(client, teacher, test, target_type="student", target_id=str(olya), grade_to_journal=True,
+                     grade_type_id=str(uuid4()))
+    attempt = (await client.post(f"/assignments/{a['id']}/start", headers=student(olya))).json()
+    right = next(o["id"] for o in (await client.get(f"/tasks/{tasks[0]['id']}", headers=bearer(teacher))).json()["options"] if o["is_correct"])
+    await answer(client, attempt, tasks[0], olya, option_ids=[right])  # верно 1 из 2 — 50%, оценка 3
+    done = (await client.post(f"/attempts/{attempt['id']}/submit", headers=student(olya))).json()
+    assert (done["score"], done["max_score"], done["grade"]) == (1, 2, 3)
+
+    url = f"/assignments/{a['id']}"
+    bad = await client.patch(url, json={"points": [[1]]}, headers=bearer(teacher))
+    assert bad.status_code == 422 and bad.json()["error"]["code"] == "points_shape"
+    assert (await client.patch(url, json={"title": "x"}, headers=student(olya))).status_code == 403
+    # Баллы 3 и 1: верное задание — 3 из 4 (75%), оценка 4; уходит в журнал.
+    changed = (await client.patch(url, json={"points": [[3, 1]], "title": "Входная работа", "deadline": None},
+                                  headers=bearer(teacher))).json()
+    assert (changed["title"], changed["max_score"], changed["deadline"]) == ("Входная работа", 4, None)
+    mine = (await client.get(f"/attempts/{attempt['id']}", headers=student(olya))).json()
+    assert (mine["score"], mine["max_score"], mine["grade"]) == (3, 4, 4)
+    graded = [e["data"] for e in await outbox("assessment.attempt.graded")]
+    assert graded[-1]["grade"] == 4
+    # Критерии строже — оценка пересчитана.
+    await client.patch(url, json={"grade_scale": {"five": 90, "four": 80, "three": 50}}, headers=bearer(teacher))
+    assert (await client.get(f"/attempts/{attempt['id']}", headers=student(olya))).json()["grade"] == 3
+    parts = (await client.get(f"{url}/parts", headers=bearer(teacher))).json()
+    assert [(p["variant"], [i["points"] for i in p["items"]], p["test_points"]) for p in parts] == [(None, [3, 1], [1, 1])]
+    # Баллы из теста (там по 1) — обратно 1 из 2.
+    back = (await client.patch(url, json={"points_from_tests": True}, headers=bearer(teacher))).json()
+    assert back["max_score"] == 2

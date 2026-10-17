@@ -444,6 +444,50 @@ class GradeScale(BaseModel):
         return {"5": self.five, "4": self.four, "3": self.three}
 
 
+class AssignmentPartItem(BaseModel):
+    task_id: UUID
+    number: int
+    title: str
+    points: int
+
+
+class AssignmentPart(BaseModel):
+    """Состав выданной работы для правки баллов: без вариантов — одна часть, иначе — по части на вариант."""
+
+    variant: int | None
+    test_id: UUID
+    test_title: str
+    items: list[AssignmentPartItem]
+    test_points: list[int | None] = Field(description="Баллы в тесте сейчас — по тем же заданиям (null — задачу убрали из теста)")
+
+
+class AssignmentUpdate(BaseModel):
+    """Изменить уже выданную работу (решение №52). Поля, которых нет в запросе, не меняются. Баллы, критерии и
+    «результаты после проверки» пересчитывают сданные попытки; состав заданий не меняется."""
+
+    title: str | None = Field(None, min_length=1, max_length=200)
+    opens_at: datetime | None = Field(None, description="null — открыта сразу")
+    deadline: datetime | None = Field(None, description="null — без срока")
+    max_attempts: int | None = Field(None, ge=1, le=50, description="null — без ограничений")
+    grade_scale: GradeScale | None = None
+    result_after_review: bool | None = None
+    points: list[list[int]] | None = Field(
+        None, description="Баллы за задания по порядку — у каждого варианта свой список (без вариантов — один)",
+    )
+    points_from_tests: bool = Field(False, description="Взять баллы из тестов (если их поправили после назначения)")
+
+    _title = field_validator("title")(_clean)
+
+    @model_validator(mode="after")
+    def _rules(self) -> "AssignmentUpdate":
+        for value in (self.opens_at, self.deadline):
+            if value is not None and value.tzinfo is None:
+                raise ValueError("Время нужно передавать с часовым поясом")
+        if self.points is not None and any(not 1 <= p <= 100 for v in self.points for p in v):
+            raise ValueError("Баллы за задание — от 1 до 100")
+        return self
+
+
 class AssignIn(BaseModel):
     kind: Literal["test", "homework", "live"] = Field(
         "test", description="Просто тест / тест на дом (к уроку) / тест на уроке (к уроку, прогресс в реальном времени)"
@@ -660,7 +704,10 @@ class RemovedOut(BaseModel):
 class AttemptReviewIn(BaseModel):
     """Проверка работы педагогом: какие задания засчитать (только изменённые) и оценка (null — по критериям)."""
 
-    tasks: dict[UUID, bool] = Field(default_factory=dict, description="id задачи → решено верно")
+    tasks: dict[UUID, bool] = Field(default_factory=dict, description="id задачи → решено верно (все баллы или 0)")
+    points: dict[UUID, float] = Field(
+        default_factory=dict, description="id задачи → сколько баллов засчитать (от 0 до баллов за задание) — частичный балл"
+    )
     grade: int | None = Field(None, ge=1, le=5)
 
 

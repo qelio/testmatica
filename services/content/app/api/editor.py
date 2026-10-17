@@ -204,6 +204,12 @@ async def add_material(
         material.file_name, material.file_mime, material.file_size = claimed["filename"], claimed["mime"], claimed["size"]
     session.add(material)
     _touch(course)
+    if task_id and course.status == PUBLISHED:
+        # Опубликованный курс правит напрямую только штатный редактор — задача становится публичной сразу,
+        # как и при публикации его курса (решение №51).
+        await outbox.event(session, "content.course.tasks_added",
+                           {"course_id": str(course.id), "author_id": str(course.owner_id), "task_ids": [str(task_id)]},
+                           actor_id=principal.user_id)
     await session.commit()
     urls = await views.file_urls([material])
     return views.material_out(material, urls, {}, set())

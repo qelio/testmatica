@@ -40,7 +40,10 @@ from ..models import (
 from ..schemas import (
     AssignIn,
     AssignmentOut,
+    AssignmentPart,
+    AssignmentPartItem,
     AssignmentStudentOut,
+    AssignmentUpdate,
     AttemptBrief,
     AttemptOut,
     AttemptReviewIn,
@@ -431,6 +434,99 @@ async def _drop_attempts(session: AsyncSession, a: Assignment, student_ids: set[
                                                        Submission.context_id.in_([t.id for t in tried])))
         for t in tried:
             await session.delete(t)
+
+
+@router.get("/assignments/{assignment_id}/parts", response_model=list[AssignmentPart])
+async def assignment_parts(
+    assignment_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> list[AssignmentPart]:
+    """Педагогу — задания выданной работы с баллами по вариантам и баллы в тестах сейчас (для правки, решение №52)."""
+    a, is_teacher = await _assignment(session, assignment_id, principal)
+    if not is_teacher or a.kind == SELF:
+        raise ApiError(404, "assignment_not_found", "Задание не найдено")
+    parts = [(n, UUID(v["test_id"]), v["test_title"], v["items"]) for n, v in enumerate(a.variants, 1)] if a.variants \
+        else [(None, a.test_id, a.test_title, a.items)]
+    ids = {UUID(i["task_id"]) for *_, items in parts for i in items}
+    tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_(ids)))).scalars()}
+    tests = {t.id: t for t in (await session.execute(select(Test).where(Test.id.in_([p[1] for p in parts])))).scalars()}
+    out = []
+    for variant, test_id, title, items in parts:
+        now = {str(i.task_id): i.points for i in tests[test_id].items} if test_id in tests else {}
+        out.append(AssignmentPart(
+            variant=variant, test_id=test_id, test_title=title,
+            items=[AssignmentPartItem(task_id=i["task_id"], number=tasks[UUID(i["task_id"])].number,
+                                      title=tasks[UUID(i["task_id"])].title, points=i["points"])
+                   for i in items if UUID(i["task_id"]) in tasks],
+            test_points=[now.get(i["task_id"]) for i in items if UUID(i["task_id"]) in tasks],
+        ))
+    return out
+
+
+@router.patch("/assignments/{assignment_id}", response_model=AssignmentOut)
+async def update_assignment(
+    assignment_id: UUID, body: AssignmentUpdate, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> AssignmentOut:
+    """Изменить выданную работу (решение №52): название, сроки, попытки, критерии, баллы за задания, «результаты после
+    проверки». Баллы, критерии и «результаты после проверки» пересчитывают сданные попытки — оценки в журнале обновятся;
+    оценки, поставленные педагогом вручную, не меняются."""
+    a, is_teacher = await _assignment(session, assignment_id, principal, write=True)
+    if not is_teacher or a.kind == SELF:
+        raise ApiError(404, "assignment_not_found", "Задание не найдено")
+    sent = body.model_fields_set
+    if body.title is not None:
+        a.title = body.title
+    if "opens_at" in sent:
+        a.opens_at = body.opens_at
+    if "deadline" in sent:
+        a.deadline = body.deadline
+    if a.opens_at and a.deadline and a.deadline <= a.opens_at:
+        raise ApiError(422, "deadline_before_open", "Тест должен закрываться позже, чем откроется")
+    if "max_attempts" in sent:
+        a.max_attempts = body.max_attempts
+    recount = False
+    if body.grade_scale is not None and body.grade_scale.stored() != a.grade_scale:
+        a.grade_scale, recount = body.grade_scale.stored(), True
+    if body.result_after_review is not None and body.result_after_review != a.result_after_review:
+        a.result_after_review, recount = body.result_after_review, True
+
+    # Баллы — по вариантам: у каждого свой список по порядку заданий.
+    lists = [v["items"] for v in a.variants] if a.variants else [a.items]
+    if body.points_from_tests:
+        test_ids = [UUID(v["test_id"]) for v in a.variants] if a.variants else [a.test_id]
+        found = {t.id: t for t in (await session.execute(select(Test).where(Test.id.in_(test_ids)))).scalars()}
+        new = []
+        for tid, items in zip(test_ids, lists, strict=True):
+            current = {str(i.task_id): i.points for i in found[tid].items} if tid in found else {}
+            new.append([current.get(i["task_id"], i["points"]) for i in items])
+    elif body.points is not None:
+        if len(body.points) != len(lists) or any(len(p) != len(items) for p, items in zip(body.points, lists, strict=True)):
+            raise ApiError(422, "points_shape", "Баллы нужно указать для каждого задания каждого варианта")
+        new = body.points
+    else:
+        new = None
+    if new is not None and new != [[i["points"] for i in items] for items in lists]:
+        fixed = [[dict(i, points=p) for i, p in zip(items, pts, strict=True)] for items, pts in zip(lists, new, strict=True)]
+        if a.variants:
+            a.variants = [dict(v, items=f) for v, f in zip(a.variants, fixed, strict=True)]
+            a.items = fixed[0]
+        else:
+            a.items = fixed[0]
+        recount = True
+    await session.flush()
+    if recount:
+        done = (await session.execute(
+            select(Attempt).where(Attempt.assignment_id == a.id, Attempt.status == SUBMITTED).with_for_update()
+        )).scalars().all()
+        for t in done:
+            await attempts.recompute(session, t, a)
+    await outbox.event(
+        session, "assessment.assignment.updated",
+        {"assignment_id": str(a.id), "title": a.title, "teacher_id": str(a.teacher_id),
+         "opens_at": a.opens_at.isoformat() if a.opens_at else None, "deadline": a.deadline.isoformat() if a.deadline else None},
+        actor_id=principal.user_id,
+    )
+    await session.commit()
+    return await assignment_out(session, a, principal, teacher_view=True)
 
 
 @router.delete("/assignments/{assignment_id}", status_code=204)
@@ -866,23 +962,32 @@ async def review_attempt(
         raise ApiError(404, "attempt_not_found", "Попытка не найдена")
     if t.status != SUBMITTED:
         raise ApiError(409, "not_submitted", "Ученик ещё не сдал работу")
-    unknown = [str(i) for i in body.tasks if str(i) not in t.task_order]
+    unknown = [str(i) for i in {*body.tasks, *body.points} if str(i) not in t.task_order]
     if unknown:
         raise ApiError(422, "task_not_found", "Такого задания нет в работе", {"task_ids": unknown})
     now = datetime.now(UTC)
     subs = await attempts.latest_submissions(session, t.id)
-    tasks = {x.id: x for x in (await session.execute(select(Task).where(Task.id.in_(list(body.tasks))))).scalars()}
-    for task_id, correct in body.tasks.items():
+    item_points = {UUID(i["task_id"]): i["points"] for i in attempts.items_for(a, t.student_id)}
+    # Доля балла за задание: «верно/неверно» — 1 или 0; баллы — от 0 до баллов за задание.
+    shares = {task_id: 1.0 if correct else 0.0 for task_id, correct in body.tasks.items()}
+    for task_id, earned in body.points.items():
+        full = item_points.get(task_id, 1)
+        if not 0 <= earned <= full:
+            raise ApiError(422, "points_out_of_range", f"Баллы за задание — от 0 до {full}", {"task_id": str(task_id)})
+        shares[task_id] = round(earned / full, 4)
+    tasks = {x.id: x for x in (await session.execute(select(Task).where(Task.id.in_(list(shares))))).scalars()}
+    for task_id, share in shares.items():
         sub = subs.get(task_id)
         if sub is None:
-            if not correct:
+            if not share:
                 continue  # без ответа и так 0 баллов
             sub = Submission(task_id=task_id, student_id=t.student_id, context_type="assignment", context_id=t.id,
                              answer={}, files=[], created_at=now)
             session.add(sub)
-        # Развёрнутый ответ — «проверено педагогом» с полным или нулевым баллом; остальные — верно/неверно.
-        sub.status = REVIEWED if tasks[task_id].type == LONG else CORRECT if correct else INCORRECT
-        sub.score, sub.checked_at = (1.0 if correct else 0.0), sub.checked_at or now
+        # Развёрнутый ответ и частичный балл — «проверено педагогом» с долей балла; иначе — верно/неверно.
+        partial = 0 < share < 1
+        sub.status = REVIEWED if tasks[task_id].type == LONG or partial else CORRECT if share else INCORRECT
+        sub.score, sub.checked_at = share, sub.checked_at or now
         sub.reviewer_id, sub.reviewed_at = principal.user_id, now
     t.reviewed_at, t.grade_override = now, body.grade
     await session.flush()
@@ -890,7 +995,8 @@ async def review_attempt(
     await outbox.event(
         session, "assessment.attempt.reviewed",
         {"attempt_id": str(t.id), "assignment_id": str(a.id), "student_id": str(t.student_id), "teacher_id": str(a.teacher_id),
-         "tasks": {str(k): v for k, v in body.tasks.items()}, "grade": t.grade, "grade_override": body.grade},
+         "tasks": {str(k): v for k, v in body.tasks.items()}, "points": {str(k): v for k, v in body.points.items()},
+         "grade": t.grade, "grade_override": body.grade},
         actor_id=principal.user_id,
     )
     await session.commit()

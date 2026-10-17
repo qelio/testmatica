@@ -136,6 +136,19 @@ async def test_submit_requirements_and_staff_publish(client):
     assert (await outbox("content.course.submitted")) == []
 
 
+
+async def test_staff_task_in_published_course_published_at_once(client, fakes):
+    """Штатный редактор правит опубликованный курс напрямую: добавленная задача публикуется сразу (решение №51)."""
+    editor = uuid4()
+    course, _, m1, *_ = await build_course(client, editor, title="Курс редакции")
+    await client.post(f"/courses/{course}/submit", headers=bearer(editor, MOD))
+    task = fakes.task(editor, "Новая задача")
+    resp = await client.post(f"/modules/{m1}/materials", json={"kind": "task", "task_id": task}, headers=bearer(editor, MOD))
+    assert resp.status_code == 201, resp.text
+    events = await outbox("content.course.tasks_added")
+    assert [(e["data"]["course_id"], e["data"]["author_id"], e["data"]["task_ids"]) for e in events] == [(course, str(editor), [task])]
+
+
 async def test_file_materials(client, fakes):
     t = uuid4()
     course_id, _, m1, *_ = await build_course(client, t)
