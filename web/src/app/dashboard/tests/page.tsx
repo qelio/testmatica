@@ -4,19 +4,24 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { GradeFilter } from "@/components/grade-filter";
+import { Pager } from "@/components/pager";
 import { Alert, EmptyState, Spinner } from "@/components/ui";
 import { assessment } from "@/lib/api";
-import { fmtLimit, gradeLevelLabel, matchesGrade } from "@/lib/assignments";
+import { fmtLimit, gradeLevelLabel } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth";
 import { useLoad } from "@/lib/hooks";
 
-/** Мои тесты: наборы задач из банка с настройками. Назначают их в разделе «Назначение тестов». */
+const PAGE = 20;
+
+/** Мои тесты: наборы задач из банка с настройками. Назначают их в разделе «Назначение тестов». Постранично. */
 export default function TestsPage() {
-  const tests = useLoad(() => assessment.tests(), []);
+  const [grade, setGrade] = useState("");
+  const [page, setPage] = useState(0);
+  const tests = useLoad(() => assessment.testsPage({ offset: page * PAGE, limit: PAGE + 1, grade_level: grade }), [grade, page]);
   // Назначают педагоги; штатные редакторы готовят тесты к курсам библиотеки.
   const canAssign = !!useAuth().user?.roles.includes("teacher");
-  const [grade, setGrade] = useState("");
-  const shown = tests.data?.filter((t) => matchesGrade(t.grade_level, grade)) ?? [];
+  const shown = tests.data?.slice(0, PAGE) ?? [];
+  const empty = !!tests.data && !tests.data.length && !grade && page === 0;
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -31,19 +36,24 @@ export default function TestsPage() {
         </div>
       </div>
       {tests.error && <Alert>{tests.error}</Alert>}
-      {!!tests.data?.length && (
+      {!empty && (
         <div className="flex flex-wrap items-center gap-3">
-          <GradeFilter value={grade} onChange={setGrade} withNone={tests.data.some((t) => !t.grade_level)} />
-          {grade && <span className="text-sm text-fg-soft">Найдено: {shown.length}</span>}
+          <GradeFilter
+            value={grade}
+            onChange={(v) => {
+              setGrade(v);
+              setPage(0);
+            }}
+          />
         </div>
       )}
       {!tests.data ? (
         !tests.error && <Spinner />
-      ) : !tests.data.length ? (
+      ) : empty ? (
         <EmptyState title="Тестов пока нет" text="Тест — это набор задач из банка с настройками: порядок, таймер, баллы." />
       ) : (
         <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
-          {!shown.length && <li className="px-5 py-4 text-sm text-fg-soft">Тестов для этого класса нет.</li>}
+          {!shown.length && <li className="px-5 py-4 text-sm text-fg-soft">Тестов не найдено.</li>}
           {shown.map((t) => (
             <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 hover:bg-muted">
               <Link href={`/dashboard/tests/${t.id}`} className="min-w-0 flex-1">
@@ -69,6 +79,16 @@ export default function TestsPage() {
             </li>
           ))}
         </ul>
+      )}
+      {tests.data && (
+        <Pager
+          page={page}
+          hasNext={tests.data.length > PAGE}
+          onPage={(p) => {
+            setPage(p);
+            window.scrollTo({ top: 0 });
+          }}
+        />
       )}
     </div>
   );

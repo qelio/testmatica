@@ -1385,15 +1385,28 @@ export const assessment = {
     api<ItemTaskProgress[]>(`${AS}/exam-board/tasks?student_id=${studentId}&item_id=${itemId}`),
 
   tests: (moduleId?: string) => api<QuizSummary[]>(`${AS}/tests${moduleId ? `?module_id=${moduleId}` : ""}`),
+  /** Страница своих тестов (новые первыми); grade_level — класс или "none". */
+  testsPage: (params: { offset: number; limit: number; grade_level?: string }) => {
+    const qs = new URLSearchParams(Object.entries(params).flatMap(([k, v]) => (v === undefined || v === "" ? [] : [[k, String(v)]])));
+    return api<QuizSummary[]>(`${AS}/tests?${qs}`);
+  },
   test: (id: string) => api<Quiz>(`${AS}/tests/${id}`),
   createTest: (data: QuizInput) => api<Quiz>(`${AS}/tests`, { method: "POST", body: data }),
   updateTest: (id: string, data: QuizInput) => api<Quiz>(`${AS}/tests/${id}`, { method: "PUT", body: data }),
   deleteTest: (id: string) => api<void>(`${AS}/tests/${id}`, { method: "DELETE" }),
   assign: (testId: string, data: AssignInput) => api<Assignment>(`${AS}/tests/${testId}/assign`, { method: "POST", body: data }),
-  assignments: (role: "teacher" | "student", params: { lesson_id?: string; target_id?: string; module_id?: string } = {}) => {
-    const qs = new URLSearchParams({ role, ...Object.fromEntries(Object.entries(params).filter(([, v]) => v)) });
+  assignments: (
+    role: "teacher" | "student",
+    params: { lesson_id?: string; target_id?: string; module_id?: string; grade_level?: string; offset?: number; limit?: number } = {},
+  ) => {
+    const qs = new URLSearchParams({
+      role,
+      ...Object.fromEntries(Object.entries(params).flatMap(([k, v]) => (v === undefined || v === "" ? [] : [[k, String(v)]]))),
+    });
     return api<Assignment[]>(`${AS}/assignments?${qs}`);
   },
+  /** Кому педагог назначал работы — для фильтра. */
+  assignmentTargets: () => api<{ target_type: "group" | "student"; target_id: string; target_title: string }[]>(`${AS}/assignments/targets`),
   assignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}`),
   /** Тесты «для всех» под модулем курса; ученику — с его самостоятельной работой (решение №44). */
   courseTests: (moduleId: string, authed: boolean) =>

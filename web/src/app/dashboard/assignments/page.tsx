@@ -4,9 +4,10 @@ import Link from "next/link";
 import { Suspense, useState } from "react";
 
 import { GradeFilter } from "@/components/grade-filter";
+import { Pager } from "@/components/pager";
 import { Badge, EmptyState, Spinner, Alert } from "@/components/ui";
 import { type Assignment, assessment } from "@/lib/api";
-import { attemptsText, fmtLimit, gradeLevelLabel, KIND_LABELS, matchesGrade, studentStatus, summary } from "@/lib/assignments";
+import { attemptsText, fmtLimit, gradeLevelLabel, KIND_LABELS, studentStatus, summary } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 import { useLoad } from "@/lib/hooks";
@@ -45,37 +46,55 @@ function TeacherView() {
   );
 }
 
+const PAGE = 20;
+
 function Given() {
-  const list = useLoad(() => assessment.assignments("teacher"), []);
   const [grade, setGrade] = useState("");
   const [target, setTarget] = useState("");
+  const [page, setPage] = useState(0);
+  // Постранично и с фильтрами на сервере: работ бывает много, а каждая — со сводкой по ученикам.
+  const list = useLoad(
+    () => assessment.assignments("teacher", { grade_level: grade, target_id: target, offset: page * PAGE, limit: PAGE + 1 }),
+    [grade, target, page],
+  );
+  const targets = useLoad(() => assessment.assignmentTargets(), []);
+  const filtered = !!(grade || target);
   if (list.error) return <Alert>{list.error}</Alert>;
   if (!list.data) return <Spinner />;
-  if (!list.data.length)
+  if (!list.data.length && !filtered && page === 0)
     return (
       <EmptyState
         title="Вы ещё не назначали тесты"
         text="Соберите тест из задач банка в разделе «Тесты» и назначьте его: просто тестом, домашним заданием к уроку или тестом на уроке."
       />
     );
-  // Кому назначали: группы и ученики — из самих назначений.
-  const targets = [...new Map(list.data.map((a) => [a.target_id, a])).values()].sort(
-    (x, y) => x.target_type.localeCompare(y.target_type) || x.target_title.localeCompare(y.target_title, "ru"),
-  );
-  const shown = list.data.filter((a) => matchesGrade(a.grade_level, grade) && (!target || a.target_id === target));
+  const shown = list.data.slice(0, PAGE);
+  const go = (p: number) => {
+    setPage(p);
+    window.scrollTo({ top: 0 });
+  };
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <GradeFilter value={grade} onChange={setGrade} withNone={list.data.some((a) => !a.grade_level)} />
+        <GradeFilter
+          value={grade}
+          onChange={(v) => {
+            setGrade(v);
+            setPage(0);
+          }}
+        />
         <select
           value={target}
-          onChange={(e) => setTarget(e.target.value)}
+          onChange={(e) => {
+            setTarget(e.target.value);
+            setPage(0);
+          }}
           aria-label="Кому назначен"
           className="h-10 max-w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
         >
           <option value="">Все группы и ученики</option>
-          {["group", "student"].map((type) => {
-            const items = targets.filter((t) => t.target_type === type);
+          {(["group", "student"] as const).map((type) => {
+            const items = (targets.data ?? []).filter((t) => t.target_type === type);
             return items.length ? (
               <optgroup key={type} label={type === "group" ? "Группы" : "Ученики"}>
                 {items.map((t) => (
@@ -87,7 +106,6 @@ function Given() {
             ) : null;
           })}
         </select>
-        {(grade || target) && <span className="text-sm text-fg-soft">Найдено: {shown.length}</span>}
       </div>
       {!shown.length && <p className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-fg-soft">Ничего не найдено.</p>}
       <ul className="space-y-2">
@@ -97,6 +115,7 @@ function Given() {
           </li>
         ))}
       </ul>
+      <Pager page={page} hasNext={list.data.length > PAGE} onPage={go} />
     </div>
   );
 }

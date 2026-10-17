@@ -43,6 +43,7 @@ from ..schemas import (
     AssignmentPart,
     AssignmentPartItem,
     AssignmentStudentOut,
+    AssignmentTarget,
     AssignmentUpdate,
     AttemptBrief,
     AttemptOut,
@@ -304,10 +305,13 @@ async def list_assignments(
     lesson_id: UUID | None = None,
     target_id: UUID | None = None,
     module_id: UUID | None = Query(None, description="Работы по модулю курса — для страницы модуля"),
+    grade_level: str | None = Query(None, pattern=r"^(none|\d{1,2})$", description="Класс теста; none — класс не указан"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100, description="Постранично: запросите на одну больше, чтобы узнать, есть ли ещё"),
     principal: Principal = Depends(auth.principal),
     session: AsyncSession = Depends(db.session),
 ) -> list[AssignmentOut]:
-    """Педагогу — выданные им работы; ученику — выданные ему."""
+    """Педагогу — выданные им работы; ученику — выданные ему. Новые — первыми, постранично."""
     as_teacher = role == "teacher"
     if as_teacher:
         if not principal.has_any(ROLE_TEACHER, ROLE_MODERATOR):
@@ -322,10 +326,28 @@ async def list_assignments(
         query = query.where(Assignment.target_id == target_id)
     if module_id:
         query = query.where(Assignment.module_id == module_id)
-    found = (await session.execute(query.order_by(Assignment.created_at.desc()).limit(100))).scalars().all()
+    if grade_level:
+        query = query.where(Assignment.grade_level.is_(None) if grade_level == "none" else Assignment.grade_level == int(grade_level))
+    query = query.order_by(Assignment.created_at.desc(), Assignment.id.desc()).offset(offset).limit(limit)
+    found = (await session.execute(query)).scalars().all()
     out = [await assignment_out(session, a, principal, as_teacher) for a in found]
     await session.commit()  # просроченные попытки могли сдаться при просмотре
     return out
+
+
+@router.get("/assignments/targets", response_model=list[AssignmentTarget])
+async def assignment_targets(principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> list[AssignmentTarget]:
+    """Кому педагог назначал работы — для фильтра списка (группы и ученики)."""
+    rows = (await session.execute(
+        select(Assignment.target_type, Assignment.target_id, func.max(Assignment.target_title))
+        .where(Assignment.teacher_id == principal.user_id, Assignment.kind != SELF)
+        .group_by(Assignment.target_type, Assignment.target_id)
+    )).all()
+    names = await views.names(session, [r[1] for r in rows if r[0] == "student"])
+    return sorted(
+        (AssignmentTarget(target_type=t, target_id=i, target_title=names.get(i, title) if t == "student" else title) for t, i, title in rows),
+        key=lambda x: (x.target_type, x.target_title.lower()),
+    )
 
 
 async def _self_viewer(session: AsyncSession, a: Assignment, student_id: UUID, p: Principal, write: bool) -> bool | None:

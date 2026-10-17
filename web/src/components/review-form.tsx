@@ -8,7 +8,18 @@ import { errorText } from "@/lib/hooks";
 
 /** Проверка развёрнутого ответа педагогом: результат и комментарий ученику.
  *  points — сколько баллов стоит задание в работе: тогда результат вводится в баллах, иначе — в процентах. */
-export function ReviewForm({ sub, onChanged, points }: { sub: Submission; onChanged: () => void; points?: number }) {
+export function ReviewForm({
+  sub,
+  onChanged,
+  points,
+  openLabel = "Изменить оценку",
+}: {
+  sub: Submission;
+  onChanged: () => void;
+  points?: number;
+  /** Подпись кнопки, пока форма свёрнута (у кода — «Проверить вручную»: по умолчанию проверка автоматическая). */
+  openLabel?: string;
+}) {
   const [open, setOpen] = useState(sub.status === "pending_review");
   const max = points ?? 100;
   const [score, setScore] = useState(Math.round((sub.score ?? 1) * max * 2) / 2);
@@ -19,7 +30,7 @@ export function ReviewForm({ sub, onChanged, points }: { sub: Submission; onChan
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} className="text-sm text-brand hover:underline">
-        Изменить оценку
+        {sub.reviewed_at ? "Изменить оценку" : openLabel}
       </button>
     );
   }

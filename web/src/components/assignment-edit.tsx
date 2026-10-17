@@ -62,7 +62,8 @@ export function AssignmentEdit({ a, onClose, onSaved }: { a: Assignment; onClose
       <div className="space-y-5">
         {error && <Alert>{error}</Alert>}
         <Field label="Название для учеников" maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
-        <div className="grid gap-3 sm:grid-cols-2">
+        {/* В окне узко — сроки друг под другом, чтобы подписи не переносились и поля не съезжали. */}
+        <div className="space-y-3">
           <When label="Откроется (пусто — сразу)" date={openDate} time={openTime} onDate={setOpenDate} onTime={setOpenTime} />
           <When label="Закроется (пусто — без срока)" date={closeDate} time={closeTime} onDate={setCloseDate} onTime={setCloseTime} />
         </div>

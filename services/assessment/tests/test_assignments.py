@@ -862,6 +862,13 @@ async def test_review_partial_points(client, fakes):
     done = (await client.post(url, json={"points": {tasks[2]["id"]: 1.5, tasks[0]["id"]: 1}}, headers=bearer(teacher))).json()
     code = next(t for t in done["tasks"] if t["task"]["id"] == tasks[2]["id"])
     assert (code["earned"], code["result"]["status"], done["score"], done["max_score"]) == (1.5, "reviewed", 2.5, 4)
+    # Оценка за код вручную — с комментарием, как у развёрнутого ответа.
+    sub_id = code["result"]["id"]
+    reviewed = await client.post(f"/submissions/{sub_id}/review", json={"score": 0.5, "comment": "Не учтены отрицательные"},
+                                 headers=bearer(teacher))
+    assert reviewed.status_code == 200 and reviewed.json()["teacher_comment"] == "Не учтены отрицательные"
+    after = (await client.get(f"/attempts/{attempt['id']}", headers=bearer(teacher))).json()
+    assert next(t for t in after["tasks"] if t["task"]["id"] == tasks[2]["id"])["earned"] == 1
 
 
 async def test_staff_task_added_to_published_course(client, fakes):
@@ -910,3 +917,25 @@ async def test_update_assigned_work(client, fakes):
     # Баллы из теста (там по 1) — обратно 1 из 2.
     back = (await client.patch(url, json={"points_from_tests": True}, headers=bearer(teacher))).json()
     assert back["max_score"] == 2
+
+
+async def test_lists_paged_and_filtered(client, fakes):
+    """Списки тестов и выданных работ — постранично, с фильтром по классу на сервере; кому назначали — отдельно."""
+    teacher, olya, petya = uuid4(), uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    tests = [await make_test(client, teacher, tasks[:1], title=f"Тест {n}", grade_level=7 if n % 2 else 8) for n in range(5)]
+    await link(teacher, olya)
+    await link(teacher, petya)
+    for t in tests:
+        await assign(client, teacher, t, target_type="student", target_id=str(olya if t["grade_level"] == 7 else petya))
+    page = (await client.get("/tests", params={"limit": 2, "offset": 2}, headers=bearer(teacher))).json()
+    assert [t["title"] for t in page] == ["Тест 2", "Тест 1"]  # новые первыми
+    assert len((await client.get("/tests", params={"grade_level": "7"}, headers=bearer(teacher))).json()) == 2
+    assert len((await client.get("/tests", headers=bearer(teacher))).json()) == 5  # без limit — все
+    given = (await client.get("/assignments", params={"role": "teacher", "limit": 3}, headers=bearer(teacher))).json()
+    rest = (await client.get("/assignments", params={"role": "teacher", "limit": 3, "offset": 3}, headers=bearer(teacher))).json()
+    assert (len(given), len(rest)) == (3, 2) and not {a["id"] for a in given} & {a["id"] for a in rest}
+    eighth = (await client.get("/assignments", params={"role": "teacher", "grade_level": "8"}, headers=bearer(teacher))).json()
+    assert {a["target_id"] for a in eighth} == {str(petya)} and len(eighth) == 3
+    targets = (await client.get("/assignments/targets", headers=bearer(teacher))).json()
+    assert {t["target_id"] for t in targets} == {str(olya), str(petya)}

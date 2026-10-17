@@ -214,13 +214,16 @@ async def review(
     principal: Principal = Depends(auth.require(ROLE_TEACHER)),
     session: AsyncSession = Depends(db.session),
 ) -> SubmissionOut:
-    """Проверка развёрнутого ответа педагогом ученика: оценка (доля от 0 до 1) и комментарий."""
+    """Проверка педагогом ученика: развёрнутый ответ или код (решение №52 — оценку за код можно поставить вручную,
+    по умолчанию — автоматическая): оценка (доля от 0 до 1) и комментарий."""
     sub = await session.get(Submission, submission_id, with_for_update=True)
     if sub is None or not await access.linked(session, principal.user_id, sub.student_id):
         raise ApiError(404, "submission_not_found", "Решение не найдено")
     task = await access.load(session, sub.task_id)
-    if task.type != LONG:
+    if task.type not in (LONG, CODE):
         raise ApiError(409, "auto_checked", "Это задание проверяется автоматически")
+    if sub.status == CHECKING:
+        raise ApiError(409, "still_checking", "Код ещё проверяется — дождитесь результата")
     sub.status, sub.score, sub.teacher_comment = REVIEWED, body.score, body.comment.strip()
     sub.reviewer_id, sub.reviewed_at = principal.user_id, datetime.now(UTC)
     await outbox.event(
