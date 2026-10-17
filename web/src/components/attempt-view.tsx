@@ -450,12 +450,16 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
                 {item.result.teacher_comment && <p className="text-sm">Комментарий педагога: {item.result.teacher_comment}</p>}
                 {teacher && <RunLog sub={item.result} />}
                 {teacher && item.task.type === "long" && <ReviewForm sub={item.result} points={item.points} onChanged={reload} />}
+                {/* Код: оценка по умолчанию — автоматическая; педагог может проверить вручную — баллы и комментарий. */}
+                {teacher && item.task.type === "code" && item.result.status !== "checking" && (
+                  <ReviewForm sub={item.result} points={item.points} onChanged={reload} openLabel="Проверить вручную" />
+                )}
               </div>
             )}
             {!item.result && !inProgress && !attempt.results_hidden && (
               <p className="border-t border-line pt-3 text-sm text-fg-soft">Без ответа — 0 баллов</p>
             )}
-            {reviewing && item.task.type !== "long" && (
+            {reviewing && item.task.type !== "long" && !(item.task.type === "code" && item.result) && (
               <CountToggle
                 points={item.points}
                 value={marks[item.task.id] ?? earnedOf(item)}
@@ -522,24 +526,6 @@ function CountToggle({
       <button type="button" aria-pressed={value === 0} onClick={() => onChange(0)} className={btn(value === 0, "border-danger bg-danger/10 text-danger")}>
         ✗ Неверно
       </button>
-      {/* Частичный балл — любой от 0 до максимума, с шагом 0,5. */}
-      <label className="flex items-center gap-1.5 text-sm text-fg-soft">
-        баллы
-        <input
-          type="number"
-          min={0}
-          max={points}
-          step={0.5}
-          value={value}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            if (!Number.isNaN(v)) onChange(Math.min(points, Math.max(0, v)));
-          }}
-          className={`h-9 w-20 rounded-lg border bg-surface px-2 text-fg ${value > 0 && value < points ? "border-brand" : "border-line"}`}
-          aria-label="Сколько баллов засчитать"
-        />
-        из {points}
-      </label>
       {changed && <span className="text-xs text-brand">изменено — сохраните проверку</span>}
     </div>
   );

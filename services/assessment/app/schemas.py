@@ -461,6 +461,12 @@ class AssignmentPart(BaseModel):
     test_points: list[int | None] = Field(description="Баллы в тесте сейчас — по тем же заданиям (null — задачу убрали из теста)")
 
 
+class AssignmentTarget(BaseModel):
+    target_type: str
+    target_id: UUID
+    target_title: str
+
+
 class AssignmentUpdate(BaseModel):
     """Изменить уже выданную работу (решение №52). Поля, которых нет в запросе, не меняются. Баллы, критерии и
     «результаты после проверки» пересчитывают сданные попытки; состав заданий не меняется."""

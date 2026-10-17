@@ -87,13 +87,21 @@ async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None =
 @router.get("", response_model=list[QuizSummary])
 async def my_tests(
     module_id: UUID | None = Query(None, description="Только тесты, привязанные к модулю курса"),
+    grade_level: str | None = Query(None, pattern=r"^(none|\d{1,2})$", description="Класс; none — класс не указан"),
+    offset: int = Query(0, ge=0),
+    limit: int | None = Query(None, ge=1, le=200, description="Постранично; без limit — все (для выбора теста в формах)"),
     principal: Principal = Depends(author),
     session: AsyncSession = Depends(db.session),
 ) -> list[QuizSummary]:
     query = select(Test).where(Test.owner_id == principal.user_id)
     if module_id:
         query = query.where(Test.module_id == module_id)
-    tests = (await session.execute(query.order_by(Test.updated_at.desc()))).scalars().all()
+    if grade_level:
+        query = query.where(Test.grade_level.is_(None) if grade_level == "none" else Test.grade_level == int(grade_level))
+    query = query.order_by(Test.updated_at.desc(), Test.id.desc()).offset(offset)
+    if limit:
+        query = query.limit(limit)
+    tests = (await session.execute(query)).scalars().all()
     counts = await _assignments_count(session, [t.id for t in tests])
     modules = await modules_info([t.module_id for t in tests], principal.user_id)
     return [
