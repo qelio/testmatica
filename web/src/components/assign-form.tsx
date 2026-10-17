@@ -40,7 +40,7 @@ const MODES: { mode: "plain" | "variants"; title: string; hint: string }[] = [
   { mode: "plain", title: "Обычное", hint: "Один тест — всем ученикам." },
   { mode: "variants", title: "По вариантам", hint: "Одна работа, но у учеников разные тесты." },
 ];
-const ATTEMPTS: { value: string; title: string }[] = [
+export const ATTEMPTS: { value: string; title: string }[] = [
   { value: "1", title: "Одна" },
   { value: "2", title: "Две" },
   { value: "3", title: "Три" },
@@ -56,7 +56,7 @@ const SCALE_PRESETS: { title: string; scale: GradeScale }[] = [
 ];
 
 /** Критерии оценивания: с какого процента ставится 5, 4 и 3 (ниже — 2). */
-function GradeCriteria({ scale, onChange, maxScore }: { scale: GradeScale; onChange: (s: GradeScale) => void; maxScore?: number }) {
+export function GradeCriteria({ scale, onChange, maxScore }: { scale: GradeScale; onChange: (s: GradeScale) => void; maxScore?: number }) {
   const valid = scale.five > scale.four && scale.four > scale.three && scale.three >= 1 && scale.five <= 100;
   const points = (p: number) => Math.ceil((p / 100) * (maxScore ?? 0) - 1e-9);
   const row = (grade: "five" | "four" | "three", label: string) => (
@@ -109,7 +109,7 @@ function GradeCriteria({ scale, onChange, maxScore }: { scale: GradeScale; onCha
 }
 
 /** Дата и время одной парой полей; пусто — не задано. */
-function When({ label, date, time, onDate, onTime }: { label: string; date: string; time: string; onDate: (v: string) => void; onTime: (v: string) => void }) {
+export function When({ label, date, time, onDate, onTime }: { label: string; date: string; time: string; onDate: (v: string) => void; onTime: (v: string) => void }) {
   return (
     <div className="grid grid-cols-[1fr_7rem] gap-2">
       <Field label={label} type="date" value={date} onChange={(e) => onDate(e.target.value)} />

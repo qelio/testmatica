@@ -388,7 +388,8 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
   }, [checking, reload]);
 
   // Проверка педагогом: какие задания он засчитал или нет (только изменённые).
-  const [marks, setMarks] = useState<Record<string, boolean>>({});
+  // Проверка педагогом: сколько баллов засчитать за задание (только изменённые).
+  const [marks, setMarks] = useState<Record<string, number>>({});
   // Самостоятельную работу (решение №44) педагоги ученика только смотрят.
   const reviewing = teacher && attempt.status === "submitted" && !attempt.self_study;
 
@@ -456,12 +457,13 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
             )}
             {reviewing && item.task.type !== "long" && (
               <CountToggle
-                value={marks[item.task.id] ?? isCorrect(item)}
+                points={item.points}
+                value={marks[item.task.id] ?? earnedOf(item)}
                 changed={item.task.id in marks}
                 onChange={(v) =>
                   setMarks((m) => {
                     const next = { ...m };
-                    if (v === isCorrect(item)) delete next[item.task.id];
+                    if (v === earnedOf(item)) delete next[item.task.id];
                     else next[item.task.id] = v;
                     return next;
                   })
@@ -483,6 +485,11 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
   );
 }
 
+/** Сколько баллов сейчас засчитано за задание. */
+function earnedOf(item: AttemptTask): number {
+  return item.earned ?? (isCorrect(item) ? item.points : 0);
+}
+
 function isCorrect(item: AttemptTask): boolean {
   const r = item.result;
   return !!r && (r.status === "correct" || (r.status === "reviewed" && (r.score ?? 0) >= 1));
@@ -493,35 +500,57 @@ function gradeFor(percent: number, scale: Attempt["grade_scale"]): number {
 }
 
 /** Засчитать задание или нет — педагог может изменить и автоматическую проверку. */
-function CountToggle({ value, changed, onChange }: { value: boolean; changed: boolean; onChange: (v: boolean) => void }) {
+function CountToggle({
+  points,
+  value,
+  changed,
+  onChange,
+}: {
+  points: number;
+  value: number;
+  changed: boolean;
+  onChange: (v: number) => void;
+}) {
   const btn = (active: boolean, tone: string) =>
     `rounded-lg border px-3 py-1.5 text-sm ${active ? tone : "border-line text-fg-soft hover:text-fg"}`;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3" role="radiogroup" aria-label="Засчитать задание">
+    <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
       <span className="text-sm text-fg-soft">Ваше решение:</span>
-      <button type="button" role="radio" aria-checked={value} onClick={() => onChange(true)} className={btn(value, "border-ok bg-ok/10 text-ok")}>
+      <button type="button" aria-pressed={value === points} onClick={() => onChange(points)} className={btn(value === points, "border-ok bg-ok/10 text-ok")}>
         ✓ Верно
       </button>
-      <button
-        type="button"
-        role="radio"
-        aria-checked={!value}
-        onClick={() => onChange(false)}
-        className={btn(!value, "border-danger bg-danger/10 text-danger")}
-      >
+      <button type="button" aria-pressed={value === 0} onClick={() => onChange(0)} className={btn(value === 0, "border-danger bg-danger/10 text-danger")}>
         ✗ Неверно
       </button>
+      {/* Частичный балл — любой от 0 до максимума, с шагом 0,5. */}
+      <label className="flex items-center gap-1.5 text-sm text-fg-soft">
+        баллы
+        <input
+          type="number"
+          min={0}
+          max={points}
+          step={0.5}
+          value={value}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (!Number.isNaN(v)) onChange(Math.min(points, Math.max(0, v)));
+          }}
+          className={`h-9 w-20 rounded-lg border bg-surface px-2 text-fg ${value > 0 && value < points ? "border-brand" : "border-line"}`}
+          aria-label="Сколько баллов засчитать"
+        />
+        из {points}
+      </label>
       {changed && <span className="text-xs text-brand">изменено — сохраните проверку</span>}
     </div>
   );
 }
 
 /** Итог проверки педагогом: пересчёт с его отметками, оценка по критериям или своя, подтверждение. */
-function TeacherReview({ attempt, marks, onSaved }: { attempt: Attempt; marks: Record<string, boolean>; onSaved: () => void }) {
+function TeacherReview({ attempt, marks, onSaved }: { attempt: Attempt; marks: Record<string, number>; onSaved: () => void }) {
   const [grade, setGrade] = useState(attempt.grade_override ? String(attempt.grade_override) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const earned = attempt.tasks.reduce((n, t) => n + (t.task.id in marks ? (marks[t.task.id] ? t.points : 0) : (t.earned ?? 0)), 0);
+  const earned = attempt.tasks.reduce((n, t) => n + (t.task.id in marks ? marks[t.task.id] : (t.earned ?? 0)), 0);
   const percent = attempt.max_score ? (earned / attempt.max_score) * 100 : 0;
   const auto = gradeFor(percent, attempt.grade_scale);
   const changes = Object.keys(marks).length;

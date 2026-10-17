@@ -55,6 +55,13 @@ async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
     d = envelope.data
     course_id = UUID(d["course_id"])
     author = UUID(d["author_id"]) if d.get("author_id") else None
+    if envelope.type == "content.course.tasks_added":
+        # Штатный редактор добавил задачу в опубликованный курс — она публикуется сразу (решение №51).
+        for tid in {UUID(x) for x in d.get("task_ids", [])}:
+            task = await session.get(Task, tid, with_for_update=True)
+            if task is not None and task.owner_id == author and task.status in (PRIVATE, REJECTED, PENDING):
+                await _publish(session, task, True, None, envelope.actor_id)
+        return
     live = UUID(d["revision_of"]) if d.get("revision_of") else course_id
     tests = (await session.execute(
         select(Test).where(Test.course_id == live, Test.owner_id == author).with_for_update()

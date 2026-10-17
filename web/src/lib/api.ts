@@ -1194,6 +1194,24 @@ export type Assignment = {
   /** Время сервера — для точных таймеров. */
   server_time?: string;
 };
+export type AssignmentUpdate = {
+  title?: string;
+  opens_at?: string | null;
+  deadline?: string | null;
+  max_attempts?: number | null;
+  grade_scale?: GradeScale;
+  result_after_review?: boolean;
+  /** Баллы за задания по порядку — у каждого варианта свой список. */
+  points?: number[][];
+};
+export type AssignmentPart = {
+  variant: number | null;
+  test_id: string;
+  test_title: string;
+  items: { task_id: string; number: number; title: string; points: number }[];
+  /** Баллы в тесте сейчас — по тем же заданиям (null — задачу убрали из теста). */
+  test_points: (number | null)[];
+};
 export type AssignmentVariant = {
   number: number;
   test_id: string;
@@ -1390,6 +1408,9 @@ export const assessment = {
   },
   setVariant: (id: string, studentId: string, variant: number) =>
     api<Assignment>(`${AS}/assignments/${id}/students/${studentId}/variant`, { method: "PUT", body: { variant } }),
+  /** Изменить выданную работу (решение №52): поля, которых нет, не меняются. */
+  updateAssignment: (id: string, data: AssignmentUpdate) => api<Assignment>(`${AS}/assignments/${id}`, { method: "PATCH", body: data }),
+  assignmentParts: (id: string) => api<AssignmentPart[]>(`${AS}/assignments/${id}/parts`),
   closeAssignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}/close`, { method: "POST" }),
   start: (assignmentId: string, consent = false) =>
     api<Attempt>(`${AS}/assignments/${assignmentId}/start`, { method: "POST", body: { consent } }),
@@ -1414,8 +1435,9 @@ export const assessment = {
     api<{ removed: number; deleted: boolean }>(`${AS}/assignments/${id}/remove-students`, { method: "POST", body }),
   recheck: (submissionId: string) => api<Submission>(`${AS}/submissions/${submissionId}/recheck`, { method: "POST" }),
   /** Проверка работы педагогом: засчитать задания (только изменённые) и оценка (null — по критериям). */
-  reviewAttempt: (attemptId: string, tasks: Record<string, boolean>, grade: number | null) =>
-    api<Attempt>(`${AS}/attempts/${attemptId}/review`, { method: "POST", body: { tasks, grade } }),
+  /** points — сколько баллов засчитать за задание (от 0 до максимума). */
+  reviewAttempt: (attemptId: string, points: Record<string, number>, grade: number | null) =>
+    api<Attempt>(`${AS}/attempts/${attemptId}/review`, { method: "POST", body: { points, grade } }),
 
   review: (id: string, score: number, comment: string) =>
     api<Submission>(`${AS}/submissions/${id}/review`, { method: "POST", body: { score, comment } }),

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { AssignmentEdit } from "@/components/assignment-edit";
 import { FinishButton } from "@/components/finish-attempt";
 import { Markdown } from "@/components/markdown";
 import { ThemeScope } from "@/components/theme-scope";
@@ -124,11 +125,22 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
 function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
   const [error, setError] = useState<string>();
   const [closing, setClosing] = useState(false);
+  const [editing, setEditing] = useState(false);
   const router = useRouter();
   const s = summary(a);
   return (
     <div className="space-y-4">
       {error && <Alert>{error}</Alert>}
+      {editing && (
+        <AssignmentEdit
+          a={a}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            reload();
+          }}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl border border-line bg-surface px-5 py-3 text-sm">
         <span>
           Сдали: <b>{s.submitted}</b> из {s.total}
@@ -145,6 +157,9 @@ function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
           </Link>
         )}
         <span className="ml-auto flex flex-wrap gap-2">
+          <Button variant="secondary" className="h-9" onClick={() => setEditing(true)}>
+            Изменить параметры
+          </Button>
           {s.total - s.submitted > 0 && (
             <Button
               variant="ghost"
