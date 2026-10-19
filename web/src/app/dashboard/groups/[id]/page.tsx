@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { AddStudentModal } from "@/components/add-student";
@@ -9,7 +9,8 @@ import { BillingSelect, PaidBadge } from "@/components/billing";
 import { SubjectSelect } from "@/components/subject-select";
 import { ExamBoardView } from "@/components/exams";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Spinner } from "@/components/ui";
-import { classroom, type GroupDetail } from "@/lib/api";
+import { classroom, colleagues, type GroupDetail } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { pluralStudents } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -21,6 +22,8 @@ export default function GroupPage() {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const me = useAuth().user;
+  const router = useRouter();
 
   if (group.error) {
     return (
@@ -33,6 +36,8 @@ export default function GroupPage() {
   const g = group.data;
   if (!g) return <Spinner />;
 
+  // Класс коллеги (решение №57): только смотреть состав, вести свои занятия и тесты.
+  const own = !g.shared;
   const memberIds = new Set(g.members.map((m) => m.student_id));
   const candidates = (students.data ?? []).filter((s) => s.status === "active" && !memberIds.has(s.student_id));
 
@@ -67,7 +72,14 @@ export default function GroupPage() {
             <Badge>{g.kind === "class" ? "класс" : "группа"}</Badge>
             <PaidBadge paid={g.paid} />
             {g.archived && <Badge tone="warn">в архиве</Badge>}
+            {g.shared && <Badge tone="brand">класс коллеги</Badge>}
           </div>
+          {g.shared && (
+            <p className="mt-1 text-sm">
+              Класс ведёт <b>{g.owner_name}</b> и поделился им с вами: ставьте классу и ученикам свои занятия, назначайте тесты. Состав
+              меняет только он.
+            </p>
+          )}
           <p className="mt-1 text-fg-soft">
             {[g.subject, pluralStudents(g.student_count)].filter(Boolean).join(" · ")}
           </p>
@@ -80,13 +92,17 @@ export default function GroupPage() {
           >
             Журнал
           </Link>
-          <Button variant="secondary" onClick={() => setEditing(true)}>
-            Изменить
-          </Button>
-          {!g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
+          {own && (
+            <Button variant="secondary" onClick={() => setEditing(true)}>
+              Изменить
+            </Button>
+          )}
+          {own && !g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
         </div>
       </div>
-      {g.members.length > 0 && (
+      {own && <SharesBlock g={g} onChanged={() => group.reload()} onError={setError} />}
+
+      {own && g.members.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface px-5 py-3 text-sm">
           <span className="min-w-0 flex-1 text-fg-soft">
             Ученики оставили вход на школьных компьютерах? Можно выйти из их аккаунтов — на всех устройствах сразу.
@@ -110,7 +126,7 @@ export default function GroupPage() {
       {g.members.length === 0 ? (
         <EmptyState
           title="В группе пока нет учеников"
-          action={!g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
+          action={own && !g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
         />
       ) : (
         <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
@@ -123,6 +139,8 @@ export default function GroupPage() {
                 </Link>
                 {m.login && <p className="font-mono text-sm text-fg-soft">{m.login}</p>}
               </div>
+              {own && (
+                <>
               <Button
                 variant="ghost"
                 className="h-9 text-fg-soft"
@@ -138,6 +156,8 @@ export default function GroupPage() {
               >
                 Убрать из группы
               </Button>
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -151,12 +171,30 @@ export default function GroupPage() {
       )}
 
       <div className="border-t border-line pt-4">
-        <Button
-          variant="ghost"
-          onClick={() => act(() => (g.archived ? classroom.restoreGroup(g.id) : classroom.archiveGroup(g.id)))}
-        >
-          {g.archived ? "Вернуть из архива" : "Переместить в архив"}
-        </Button>
+        {own ? (
+          <Button
+            variant="ghost"
+            onClick={() => act(() => (g.archived ? classroom.restoreGroup(g.id) : classroom.archiveGroup(g.id)))}
+          >
+            {g.archived ? "Вернуть из архива" : "Переместить в архив"}
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            className="text-danger"
+            onClick={async () => {
+              if (!me || !window.confirm(`Отказаться от класса «${g.title}»? Ваши занятия и работы останутся, но ученики класса перестанут быть вашими.`)) return;
+              try {
+                await classroom.unshareGroup(g.id, me.id);
+                router.replace("/dashboard/groups");
+              } catch (e) {
+                setError(errorText(e));
+              }
+            }}
+          >
+            Отказаться от класса
+          </Button>
+        )}
       </div>
 
       <AddStudentModal
@@ -248,5 +286,87 @@ function EditGroupModal({
         </Button>
       </form>
     </Modal>
+  );
+}
+
+/** Владельцу — с какими коллегами поделился классом (решение №57). */
+function SharesBlock({ g, onChanged, onError }: { g: GroupDetail; onChanged: () => void; onError: (e: string) => void }) {
+  const list = useLoad(() => colleagues.list(), []);
+  const [pick, setPick] = useState("");
+  const [busy, setBusy] = useState(false);
+  const sharedIds = new Set(g.shares.map((s) => s.user_id));
+  const options = (list.data?.colleagues ?? []).filter((c) => !sharedIds.has(c.user_id));
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await action();
+      setPick("");
+      onChanged();
+    } catch (e) {
+      onError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-line bg-surface px-5 py-4">
+      <h2 className="font-medium">Коллеги с доступом к классу</h2>
+      <p className="text-sm text-fg-soft">
+        Коллега видит класс и учеников, ставит им свои занятия и назначает тесты. Менять состав и сам класс он не может, ваши занятия у
+        него в расписании не появятся.
+      </p>
+      {g.shares.length > 0 && (
+        <ul className="divide-y divide-line rounded-xl border border-line">
+          {g.shares.map((s) => (
+            <li key={s.user_id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+              <span className="min-w-0 flex-1 font-medium">{s.full_name}</span>
+              <Button
+                variant="ghost"
+                className="h-9 text-danger"
+                disabled={busy}
+                onClick={() =>
+                  window.confirm(`Закрыть доступ коллеге ${s.full_name}? Его занятия и оценки останутся, но ученики класса перестанут быть его.`) &&
+                  run(() => classroom.unshareGroup(g.id, s.user_id))
+                }
+              >
+                Закрыть доступ
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {list.data && !list.data.colleagues.length ? (
+        <p className="text-sm">
+          Коллег пока нет —{" "}
+          <Link href="/dashboard/colleagues" className="text-brand hover:underline">
+            добавьте их в «Мои коллеги»
+          </Link>
+          .
+        </p>
+      ) : (
+        options.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={pick}
+              onChange={(e) => setPick(e.target.value)}
+              aria-label="Коллега"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 text-sm"
+            >
+              <option value="">Выберите коллегу</option>
+              {options.map((c) => (
+                <option key={c.user_id} value={c.user_id}>
+                  {c.full_name}
+                </option>
+              ))}
+            </select>
+            <Button className="h-10" loading={busy} disabled={!pick} onClick={() => run(() => classroom.shareGroup(g.id, pick))}>
+              Поделиться
+            </Button>
+          </div>
+        )
+      )}
+    </section>
   );
 }

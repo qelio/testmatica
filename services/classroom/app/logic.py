@@ -3,12 +3,12 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 
 from .deps import identity, outbox
-from .models import LINK_ACTIVE, LINK_ENDED, LINK_PENDING, Group, GroupMember, TeacherStudentLink
+from .models import LINK_ACTIVE, LINK_ENDED, LINK_PENDING, SOURCE_COLLEAGUE, Group, GroupMember, GroupShare, TeacherStudentLink
 from .people import name_of
 
 
@@ -126,6 +126,61 @@ async def end_link(session: AsyncSession, link: TeacherStudentLink, actor_id: UU
         {"link_id": str(link.id), "teacher_id": str(link.teacher_id), "student_id": str(link.student_id)},
         actor_id=actor_id,
     )
+    # Ученик вышел из классов педагога — и у коллег, с которыми ими поделились, он больше не ученик.
+    if link.source != SOURCE_COLLEAGUE:
+        await session.flush()
+        owned = list((await session.execute(select(Group.id).where(Group.teacher_id == link.teacher_id))).scalars())
+        await refresh_shared(session, owned, [link.student_id], actor_id)
+
+
+async def readable_group(session: AsyncSession, group_id: UUID, teacher_id: UUID) -> tuple[Group, bool]:
+    """Свой класс или класс, которым поделился коллега (решение №57). Второе — True, если свой."""
+    group = await session.get(Group, group_id)
+    if group is not None and group.teacher_id == teacher_id:
+        return group, True
+    if group is not None and await session.get(GroupShare, (group_id, teacher_id)) is not None:
+        return group, False
+    raise ApiError(404, "group_not_found", "Группа не найдена")
+
+
+async def group_colleagues(session: AsyncSession, group_ids: list[UUID]) -> list[UUID]:
+    if not group_ids:
+        return []
+    rows = await session.execute(select(GroupShare.colleague_id).where(GroupShare.group_id.in_(group_ids)).distinct())
+    return list(rows.scalars())
+
+
+async def refresh_colleague_links(session: AsyncSession, colleague_id: UUID, student_ids: list[UUID], actor_id: UUID) -> None:
+    """Ученики общих классов — ученики коллеги (решение №57): есть в классе, которым с ним поделились, — связь
+    активна; больше нет — связь «от коллеги» закрывается (свои ученики коллеги не трогаются)."""
+    for student_id in student_ids:
+        covered = await session.scalar(
+            select(func.count()).select_from(GroupShare)
+            .join(GroupMember, GroupMember.group_id == GroupShare.group_id)
+            .where(GroupShare.colleague_id == colleague_id, GroupMember.student_id == student_id, GroupMember.left_at.is_(None))
+        )
+        link = await get_link(session, colleague_id, student_id, lock=True)
+        if covered:
+            if link is None or link.status != LINK_ACTIVE:
+                await activate_link(session, colleague_id, student_id, SOURCE_COLLEAGUE, actor_id)
+        elif link is not None and link.status == LINK_ACTIVE and link.source == SOURCE_COLLEAGUE:
+            await end_link(session, link, actor_id)
+
+
+async def refresh_shared(session: AsyncSession, group_ids: list[UUID], student_ids: list[UUID], actor_id: UUID) -> None:
+    """Состав общих классов изменился — обновить учеников у коллег, с которыми ими поделились."""
+    for colleague_id in await group_colleagues(session, group_ids):
+        await refresh_colleague_links(session, colleague_id, student_ids, actor_id)
+
+
+async def unshare(session: AsyncSession, share: GroupShare, actor_id: UUID) -> None:
+    """Закрыть коллеге доступ к классу: сделанное им остаётся, ученики класса перестают быть его (если не свои)."""
+    members = list((await session.execute(
+        select(GroupMember.student_id).where(GroupMember.group_id == share.group_id, GroupMember.left_at.is_(None))
+    )).scalars())
+    await session.delete(share)
+    await session.flush()
+    await refresh_colleague_links(session, share.colleague_id, members, actor_id)
 
 
 async def add_member(session: AsyncSession, group: Group, student_id: UUID, actor_id: UUID) -> None:
@@ -147,6 +202,7 @@ async def add_member(session: AsyncSession, group: Group, student_id: UUID, acto
         {"group_id": str(group.id), "teacher_id": str(group.teacher_id), "student_id": str(student_id)},
         actor_id=actor_id,
     )
+    await refresh_shared(session, [group.id], [student_id], actor_id)
 
 
 async def remove_member(session: AsyncSession, group: Group, student_id: UUID, actor_id: UUID) -> None:
@@ -160,3 +216,5 @@ async def remove_member(session: AsyncSession, group: Group, student_id: UUID, a
         {"group_id": str(group.id), "teacher_id": str(group.teacher_id), "student_id": str(student_id)},
         actor_id=actor_id,
     )
+    await session.flush()
+    await refresh_shared(session, [group.id], [student_id], actor_id)

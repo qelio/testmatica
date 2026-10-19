@@ -17,7 +17,11 @@ runtime = ServiceRuntime(settings, db)
 runtime.consumer("notification.email", [(COMMANDS_EXCHANGE, "notification.email")], handlers.on_email_command)
 runtime.consumer("notification.inapp", [(COMMANDS_EXCHANGE, "notification.inapp")], handlers.on_inapp_command)
 runtime.consumer("notification.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
-runtime.consumer("notification.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
+runtime.consumer(
+    "notification.classroom",
+    [(EVENTS_EXCHANGE, "classroom.link.*"), (EVENTS_EXCHANGE, "classroom.colleague.*"), (EVENTS_EXCHANGE, "classroom.group.shared")],
+    handlers.on_classroom_event,
+)
 runtime.consumer("notification.video", [(EVENTS_EXCHANGE, "video.recording.ready")], handlers.on_video_event)
 runtime.consumer(
     "notification.marketplace",

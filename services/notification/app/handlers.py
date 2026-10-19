@@ -41,6 +41,31 @@ async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
 
 async def on_classroom_event(envelope: Envelope, session: AsyncSession) -> None:
     data = envelope.data
+    # Коллеги (решение №56): заявка — адресату, принятие — тому, кто звал.
+    if envelope.type == "classroom.colleague.requested":
+        session.add(Notification(
+            user_id=UUID(data["to_id"]), kind="colleague_request",
+            title=f"{data['actor_name']} хочет добавить вас в коллеги",
+            body="Примите или отклоните заявку в разделе «Мои коллеги».",
+            payload={"colleague_request_id": data["request_id"], "href": "/dashboard/colleagues"},
+        ))
+        return
+    if envelope.type == "classroom.colleague.accepted":
+        session.add(Notification(
+            user_id=UUID(data["to_id"]), kind="colleague_accepted",
+            title=f"{data['actor_name']} теперь ваш коллега",
+            body="Можно поделиться с коллегой классом или тестом.",
+            payload={"href": "/dashboard/colleagues"},
+        ))
+        return
+    if envelope.type == "classroom.group.shared":  # решение №57
+        session.add(Notification(
+            user_id=UUID(data["colleague_id"]), kind="group_shared",
+            title=f"{data['teacher_name']} поделился с вами классом «{data['title']}»",
+            body="Можно ставить классу и его ученикам свои занятия и назначать тесты.",
+            payload={"href": f"/dashboard/groups/{data['group_id']}"},
+        ))
+        return
     if envelope.type == "classroom.link.requested":
         session.add(
             Notification(

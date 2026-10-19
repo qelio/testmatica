@@ -13,6 +13,7 @@ import {
   ClipboardList,
   FileText,
   GraduationCap,
+  Handshake,
   House,
   Inbox,
   LayoutDashboard,
@@ -66,9 +67,10 @@ export const NAV = {
       ],
     },
     {
-      title: "Ученики",
+      title: "Ученики и коллеги",
       items: [
         { title: "Классы, группы, ученики", href: "/dashboard/groups", icon: Users, ready: true },
+        { title: "Мои коллеги", href: "/dashboard/colleagues", icon: Handshake, ready: true },
         { title: "Журнал", href: "/dashboard/journal", icon: NotebookPen, ready: true },
         { title: "Аналитика", href: "/dashboard/analytics", icon: ChartLine, ready: true },
       ],

@@ -16,6 +16,7 @@ SOURCE_INVITE = "invite"
 SOURCE_MANUAL = "manual"
 SOURCE_REQUEST = "request"
 SOURCE_MARKETPLACE = "marketplace"
+SOURCE_COLLEAGUE = "colleague"  # ученик класса, которым поделился коллега (решение №57)
 
 
 class Base(DeclarativeBase):
@@ -78,7 +79,7 @@ class TeacherStudentLink(Base):
     __table_args__ = (
         UniqueConstraint("teacher_id", "student_id", name="uq_link_teacher_student"),
         CheckConstraint("status IN ('pending', 'active', 'declined', 'ended')", name="status_valid"),
-        CheckConstraint("source IN ('invite', 'manual', 'request', 'marketplace')", name="source_valid"),
+        CheckConstraint("source IN ('invite', 'manual', 'request', 'marketplace', 'colleague')", name="source_valid"),
         Index("ix_links_student", "student_id"),
     )
 
@@ -112,4 +113,39 @@ class Invitation(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     accepted_by: Mapped[UUID | None]
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+COLLEAGUE_PENDING, COLLEAGUE_ACTIVE = "pending", "active"
+
+
+class Colleague(Base):
+    """Коллеги-педагоги (решение №56): заявка по логину или почте, коллега принимает. Пара — одна строка,
+    в любую сторону; отклонённая или удалённая заявка удаляется."""
+
+    __tablename__ = "colleagues"
+    __table_args__ = (
+        UniqueConstraint("requester_id", "addressee_id", name="uq_colleagues_pair"),
+        CheckConstraint("status IN ('pending', 'active')", name="status_valid"),
+        CheckConstraint("requester_id <> addressee_id", name="not_self"),
+        Index("ix_colleagues_addressee", "addressee_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    requester_id: Mapped[UUID]
+    addressee_id: Mapped[UUID]
+    status: Mapped[str] = mapped_column(String(10), default=COLLEAGUE_PENDING)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GroupShare(Base):
+    """Класс, которым педагог поделился с коллегой (решение №57). Коллега видит класс и учеников, ведёт с ними свои
+    занятия и тесты; управлять составом и самим классом не может. Ученики класса — его ученики (связь source=colleague)."""
+
+    __tablename__ = "group_shares"
+    __table_args__ = (Index("ix_group_shares_colleague", "colleague_id"),)
+
+    group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
+    colleague_id: Mapped[UUID] = mapped_column(primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
