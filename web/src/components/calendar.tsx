@@ -66,11 +66,13 @@ export function TimeGrid({
     return { n: i + 1, top, height: (((eh - sh) * 60 + (em - sm)) / 60) * HOUR_PX, label: `${p.start}–${p.end}` };
   });
   const showBells = periods.length > 0 && days.some((d) => bells!.weekdays.includes((d.getDay() + 6) % 7));
+  // Со звонками столбец времени шире: слева — номер и время урока, справа — часы, не налезают друг на друга.
+  const timeCol = showBells ? 132 : 56;
   const today = zoned(new Date());
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
       <div className="min-w-[640px]" style={{ minWidth: days.length === 1 ? 0 : undefined }}>
-        <div className="sticky top-0 z-10 grid border-b border-line bg-surface" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
+        <div className="sticky top-0 z-10 grid border-b border-line bg-surface" style={{ gridTemplateColumns: `${timeCol}px repeat(${days.length}, 1fr)` }}>
           <div />
           {days.map((d) => (
             <div key={d.toISOString()} className="border-l border-line px-2 py-2 text-center text-sm">
@@ -83,7 +85,7 @@ export function TimeGrid({
             </div>
           ))}
         </div>
-        <div className="relative grid" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
+        <div className="relative grid" style={{ gridTemplateColumns: `${timeCol}px repeat(${days.length}, 1fr)` }}>
           <div className="relative">
             {hours.map((h) => (
               <div key={h} className="relative text-right text-xs text-fg-soft" style={{ height: HOUR_PX }}>
@@ -96,10 +98,11 @@ export function TimeGrid({
                 <span
                   key={p.n}
                   title={`${p.n} урок · ${p.label}`}
-                  className="pointer-events-none absolute left-1 grid h-4 min-w-4 place-items-center rounded bg-brand/15 px-1 text-[10px] font-semibold text-brand"
+                  className="pointer-events-none absolute left-1 flex h-4 items-center gap-1 rounded bg-sun/25 px-1 text-[10px] whitespace-nowrap text-fg tabular-nums"
                   style={{ top: p.top + 2 }}
                 >
-                  {p.n}
+                  <b className="font-semibold">{p.n}</b>
+                  <span className="text-fg-soft">{p.label}</span>
                 </span>
               ))}
           </div>
@@ -114,7 +117,7 @@ export function TimeGrid({
                       key={p.n}
                       aria-hidden
                       title={`${p.n} урок · ${p.label}`}
-                      className="pointer-events-none absolute inset-x-0 border-y border-brand/25 bg-brand/[0.08]"
+                      className="pointer-events-none absolute inset-x-0 border-y border-sun/40 bg-sun/[0.12]"
                       style={{ top: p.top, height: p.height }}
                     />
                   ))}

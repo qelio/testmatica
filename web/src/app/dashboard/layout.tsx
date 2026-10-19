@@ -75,47 +75,66 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
         <aside
           className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4rem)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
         >
-          <nav className="space-y-1">
-            {nav.map((item, i) => {
-              const Icon = item.icon;
-              const count = item.badge ? badges[item.badge] : 0;
-              // В свёрнутом меню подпись — во всплывающей подсказке, счётчик — точкой на иконке.
-              const tip = collapsed ? `${item.title}${item.ready ? "" : " — скоро"}${count ? ` (${count})` : ""}` : undefined;
-              const icon = (
-                <span className={`relative grid h-7 w-7 shrink-0 place-items-center rounded-lg ${ICON_TONES[i % ICON_TONES.length]}`}>
-                  <Icon size={16} strokeWidth={2.2} aria-hidden />
-                  {collapsed && count > 0 && <span className="absolute -top-1 -right-1 hidden h-2 w-2 rounded-full bg-brand lg:block" />}
-                </span>
-              );
-              const label = <span className={`min-w-0 flex-1 truncate ${collapsed ? "lg:sr-only" : ""}`}>{item.title}</span>;
-              return item.ready ? (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={tip}
-                  onClick={() => setMenuOpen(false)}
-                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${collapsed ? "lg:justify-center lg:px-0" : ""} ${isActive(pathname, item.href) ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
-                >
-                  {icon}
-                  {label}
-                  {count > 0 && (
-                    <span className={`grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-white ${collapsed ? "lg:hidden" : ""}`}>
-                      {count}
-                    </span>
+          <nav>
+            {(() => {
+              let n = 0; // сквозной счётчик — цвета иконок идут по кругу через все группы
+              return nav.map((section, si) => (
+                <div key={section.title ?? si} className={si ? "mt-4" : ""}>
+                  {section.title &&
+                    (collapsed ? (
+                      <hr className="mx-2 mb-2 hidden border-line lg:block" />
+                    ) : null)}
+                  {section.title && (
+                    <p className={`mb-1 px-3 text-[11px] font-semibold tracking-wider text-fg-soft uppercase ${collapsed ? "lg:hidden" : ""}`}>
+                      {section.title}
+                    </p>
                   )}
-                </Link>
-              ) : (
-                <span
-                  key={item.href}
-                  title={tip}
-                  className={`flex cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-fg-soft ${collapsed ? "lg:justify-center lg:px-0 lg:opacity-60" : ""}`}
-                >
-                  {icon}
-                  {label}
-                  <span className={`rounded-md bg-muted px-1.5 py-0.5 text-[11px] ${collapsed ? "lg:hidden" : ""}`}>скоро</span>
-                </span>
-              );
-            })}
+                  <div className="space-y-1">
+                    {section.items.map((item) => {
+                      const i = n++;
+                      const Icon = item.icon;
+                      const count = item.badge ? badges[item.badge] : 0;
+                      // В свёрнутом меню подпись — во всплывающей подсказке, счётчик — точкой на иконке.
+                      const tip = collapsed ? `${item.title}${item.ready ? "" : " — скоро"}${count ? ` (${count})` : ""}` : undefined;
+                      const icon = (
+                        <span className={`relative grid h-7 w-7 shrink-0 place-items-center rounded-lg ${ICON_TONES[i % ICON_TONES.length]}`}>
+                          <Icon size={16} strokeWidth={2.2} aria-hidden />
+                          {collapsed && count > 0 && <span className="absolute -top-1 -right-1 hidden h-2 w-2 rounded-full bg-brand lg:block" />}
+                        </span>
+                      );
+                      const label = <span className={`min-w-0 flex-1 truncate ${collapsed ? "lg:sr-only" : ""}`}>{item.title}</span>;
+                      return item.ready ? (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          title={tip}
+                          onClick={() => setMenuOpen(false)}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${collapsed ? "lg:justify-center lg:px-0" : ""} ${isActive(pathname, item.href) ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
+                        >
+                          {icon}
+                          {label}
+                          {count > 0 && (
+                            <span className={`grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-white ${collapsed ? "lg:hidden" : ""}`}>
+                              {count}
+                            </span>
+                          )}
+                        </Link>
+                      ) : (
+                        <span
+                          key={item.href}
+                          title={tip}
+                          className={`flex cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-fg-soft ${collapsed ? "lg:justify-center lg:px-0 lg:opacity-60" : ""}`}
+                        >
+                          {icon}
+                          {label}
+                          <span className={`rounded-md bg-muted px-1.5 py-0.5 text-[11px] ${collapsed ? "lg:hidden" : ""}`}>скоро</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              ));
+            })()}
           </nav>
         </aside>
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
