@@ -405,6 +405,9 @@ class QuizOut(BaseModel):
     published: bool = Field(False, description="Тест автора курса принят модератором вместе с курсом — его видят другие")
     pending: bool = Field(False, description="Показаны изменения, которые ждут проверки вместе с черновиком курса")
     can_edit: bool = Field(True, description="False — чужой тест автора курса: только просмотр и назначение")
+    shared_with_me: bool = Field(False, description="Тестом поделился коллега (решение №58): смотреть, назначать, делиться")
+    owner_name: str | None = Field(None, description="Автор чужого теста")
+    can_share: bool = Field(False, description="Можно поделиться с коллегой: свой тест или тест, которым поделились")
     items: list[QuizItemOut]
     max_score: int
     assignments_count: int
@@ -426,6 +429,21 @@ class QuizSummary(BaseModel):
     time_limit_s: int | None
     assignments_count: int
     updated_at: datetime
+    shared_with_me: bool = False
+    owner_name: str | None = None
+
+
+class TestShareIn(BaseModel):
+    colleague_id: UUID
+
+
+class TestShareOut(BaseModel):
+    user_id: UUID
+    full_name: str
+    shared_by: UUID
+    shared_by_name: str
+    created_at: datetime
+    can_remove: bool = Field(description="Закрыть доступ может автор теста и тот, кто поделился")
 
 
 class GradeScale(BaseModel):

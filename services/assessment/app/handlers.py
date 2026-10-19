@@ -3,14 +3,14 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
 
 from .courses import apply_pending, test_task_ids
 from .deps import outbox
-from .models import IN_PROGRESS, PENDING, PRIVATE, PUBLISHED, REJECTED, Assignment, Attempt, CourseTask, Person, RelLink, Task, Test
+from .models import IN_PROGRESS, PENDING, PRIVATE, PUBLISHED, REJECTED, Assignment, Attempt, CourseTask, Person, RelLink, Task, Test, TestShare
 
 
 async def on_identity_event(envelope: Envelope, session: AsyncSession) -> None:
@@ -33,6 +33,14 @@ async def on_classroom_event(envelope: Envelope, session: AsyncSession) -> None:
         await session.execute(
             delete(RelLink).where(RelLink.teacher_id == UUID(d["teacher_id"]), RelLink.student_id == UUID(d["student_id"]))
         )
+    elif envelope.type == "classroom.colleague.removed":
+        # Убрали из коллег — закрыть доступ к тестам друг друга: и своим, и тем, которыми поделились (решение №58).
+        a, b = UUID(d["requester_id"]), UUID(d["addressee_id"])
+        for user, other in ((a, b), (b, a)):
+            owned = select(Test.id).where(Test.owner_id == other)
+            await session.execute(delete(TestShare).where(
+                TestShare.user_id == user, or_(TestShare.shared_by == other, TestShare.test_id.in_(owned))
+            ))
 
 
 async def _publish(session: AsyncSession, task: Task, approved: bool, comment: str | None, actor: UUID | None) -> None:

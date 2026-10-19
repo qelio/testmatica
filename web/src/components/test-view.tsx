@@ -10,7 +10,7 @@ import type { Quiz } from "@/lib/api";
 import { fmtLimit } from "@/lib/assignments";
 import { TASK_TYPE_LABELS } from "@/lib/format";
 
-/** Тест автора курса глазами другого педагога (решение №46): только просмотр — состав, условия и ответы; назначить можно. */
+/** Чужой тест — автора курса (решение №46) или коллеги (№58): только просмотр — состав, условия и ответы; назначить можно. */
 export function TestView({ test }: { test: Quiz }) {
   const [opened, setOpened] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
@@ -25,7 +25,11 @@ export function TestView({ test }: { test: Quiz }) {
     <div className="space-y-5">
       <section className="space-y-2 rounded-2xl border border-line bg-surface p-5">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={test.visibility === "public" ? "ok" : "brand"}>{test.visibility === "public" ? "публичный" : "для педагогов"}</Badge>
+          {test.shared_with_me ? (
+            <Badge tone="brand">тест коллеги · {test.owner_name}</Badge>
+          ) : (
+            <Badge tone={test.visibility === "public" ? "ok" : "brand"}>{test.visibility === "public" ? "публичный" : "для педагогов"}</Badge>
+          )}
           {test.grade_level && <span className="text-sm text-fg-soft">{test.grade_level} класс</span>}
         </div>
         {test.module && (
@@ -39,7 +43,9 @@ export function TestView({ test }: { test: Quiz }) {
         )}
         {test.description && <p className="whitespace-pre-line text-sm">{test.description}</p>}
         <p className="text-sm text-fg-soft">
-          Тест автора курса — его можно посмотреть и назначить своим ученикам, но не изменить.
+          {test.shared_with_me
+            ? "Тестом поделился коллега — его можно посмотреть, назначить своим ученикам и классам и поделиться дальше, но не изменить."
+            : "Тест автора курса — его можно посмотреть и назначить своим ученикам, но не изменить."}
           {limit && ` Время: ${limit}.`}
         </p>
         {test.items.length > 0 && (

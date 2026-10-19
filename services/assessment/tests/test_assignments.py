@@ -953,3 +953,67 @@ async def test_lesson_deleted_unlinks_homework(client, fakes):
     await apply(handlers.on_schedule_event, "schedule.lesson.deleted", lesson_ids=[lesson])
     after = (await client.get(f"/assignments/{a['id']}", headers=bearer(teacher))).json()
     assert after["lesson_id"] is None and after["kind"] == "homework"
+
+
+async def test_share_test_with_colleagues(client, fakes):
+    """Тестом делятся с коллегой (решение №58): он смотрит, назначает своим и делится дальше, но не меняет;
+    личные задачи теста видит целиком, в банк они не попадают."""
+    maria, petr, ivan, stranger, olya = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
+    tasks = await make_tasks(client, maria)
+    test = await make_test(client, maria, tasks)
+    fakes.colleagues |= {frozenset((str(maria), str(petr))), frozenset((str(petr), str(ivan)))}
+    shares = f"/tests/{test['id']}/shares"
+
+    # До доступа Пётр теста и личных задач не видит.
+    assert (await client.get(f"/tests/{test['id']}", headers=bearer(petr))).status_code == 404
+    assert (await client.get(f"/tasks/{tasks[0]['id']}", headers=bearer(petr))).status_code == 404
+    # Поделиться можно только с коллегой.
+    bad = await client.post(shares, json={"colleague_id": str(stranger)}, headers=bearer(maria))
+    assert bad.json()["error"]["code"] == "not_colleague"
+    resp = await client.post(shares, json={"colleague_id": str(petr)}, headers=bearer(maria))
+    assert resp.status_code == 201 and [s["user_id"] for s in resp.json()] == [str(petr)]
+    [event] = await outbox("assessment.test.shared")
+    assert event["data"]["to_id"] == str(petr) and event["data"]["title"] == "Контрольная"
+
+    # Пётр видит тест (без правки) в своём списке и задачи с ответами, правка — нет.
+    got = (await client.get(f"/tests/{test['id']}", headers=bearer(petr))).json()
+    assert got["shared_with_me"] and not got["can_edit"] and got["can_share"] and len(got["items"]) == 4
+    [mine] = (await client.get("/tests", headers=bearer(petr))).json()
+    assert mine["shared_with_me"] and mine["id"] == test["id"]
+    task = (await client.get(f"/tasks/{tasks[1]['id']}", headers=bearer(petr))).json()
+    assert task["answers"] and task["status"] == "private" and not task["can_edit"]
+    put = await client.put(f"/tests/{test['id']}", json={"title": "Моя", "grade_level": 9, "items": [{"task_id": tasks[0]["id"]}]},
+                            headers=bearer(petr))
+    assert put.status_code == 404
+    bank = (await client.get("/tasks", params={"scope": "public"}, headers=bearer(petr))).json()
+    assert all(t["owner_id"] != str(maria) for t in bank.get("items", bank))
+
+    # Пётр назначает тест своей ученице и видит ключи в её попытке.
+    await link(petr, olya)
+    a = await assign(client, petr, test, target_type="student", target_id=str(olya))
+    assert a["teacher_id"] == str(petr)
+    start = await client.post(f"/assignments/{a['id']}/start", json={}, headers=student(olya))
+    attempt = start.json()
+    view = (await client.get(f"/attempts/{attempt['id']}", headers=bearer(petr))).json()
+    assert all(t["task"]["answers"] is not None or t["task"]["options"] for t in view["tasks"])
+    assert (await client.get(f"/tests/{test['id']}", headers=bearer(petr))).json()["assignments_count"] == 1
+
+    # Пётр делится дальше с Иваном; Мария не может поделиться с Иваном — он ей не коллега.
+    assert (await client.post(shares, json={"colleague_id": str(ivan)}, headers=bearer(petr))).status_code == 201
+    listed = (await client.get(shares, headers=bearer(maria))).json()
+    assert [(s["full_name"] != "", s["can_remove"]) for s in listed] == [(True, True), (True, True)]
+    assert [s["can_remove"] for s in (await client.get(shares, headers=bearer(petr))).json()] == [False, True]
+    # Иван не может закрыть доступ Петру; Мария — может; назначения Петра остаются.
+    assert (await client.delete(f"{shares}/{petr}", headers=bearer(ivan))).status_code == 404
+    assert (await client.delete(f"{shares}/{petr}", headers=bearer(maria))).status_code == 204
+    assert (await client.get(f"/tests/{test['id']}", headers=bearer(petr))).status_code == 404
+    assert (await client.get(f"/assignments/{a['id']}", headers=bearer(petr))).status_code == 200
+    # Иван сам убирает тест из своих.
+    assert (await client.delete(f"{shares}/{ivan}", headers=bearer(ivan))).status_code == 204
+    assert (await client.get(shares, headers=bearer(maria))).json() == []
+
+    # Марию и Петра убрали из коллег — Пётр теряет доступ к её тесту; у Ивана, с которым Пётр поделился, доступ остаётся.
+    await client.post(shares, json={"colleague_id": str(petr)}, headers=bearer(maria))
+    await client.post(shares, json={"colleague_id": str(ivan)}, headers=bearer(petr))
+    await apply(handlers.on_classroom_event, "classroom.colleague.removed", requester_id=maria, addressee_id=petr, request_id=uuid4())
+    assert [s["user_id"] for s in (await client.get(shares, headers=bearer(maria))).json()] == [str(ivan)]

@@ -16,7 +16,11 @@ configure_logging(settings.service_name, settings.log_level)
 runtime = ServiceRuntime(settings, db)
 runtime.consumer("assessment.subjects", [(EVENTS_EXCHANGE, "content.subject.updated")], subjects_sync.on_subject_updated)
 runtime.consumer("assessment.identity", [(EVENTS_EXCHANGE, "identity.user.*")], handlers.on_identity_event)
-runtime.consumer("assessment.classroom", [(EVENTS_EXCHANGE, "classroom.link.*")], handlers.on_classroom_event)
+runtime.consumer(
+    "assessment.classroom",
+    [(EVENTS_EXCHANGE, "classroom.link.*"), (EVENTS_EXCHANGE, "classroom.colleague.removed")],
+    handlers.on_classroom_event,
+)
 runtime.consumer("assessment.content", [(EVENTS_EXCHANGE, "content.course.*")], handlers.on_content_event)
 runtime.consumer("assessment.video", [(EVENTS_EXCHANGE, "video.proctor.screen")], handlers.on_video_event)
 runtime.consumer("assessment.schedule", [(EVENTS_EXCHANGE, "schedule.lesson.deleted")], handlers.on_schedule_event)

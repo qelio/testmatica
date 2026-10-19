@@ -48,6 +48,7 @@ class Fakes:
         self.groups: dict[str, dict] = {}  # id группы → {"teacher_id", "member_ids"}
         self.lessons: dict[str, str] = {}  # id занятия → id педагога
         self.modules: dict[str, dict] = {}  # id модуля курса → сведения из content (/internal/modules/lookup)
+        self.colleagues: set[frozenset[str]] = set()  # пары коллег (classroom, решение №56)
 
     def runner(self, request: httpx.Request) -> httpx.Response:
         if not self.runner_up:
@@ -63,6 +64,9 @@ class Fakes:
         return httpx.Response(200, json={"passed": False, "cases": cases[: max(1, min(2, n))]})
 
     def classroom(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/colleagues/check"):
+            pair = frozenset((request.url.params["teacher_id"], request.url.params["other_id"]))
+            return httpx.Response(200, json={"colleagues": pair in self.colleagues})
         group = self.groups.get(request.url.path.rsplit("/", 1)[-1])
         if group is None or group["teacher_id"] != request.url.params["teacher_id"]:
             return httpx.Response(404, json={"error": {"code": "group_not_found", "message": "Группа не найдена"}})
