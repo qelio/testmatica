@@ -1505,6 +1505,26 @@ export const video = {
   proctorRecordings: (assignmentId: string) => api<ProctorRecording[]>(`${VD}/proctoring/${assignmentId}/recordings`),
 };
 
+/** Показ экрана на интерактивной доске по коду (решение №53). Доска — без входа в аккаунт. */
+export type BoardCreated = { id: string; code: string; secret: string; expires_at: string };
+export type BoardStatus = {
+  status: "waiting" | "live" | "ended" | "expired";
+  code: string;
+  expires_at: string;
+  teacher_name: string | null;
+  url: string | null;
+  token: string | null;
+};
+export const board = {
+  create: () => api<BoardCreated>(`${VD}/board/sessions`, { method: "POST", auth: false }),
+  status: (id: string, secret: string) =>
+    api<BoardStatus>(`${VD}/board/sessions/${id}?secret=${encodeURIComponent(secret)}`, { auth: false }),
+  end: (id: string, secret: string) =>
+    api<void>(`${VD}/board/sessions/${id}/end?secret=${encodeURIComponent(secret)}`, { method: "POST", auth: false }),
+  pair: (code: string) => api<{ id: string; url: string; token: string }>(`${VD}/board/pair`, { method: "POST", body: { code } }),
+  stop: (id: string) => api<void>(`${VD}/board/sessions/${id}/stop`, { method: "POST" }),
+};
+
 export type ProctorEventKind =
   | "screen_share_started"
   | "screen_share_stopped"

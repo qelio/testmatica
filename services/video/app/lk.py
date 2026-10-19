@@ -88,6 +88,22 @@ class LiveKit:
             .to_jwt()
         )
 
+    def board_token(self, room: str, identity: str, name: str, presenter: bool, ttl: timedelta) -> str:
+        """Показ на доске (решение №53): педагог только показывает экран (и звук вкладки), никого не видит;
+        доска только смотрит и сама невидима."""
+        grants = api.VideoGrants(
+            room_join=True, room=room, can_publish=presenter, can_subscribe=not presenter, can_publish_data=False,
+            can_publish_sources=["screen_share", "screen_share_audio"] if presenter else [], hidden=not presenter,
+        )
+        return (
+            api.AccessToken(self.key, self.secret)
+            .with_identity(identity)
+            .with_name(name)
+            .with_grants(grants)
+            .with_ttl(ttl)
+            .to_jwt()
+        )
+
     async def start_track_recording(self, room: str, track_sid: str, filepath: str) -> str:
         """Запись одной дорожки (экран ученика) как есть, без перекодирования; S3 — из конфига egress.
         Путь — без расширения: egress сам добавит .webm (VP8) или .mp4 (H.264)."""

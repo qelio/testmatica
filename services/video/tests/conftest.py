@@ -47,6 +47,10 @@ class FakeLiveKit:
         self.tokens.append({"room": room, "identity": identity, "name": name, "teacher": teacher, "metadata": metadata})
         return f"proctor-token-{identity}"
 
+    def board_token(self, room, identity, name, presenter, ttl):
+        self.tokens.append({"room": room, "identity": identity, "name": name, "presenter": presenter})
+        return f"board-token-{identity}"
+
     async def start_track_recording(self, room, track_sid, filepath):
         egress_id = f"EG_T{len(self.egress) + 1}"
         self.egress[egress_id] = filepath
@@ -102,7 +106,7 @@ class FakeSchedule:
 @pytest.fixture(autouse=True)
 def lk(monkeypatch) -> FakeLiveKit:
     fake = FakeLiveKit()
-    for name in ("token", "proctor_token", "create_room", "delete_room", "set_screen_share", "start_recording", "stop_recording",
+    for name in ("token", "proctor_token", "board_token", "create_room", "delete_room", "set_screen_share", "start_recording", "stop_recording",
                  "start_track_recording"):
         monkeypatch.setattr(livekit, name, getattr(fake, name))
     monkeypatch.setattr(livekit, "public_url", fake.public_url)

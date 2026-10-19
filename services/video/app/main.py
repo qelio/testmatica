@@ -7,7 +7,8 @@ from testmatica_common.logging import configure_logging
 from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
-from . import people, rooms, storage
+from . import board, people, rooms, storage
+from .api import board as board_api
 from .api import internal, proctoring, recordings
 from .api import rooms as rooms_api
 from .config import settings
@@ -20,6 +21,7 @@ runtime = ServiceRuntime(settings, db)
 runtime.consumer("video.identity", [(EVENTS_EXCHANGE, "identity.user.*")], people.on_identity_event)
 # Лимит бесплатного занятия и срок хранения записей.
 runtime.every("room_limits", 15, rooms.enforce_limits)
+runtime.every("board_cleanup", 3600, board.cleanup)
 
 
 @asynccontextmanager
@@ -38,6 +40,7 @@ app = FastAPI(title="ТестМатика · video", version="0.1.0", lifespan=l
 install_error_handlers(app)
 app.include_router(health_router(db))
 app.include_router(rooms_api.router)
+app.include_router(board_api.router)
 app.include_router(recordings.router)
 app.include_router(proctoring.router)
 app.include_router(internal.router)
