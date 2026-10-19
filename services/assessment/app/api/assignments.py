@@ -11,7 +11,7 @@ from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 from testmatica_common.plans import BASIC
 
-from .. import access, attempts, views
+from .. import access, attempts, sharing, views
 from ..deps import auth, classroom, db, media, outbox, plans, schedule
 from ..models import (
     CHECKING,
@@ -79,6 +79,8 @@ async def assignable_test(session: AsyncSession, test_id: UUID, p: Principal) ->
     """Назначить можно свой тест или тест автора курса — публичный или «для педагогов», принятый вместе с курсом,
     если педагог видит курс (решения №44, 46)."""
     test = await session.get(Test, test_id)
+    if await sharing.share_of(session, test, p) is not None:  # тестом поделился коллега (решение №58)
+        return test
     if test is not None and test.owner_id != p.user_id and await course_test_for(session, test, p) is not None:
         return test
     return await own_test(session, test_id, p)
@@ -724,7 +726,8 @@ async def attempt_out(session: AsyncSession, t: Attempt, a: Assignment, p: Princ
         # Таймер на каждое задание: следующие задания до своей очереди не показываются.
         if per_task and not submitted and not teacher_view and n > t.current_index:
             break
-        view = await views.full(session, task, p if teacher_view else None)
+        # Педагог работы видит ключи всех её задач — и личных задач коллеги, чьим тестом он поделился (решение №58).
+        view = await views.full(session, task, p if teacher_view else None, key=True if teacher_view else None)
         if order := t.option_orders.get(task_id):
             pos = {oid: i for i, oid in enumerate(order)}
             view.options.sort(key=lambda o: pos.get(str(o.id), 0))

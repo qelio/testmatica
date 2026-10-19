@@ -1118,6 +1118,12 @@ export type Quiz = TestSettings & {
   pending: boolean;
   /** false — чужой тест автора курса: только просмотр и назначение (решение №46). */
   can_edit: boolean;
+  /** Тестом поделился коллега (решение №58): смотреть, назначать и делиться, без правки. */
+  shared_with_me: boolean;
+  /** Автор чужого теста. */
+  owner_name: string | null;
+  /** Можно поделиться с коллегой: свой тест или тест, которым поделились. */
+  can_share: boolean;
   /** Для какого класса (1–11); у старых тестов — null. */
   grade_level: number | null;
   items: { task_id: string; points: number; solution_file: boolean; code_check: CodeCheckMode; task: TaskSummary }[];
@@ -1140,7 +1146,11 @@ export type QuizSummary = {
   time_limit_s: number | null;
   assignments_count: number;
   updated_at: string;
+  shared_with_me: boolean;
+  owner_name: string | null;
 };
+/** Коллега, с которым поделились тестом (решение №58). */
+export type TestShare = { user_id: string; full_name: string; shared_by: string; shared_by_name: string; created_at: string; can_remove: boolean };
 
 export type CourseTest = {
   id: string;
@@ -1433,6 +1443,10 @@ export const assessment = {
   createTest: (data: QuizInput) => api<Quiz>(`${AS}/tests`, { method: "POST", body: data }),
   updateTest: (id: string, data: QuizInput) => api<Quiz>(`${AS}/tests/${id}`, { method: "PUT", body: data }),
   deleteTest: (id: string) => api<void>(`${AS}/tests/${id}`, { method: "DELETE" }),
+  testShares: (id: string) => api<TestShare[]>(`${AS}/tests/${id}/shares`),
+  shareTest: (id: string, colleagueId: string) =>
+    api<TestShare[]>(`${AS}/tests/${id}/shares`, { method: "POST", body: { colleague_id: colleagueId } }),
+  unshareTest: (id: string, userId: string) => api<void>(`${AS}/tests/${id}/shares/${userId}`, { method: "DELETE" }),
   assign: (testId: string, data: AssignInput) => api<Assignment>(`${AS}/tests/${testId}/assign`, { method: "POST", body: data }),
   assignments: (
     role: "teacher" | "student",

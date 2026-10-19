@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { TestEditor } from "@/components/test-editor";
+import { TestShares } from "@/components/test-shares";
 import { TestView } from "@/components/test-view";
 import { Alert, Spinner } from "@/components/ui";
 import { assessment } from "@/lib/api";
@@ -24,7 +25,10 @@ export default function TestPage() {
         <>
           <h1 className="text-2xl font-semibold tracking-tight">{test.data.title}</h1>
           {!test.data.can_edit ? (
-            <TestView test={test.data} />
+            <>
+              <TestView test={test.data} />
+              {test.data.can_share && <TestShares test={test.data} />}
+            </>
           ) : (
             <>
               {test.data.assignments_count > 0 && (
@@ -33,6 +37,7 @@ export default function TestPage() {
             </p>
           )}
               <TestEditor key={test.data.id} test={test.data} />
+              {test.data.can_share && <TestShares test={test.data} />}
             </>
           )}
         </>

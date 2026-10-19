@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
-from .. import access, views
+from .. import access, sharing, views
 from ..courses import course_task_visible
 from ..deps import auth, db, outbox
 from ..models import AUTO_TYPES, CODE, PENDING, PRIVATE, PUBLISHED, REJECTED, REMOVED, ExamItem, Task, TaskOption, TaskTest, Topic
@@ -119,7 +119,7 @@ async def get(
     task = await access.load(session, task_id)
     if await access.can_view(session, task, principal):
         return await views.full(session, task, principal)
-    if await course_task_visible(session, task, principal):
+    if await course_task_visible(session, task, principal) or await sharing.task_visible(session, task, principal):
         return await views.full(session, task, principal, key=True)
     raise ApiError(404, "task_not_found", "Задача не найдена")
 

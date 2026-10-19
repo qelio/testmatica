@@ -308,6 +308,18 @@ class Test(Base):
     items: Mapped[list["TestItem"]] = relationship(lazy="selectin", cascade="all, delete-orphan", order_by="TestItem.position")
 
 
+class TestShare(Base):
+    """Тест, которым поделились с коллегой (решение №58): он видит тест и его задачи, назначает и делится дальше, но не меняет.
+    Личные задачи теста от этого в публичный банк не попадают."""
+
+    __tablename__ = "test_shares"
+
+    test_id: Mapped[UUID] = mapped_column(ForeignKey("tests.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(primary_key=True, index=True)
+    shared_by: Mapped[UUID]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class TestItem(Base):
     __tablename__ = "test_items"
 

@@ -61,7 +61,7 @@ async def on_classroom_event(envelope: Envelope, session: AsyncSession) -> None:
     if envelope.type == "classroom.group.shared":  # решение №57
         session.add(Notification(
             user_id=UUID(data["colleague_id"]), kind="group_shared",
-            title=f"{data['teacher_name']} поделился с вами классом «{data['title']}»",
+            title=f"{data['teacher_name']} делится с вами классом «{data['title']}»",
             body="Можно ставить классу и его ученикам свои занятия и назначать тесты.",
             payload={"href": f"/dashboard/groups/{data['group_id']}"},
         ))
@@ -300,6 +300,11 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
         session.add(Notification(user_id=UUID(d["author_id"]), kind="task_rejected",
                                  title=f"Задача «{d['title']}» не прошла проверку", body=d.get("comment") or "",
                                  payload={"task_id": d["task_id"]}))
+    elif t == "assessment.test.shared":  # решение №58
+        session.add(Notification(user_id=UUID(d["to_id"]), kind="test_shared",
+                                 title=f"{d['actor_name']} делится с вами тестом «{d['title']}»",
+                                 body="Тест можно смотреть, назначать своим ученикам и классам и делиться им с коллегами.",
+                                 payload={"href": f"/dashboard/tests/{d['test_id']}"}))
     elif t == "assessment.submission.reviewed" and d.get("context_type") != "assignment":
         # Ответ из теста или ДЗ — ученик узнает итог всей работы (assessment.attempt.graded).
         percent = round(float(d["score"]) * 100)

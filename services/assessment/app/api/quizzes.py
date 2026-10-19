@@ -4,17 +4,17 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select, true
+from sqlalchemy import func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
-from .. import access, views
+from .. import access, sharing, views
 from ..courses import course_test_for, in_review, module_info, modules_info, visibility, write_test
-from ..deps import auth, db
+from ..deps import auth, db, outbox
 from ..handlers import _publish as publish_task
-from ..models import CODE, CODE_AFTER, CODE_MANUAL, SOLUTION_FILE_TYPES, Assignment, Task, Test, TestItem
-from ..schemas import ModuleRef, QuizIn, QuizItemOut, QuizOut, QuizSummary
+from ..models import CODE, CODE_AFTER, CODE_MANUAL, SOLUTION_FILE_TYPES, Assignment, Task, Test, TestItem, TestShare
+from ..schemas import ModuleRef, QuizIn, QuizItemOut, QuizOut, QuizSummary, TestShareIn, TestShareOut
 
 router = APIRouter(prefix="/tests", tags=["tests"])
 author = auth.require(ROLE_TEACHER, ROLE_MODERATOR)
@@ -62,9 +62,9 @@ def _pending_view(test: Test) -> Test:
     return view
 
 
-async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None = None) -> QuizOut:
-    """viewer — чужой педагог (тест автора курса, решение №46): принятая версия только для просмотра,
-    назначения — его собственные."""
+async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None = None, shared: bool = False) -> QuizOut:
+    """viewer — чужой педагог (тест автора курса, решение №46, или коллега, с которым поделились, — shared, №58):
+    принятая версия только для просмотра, назначения — его собственные."""
     await session.refresh(test)
     view = _pending_view(test) if test.pending and viewer is None else test
     tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_([i.task_id for i in view.items])))).scalars()}
@@ -80,7 +80,8 @@ async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None =
                for i in view.items if i.task_id in summaries],
         max_score=sum(i.points for i in view.items),
         assignments_count=(await _assignments_count(session, [test.id], viewer.user_id if viewer else None)).get(test.id, 0),
-        updated_at=test.updated_at, can_edit=viewer is None,
+        updated_at=test.updated_at, can_edit=viewer is None, shared_with_me=shared, can_share=viewer is None or shared,
+        owner_name=(await views.names(session, [test.owner_id])).get(test.owner_id, "Автор") if viewer else None,
     )
 
 
@@ -93,22 +94,28 @@ async def my_tests(
     principal: Principal = Depends(author),
     session: AsyncSession = Depends(db.session),
 ) -> list[QuizSummary]:
-    query = select(Test).where(Test.owner_id == principal.user_id)
+    # Свои тесты и тесты, которыми поделились коллеги (решение №58); тесты модуля — только свои.
     if module_id:
-        query = query.where(Test.module_id == module_id)
+        query = select(Test).where(Test.owner_id == principal.user_id, Test.module_id == module_id)
+    else:
+        query = select(Test).where(or_(Test.owner_id == principal.user_id, Test.id.in_(sharing.shared_ids(principal.user_id))))
     if grade_level:
         query = query.where(Test.grade_level.is_(None) if grade_level == "none" else Test.grade_level == int(grade_level))
     query = query.order_by(Test.updated_at.desc(), Test.id.desc()).offset(offset)
     if limit:
         query = query.limit(limit)
     tests = (await session.execute(query)).scalars().all()
-    counts = await _assignments_count(session, [t.id for t in tests])
+    counts = await _assignments_count(session, [t.id for t in tests if t.owner_id == principal.user_id])
+    others = [t.id for t in tests if t.owner_id != principal.user_id]
+    counts |= await _assignments_count(session, others, principal.user_id)  # у чужого теста — только свои назначения
+    authors = await views.names(session, {t.owner_id for t in tests if t.owner_id != principal.user_id})
     modules = await modules_info([t.module_id for t in tests], principal.user_id)
     return [
         QuizSummary(id=t.id, title=t.title, grade_level=t.grade_level, module=module_ref(t), shared=t.shared,
                     visibility=visibility(t.owner_id, t.shared, modules.get(t.module_id)), published=t.published_at is not None,
                     pending=t.pending is not None, tasks_count=len(t.items), max_score=sum(i.points for i in t.items),
-                    time_mode=t.time_mode, time_limit_s=t.time_limit_s, assignments_count=counts.get(t.id, 0), updated_at=t.updated_at)
+                    time_mode=t.time_mode, time_limit_s=t.time_limit_s, assignments_count=counts.get(t.id, 0), updated_at=t.updated_at,
+                    shared_with_me=t.owner_id != principal.user_id, owner_name=authors.get(t.owner_id))
         for t in tests
     ]
 
@@ -190,6 +197,8 @@ async def get(test_id: UUID, principal: Principal = Depends(author), session: As
     test = await session.get(Test, test_id)
     if test is not None and test.owner_id == principal.user_id:
         return await quiz_out(session, test)
+    if await sharing.share_of(session, test, principal) is not None:
+        return await quiz_out(session, test, viewer=principal, shared=True)
     if await course_test_for(session, test, principal) is None:
         raise ApiError(404, "test_not_found", "Тест не найден")
     return await quiz_out(session, test, viewer=principal)
@@ -217,4 +226,64 @@ async def delete(test_id: UUID, principal: Principal = Depends(author), session:
     if (await _assignments_count(session, [test.id])).get(test.id):
         raise ApiError(409, "test_assigned", "Тест уже выдавали — его результаты хранятся, удалить нельзя")
     await session.delete(test)
+    await session.commit()
+
+
+# ---------- общий доступ коллегам (решение №58) ----------
+
+
+async def _shareable(session: AsyncSession, test_id: UUID, p: Principal) -> Test:
+    test = await session.get(Test, test_id)
+    if test is None or not await sharing.can_share(session, test, p):
+        raise ApiError(404, "test_not_found", "Тест не найден")
+    return test
+
+
+async def _shares_out(session: AsyncSession, test: Test, p: Principal) -> list[TestShareOut]:
+    rows = (await session.execute(select(TestShare).where(TestShare.test_id == test.id).order_by(TestShare.created_at))).scalars().all()
+    names = await views.names(session, {r.user_id for r in rows} | {r.shared_by for r in rows})
+    return [TestShareOut(user_id=r.user_id, full_name=names.get(r.user_id, "Педагог"), shared_by=r.shared_by,
+                         shared_by_name=names.get(r.shared_by, "Педагог"),
+                         created_at=r.created_at, can_remove=p.user_id in (test.owner_id, r.shared_by))
+            for r in rows]
+
+
+@router.get("/{test_id}/shares", response_model=list[TestShareOut])
+async def shares(test_id: UUID, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)) -> list[TestShareOut]:
+    """С кем из коллег поделились тестом."""
+    return await _shares_out(session, await _shareable(session, test_id, principal), principal)
+
+
+@router.post("/{test_id}/shares", response_model=list[TestShareOut], status_code=201)
+async def share(
+    test_id: UUID, body: TestShareIn, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)
+) -> list[TestShareOut]:
+    """Поделиться тестом с коллегой: автор или тот, с кем им уже поделились. Личные задачи теста остаются личными."""
+    test = await _shareable(session, test_id, principal)
+    if body.colleague_id in (principal.user_id, test.owner_id):
+        raise ApiError(422, "share_self", "Это автор теста — у него тест и так есть")
+    if not await sharing.are_colleagues(principal.user_id, body.colleague_id):
+        raise ApiError(422, "not_colleague", "Поделиться можно только с коллегой — добавьте его в разделе «Мои коллеги»")
+    if await session.get(TestShare, (test.id, body.colleague_id)) is None:
+        session.add(TestShare(test_id=test.id, user_id=body.colleague_id, shared_by=principal.user_id))
+        await session.flush()
+        await outbox.event(
+            session, "assessment.test.shared",
+            {"test_id": str(test.id), "title": test.title, "owner_id": str(test.owner_id), "to_id": str(body.colleague_id),
+             "actor_name": (await views.names(session, [principal.user_id])).get(principal.user_id, "Коллега")},
+            actor_id=principal.user_id,
+        )
+    await session.commit()
+    return await _shares_out(session, test, principal)
+
+
+@router.delete("/{test_id}/shares/{user_id}", status_code=204)
+async def unshare(test_id: UUID, user_id: UUID, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)) -> None:
+    """Закрыть доступ: автор — любому, поделившийся — тем, с кем поделился сам, коллега — себе («убрать из моих тестов»).
+    Его назначения по тесту остаются."""
+    test = await session.get(Test, test_id)
+    row = await session.get(TestShare, (test_id, user_id)) if test is not None else None
+    if row is None or principal.user_id not in (test.owner_id, row.shared_by, row.user_id):
+        raise ApiError(404, "share_not_found", "Доступа к тесту нет")
+    await session.delete(row)
     await session.commit()
