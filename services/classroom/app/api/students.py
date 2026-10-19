@@ -13,7 +13,7 @@ from testmatica_common.names import PersonName, parse_line
 from .. import cards, logic, people
 from ..config import settings
 from ..deps import auth, db, identity, outbox
-from ..models import LINK_ACTIVE, LINK_PENDING, SOURCE_MANUAL, Group, GroupMember, TeacherStudentLink
+from ..models import LINK_ACTIVE, LINK_PENDING, SOURCE_COLLEAGUE, SOURCE_MANUAL, Group, GroupMember, TeacherStudentLink
 from ..schemas import (
     BulkError,
     BulkStudentsCreate,
@@ -231,6 +231,8 @@ async def unlink_student(
     link = await logic.get_link(session, principal.user_id, student_id, lock=True)
     if link is None or link.status not in (LINK_ACTIVE, LINK_PENDING):
         raise ApiError(404, "student_not_found", "Ученик не найден")
+    if link.source == SOURCE_COLLEAGUE:
+        raise ApiError(409, "colleague_student", "Это ученик класса, которым поделился коллега, — отвязать его может только коллега")
     await logic.end_link(session, link, principal.user_id)
     await session.commit()
 

@@ -42,6 +42,17 @@ class GroupOut(BaseModel):
     archived: bool
     student_count: int
     created_at: datetime
+    shared: bool = Field(False, description="Класс коллеги, которым он поделился (решение №57): только свои занятия и тесты")
+    owner_name: str | None = Field(None, description="Чей класс — у класса коллеги")
+
+
+class ShareOut(BaseModel):
+    user_id: UUID
+    full_name: str
+
+
+class ShareIn(BaseModel):
+    colleague_id: UUID
 
 
 class MemberOut(BaseModel):
@@ -53,6 +64,7 @@ class MemberOut(BaseModel):
 
 class GroupDetail(GroupOut):
     members: list[MemberOut]
+    shares: list[ShareOut] = Field(default_factory=list, description="Владельцу — с какими коллегами поделился")
 
 
 class StudentOut(BaseModel):
@@ -179,3 +191,28 @@ class MyGroupOut(BaseModel):
     kind: str
     teacher_id: UUID
     teacher_name: str
+
+
+class ColleagueRequestIn(BaseModel):
+    identifier: str = Field(min_length=1, max_length=254, description="Логин или почта педагога")
+
+
+class ColleagueOut(BaseModel):
+    user_id: UUID
+    full_name: str
+    login: str | None
+    since: datetime
+
+
+class ColleagueRequestOut(BaseModel):
+    id: UUID
+    user_id: UUID = Field(description="Кто прислал (входящая) или кому отправлена (исходящая)")
+    full_name: str
+    login: str | None
+    created_at: datetime
+
+
+class ColleaguesOut(BaseModel):
+    colleagues: list[ColleagueOut]
+    incoming: list[ColleagueRequestOut]
+    outgoing: list[ColleagueRequestOut]

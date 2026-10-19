@@ -141,6 +141,7 @@ function GroupsTab({
               </span>
             </div>
             {g.subject && <p className="mt-1 text-sm text-fg-soft">{g.subject}</p>}
+            {g.shared && <p className="mt-1 text-sm text-brand">класс коллеги · {g.owner_name}</p>}
             <p className="mt-4 text-sm text-fg-soft">{pluralStudents(g.student_count)}</p>
           </Link>
         ))}

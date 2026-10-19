@@ -258,11 +258,14 @@ export type Group = {
   archived: boolean;
   student_count: number;
   created_at: string;
+  /** Класс коллеги, которым он поделился (решение №57): только свои занятия и тесты. */
+  shared?: boolean;
+  owner_name?: string | null;
 };
 
 export type Member = { student_id: string; full_name: string; login: string | null; joined_at: string };
 
-export type GroupDetail = Group & { members: Member[] };
+export type GroupDetail = Group & { members: Member[]; shares: { user_id: string; full_name: string }[] };
 
 export type Student = {
   student_id: string;
@@ -305,9 +308,28 @@ export type MyGroup = {
 
 const CR = "/api/classroom";
 
+/** Мои коллеги (решение №56). */
+export type ColleaguePerson = { user_id: string; full_name: string; login: string | null };
+export type Colleagues = {
+  colleagues: (ColleaguePerson & { since: string })[];
+  incoming: (ColleaguePerson & { id: string; created_at: string })[];
+  outgoing: (ColleaguePerson & { id: string; created_at: string })[];
+};
+export const colleagues = {
+  list: () => api<Colleagues>(`${CR}/colleagues`),
+  request: (identifier: string) => api<Colleagues>(`${CR}/colleagues`, { method: "POST", body: { identifier } }),
+  accept: (id: string) => api<Colleagues>(`${CR}/colleagues/requests/${id}/accept`, { method: "POST" }),
+  decline: (id: string) => api<Colleagues>(`${CR}/colleagues/requests/${id}/decline`, { method: "POST" }),
+  remove: (userId: string) => api<Colleagues>(`${CR}/colleagues/${userId}`, { method: "DELETE" }),
+};
+
 export const classroom = {
   groups: (archived = false) => api<Group[]>(`${CR}/groups?archived=${archived}`),
   group: (id: string) => api<GroupDetail>(`${CR}/groups/${id}`),
+  /** Поделиться классом с коллегой / закрыть доступ (или отказаться от класса коллеги) — решение №57. */
+  shareGroup: (id: string, colleagueId: string) =>
+    api<GroupDetail>(`${CR}/groups/${id}/shares`, { method: "POST", body: { colleague_id: colleagueId } }),
+  unshareGroup: (id: string, colleagueId: string) => api<void>(`${CR}/groups/${id}/shares/${colleagueId}`, { method: "DELETE" }),
   createGroup: (data: { title: string; kind: "class" | "group"; paid: boolean; subject?: string | null }) =>
     api<Group>(`${CR}/groups`, { method: "POST", body: data }),
   updateGroup: (id: string, data: { title?: string; subject?: string | null; description?: string; paid?: boolean }) =>

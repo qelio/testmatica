@@ -13,6 +13,7 @@ from .. import logic
 from ..config import settings
 from ..deps import db
 from ..models import LINK_ACTIVE, Group, GroupMember
+from .colleagues import are_colleagues
 from .groups import check_group_limit
 
 router = APIRouter(prefix="/internal", tags=["internal"], dependencies=[Depends(internal_guard(settings.internal_token))])
@@ -40,8 +41,8 @@ class LinkInfo(BaseModel):
 async def group_info(
     group_id: UUID, teacher_id: UUID = Query(), session: AsyncSession = Depends(db.session)
 ) -> GroupInfo:
-    """Группа педагога и её текущий состав. 404, если группа чужая."""
-    group = await logic.owned_group(session, group_id, teacher_id)
+    """Группа педагога (своя или общая с коллегой, решение №57) и её текущий состав. 404, если чужая."""
+    group, _ = await logic.readable_group(session, group_id, teacher_id)
     members = await session.execute(
         select(GroupMember.student_id).where(GroupMember.group_id == group.id, GroupMember.left_at.is_(None))
     )
@@ -89,6 +90,18 @@ async def link_info(
     if link is None:
         raise ApiError(404, "student_not_found", "Ученик не привязан к педагогу")
     return LinkInfo(teacher_id=teacher_id, student_id=student_id, active=link.status == LINK_ACTIVE, paid=link.paid)
+
+
+class ColleagueCheck(BaseModel):
+    colleagues: bool
+
+
+@router.get("/colleagues/check", response_model=ColleagueCheck)
+async def colleague_check(
+    teacher_id: UUID = Query(), other_id: UUID = Query(), session: AsyncSession = Depends(db.session)
+) -> ColleagueCheck:
+    """Педагоги — коллеги (решение №56): для доступа к общим тестам в assessment."""
+    return ColleagueCheck(colleagues=await are_colleagues(session, teacher_id, other_id))
 
 
 class GroupLimit(BaseModel):
