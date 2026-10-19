@@ -393,6 +393,10 @@ function Footer({ contacts }: { contacts?: LandingOut["contacts"] }) {
           <Link href="/legal" className="hover:text-fg">
             Документы
           </Link>
+          {/* Для интерактивной доски в кабинете: открыть страницу с кодом без входа (решение №53). */}
+          <Link href="/board" className="font-medium text-brand hover:underline">
+            Показать экран на доске
+          </Link>
         </nav>
       </div>
       <LegalBar />

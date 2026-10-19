@@ -3,19 +3,21 @@
 import Link from "next/link";
 import { useState } from "react";
 
-import { STATUS_LABELS } from "@/components/course-view";
-import { ExamChips, ExamItemSelect } from "@/components/exams";
-import { TaskNumber } from "@/components/task-number";
-import { buildRubric, topicFilter, topicLabel, TopicTree } from "@/components/topics";
-import { Alert, Badge, EmptyState, Select, Spinner } from "@/components/ui";
+import { ExamItemSelect } from "@/components/exams";
+import { Pager } from "@/components/pager";
+import { TaskBankCard } from "@/components/task-bank-card";
+import { buildRubric, topicFilter, TopicTree } from "@/components/topics";
+import { Alert, EmptyState, Select, Spinner } from "@/components/ui";
 import { assessment, type TaskType } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { DIFFICULTY_LABELS, TASK_TYPE_LABELS } from "@/lib/format";
+import { TASK_TYPE_LABELS } from "@/lib/format";
 import { useLoad } from "@/lib/hooks";
 
 type Scope = "mine" | "public";
 
-/** Банк задач: рубрикатор «предмет → раздел → тема» слева, задачи выбранного узла справа. */
+const PAGE = 20;
+
+/** Банк задач: рубрикатор «предмет → раздел → тема» слева, задачи выбранного узла справа — с условиями, по 20. */
 export default function TaskBankPage() {
   const { user } = useAuth();
   const staff = !!user?.roles.some((r) => r === "moderator" || r === "admin");
@@ -38,9 +40,13 @@ export default function TaskBankPage() {
     },
     [scope],
   );
+  // По 20 задач на страницу, с полными условиями; смена фильтров — снова первая страница.
+  const filterKey = JSON.stringify([scope, search, filters, node]);
+  const [pageState, setPageState] = useState({ key: filterKey, n: 0 });
+  const page = pageState.key === filterKey ? pageState.n : 0;
   const tasks = useLoad(
-    () => assessment.search({ scope, q: search, ...filters, ...topicFilter(node), limit: 50 }),
-    [scope, search, filters, node],
+    () => assessment.search({ scope, q: search, ...filters, ...topicFilter(node), limit: PAGE, offset: page * PAGE, full: true }),
+    [scope, search, filters, node, page],
   );
   const rubric = buildRubric(topics.data ?? []);
   const set = (k: keyof typeof filters, v: string) => setFilters((f) => ({ ...f, [k]: v }));
@@ -172,33 +178,21 @@ export default function TaskBankPage() {
               <p className="text-sm text-fg-soft">
                 {nodeTitle} · найдено: {tasks.data.total}
               </p>
-              <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
-                {tasks.data.items.map((t) => (
+              <ul className="space-y-3">
+                {(tasks.data.details ?? []).map((t) => (
                   <li key={t.id}>
-                    <Link href={`/dashboard/tasks/${t.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 hover:bg-muted">
-                      <span className="min-w-0 flex-1 font-medium">
-                        <TaskNumber n={t.number} />
-                        {t.title}
-                      </span>
-                      <ExamChips labels={t.exam_items} />
-                      <Badge tone="brand">{TASK_TYPE_LABELS[t.type]}</Badge>
-                      <Badge>{DIFFICULTY_LABELS[t.difficulty]}</Badge>
-                      {scope === "mine" && t.status !== "private" && (
-                        <Badge tone={STATUS_LABELS[t.status].tone}>{STATUS_LABELS[t.status].text}</Badge>
-                      )}
-                      <span className="w-full text-xs text-fg-soft">
-                        {[
-                          t.topic_path.length ? topicLabel(t.topic_path, t.subject_name) : "без темы",
-                          scope === "public" ? t.author_name : null,
-                          t.tags.join(", "),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                    </Link>
+                    <TaskBankCard task={t} scope={scope} />
                   </li>
                 ))}
               </ul>
+              <Pager
+                page={page}
+                hasNext={(page + 1) * PAGE < tasks.data.total}
+                onPage={(n) => {
+                  setPageState({ key: filterKey, n });
+                  window.scrollTo({ top: 0 });
+                }}
+              />
             </>
           )}
         </section>

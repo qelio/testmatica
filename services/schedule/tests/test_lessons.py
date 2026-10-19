@@ -395,3 +395,65 @@ async def test_any_lesson_duration(client, teacher, fake_classroom):
     for bad in (4, 481):
         resp = await create(client, teacher, kind="individual", student_id=str(uuid4()), starts_at=iso(at(9)), duration_min=bad)
         assert resp.status_code == 422, bad
+
+
+async def test_delete_restore_and_edit_past(client, teacher, fake_classroom):
+    """Отменённое занятие можно вернуть; занятие можно удалить совсем (и серию дальше); прошедшее — перенести и изменить
+    (решение №54)."""
+    sid = uuid4()
+    fake_classroom.link(teacher, sid)
+    await create(client, teacher, kind="individual", student_id=str(sid), starts_at=iso(at(1, 10)), duration_min=60,
+                 repeat={"interval_weeks": 1, "count": 3}, timezone="UTC")
+    lessons = (await client.get("/lessons", params=window(), headers=bearer(teacher))).json()
+    first = lessons[0]["id"]
+    await client.post(f"/lessons/{first}/cancel", json={}, headers=bearer(teacher))
+    restored = (await client.post(f"/lessons/{first}/restore", headers=bearer(teacher))).json()
+    assert restored["status"] == "scheduled"
+    assert (await client.post(f"/lessons/{first}/restore", headers=bearer(teacher))).status_code == 409
+
+    assert (await client.delete(f"/lessons/{lessons[1]['id']}", params={"scope": "following"},
+                                headers=student_bearer(sid))).status_code == 403
+    assert (await client.delete(f"/lessons/{lessons[1]['id']}", params={"scope": "following"},
+                                headers=bearer(teacher))).status_code == 204
+    left = (await client.get("/lessons", params=window(), headers=bearer(teacher))).json()
+    assert [item["id"] for item in left] == [first]
+    deleted = await outbox("schedule.lesson.deleted")
+    assert len(deleted) == 1 and deleted[0]["data"]["count"] == 2
+
+    # Прошедшее занятие: перенести и изменить можно.
+    _, past = await individual(client, teacher, fake_classroom, start=at(-3, 9))
+    moved = await client.post(f"/lessons/{past['id']}/reschedule", json={"starts_at": iso(at(-3, 15))}, headers=bearer(teacher))
+    assert moved.status_code == 200 and moved.json()["starts_at"][11:16] == "15:00"
+    edited = await client.patch(f"/lessons/{past['id']}", json={"topic": "Повторение"}, headers=bearer(teacher))
+    assert edited.status_code == 200 and edited.json()["topic"] == "Повторение"
+
+
+async def test_teacher_todos(client, teacher):
+    """Планировщик педагога: дела по дням, выполнено / не выполнено (решение №54)."""
+    today = datetime.now(UTC).date()
+    yesterday = today - timedelta(days=1)
+    made = (await client.post("/todos", json={"title": "Выставить оценки 7А", "day": str(today)}, headers=bearer(teacher))).json()
+    await client.post("/todos", json={"title": "Проверить ДЗ", "day": str(yesterday)}, headers=bearer(teacher))
+    assert (await client.post("/todos", json={"title": "x", "day": str(today)}, headers=student_bearer(uuid4()))).status_code == 403
+    done = (await client.patch(f"/todos/{made['id']}", json={"done": True}, headers=bearer(teacher))).json()
+    assert done["done"] and done["done_at"]
+    got = (await client.get("/todos", params={"from": str(yesterday), "to": str(today)}, headers=bearer(teacher))).json()
+    assert [(t["title"], t["day"], t["done"]) for t in got] == [("Проверить ДЗ", str(yesterday), False),
+                                                                  ("Выставить оценки 7А", str(today), True)]
+    assert (await client.get("/todos", params={"from": str(today), "to": str(today)}, headers=bearer(uuid4()))).json() == []
+    assert (await client.patch(f"/todos/{made['id']}", json={"done": False}, headers=bearer(uuid4()))).status_code == 404
+    assert (await client.delete(f"/todos/{made['id']}", headers=bearer(teacher))).status_code == 204
+
+
+async def test_bell_schedule(client, teacher):
+    """Своё расписание звонков у педагога (решение №55)."""
+    assert (await client.get("/bells", headers=bearer(teacher))).json() == {"periods": [], "weekdays": [0, 1, 2, 3, 4]}
+    body = {"periods": [{"start": "08:30", "end": "09:15"}, {"start": "09:25", "end": "10:10"}], "weekdays": [5, 0, 1, 1]}
+    saved = (await client.put("/bells", json=body, headers=bearer(teacher))).json()
+    assert saved["weekdays"] == [0, 1, 5] and len(saved["periods"]) == 2
+    assert (await client.get("/bells", headers=bearer(teacher))).json() == saved
+    assert (await client.get("/bells", headers=bearer(uuid4()))).json()["periods"] == []  # у другого — своё
+    overlap = {"periods": [{"start": "08:30", "end": "09:15"}, {"start": "09:00", "end": "09:45"}]}
+    assert (await client.put("/bells", json=overlap, headers=bearer(teacher))).status_code == 422
+    assert (await client.put("/bells", json={"periods": [{"start": "9:00", "end": "09:45"}]}, headers=bearer(teacher))).status_code == 422
+    assert (await client.get("/bells", headers=student_bearer(uuid4()))).status_code == 403

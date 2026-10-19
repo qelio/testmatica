@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
@@ -96,6 +96,15 @@ async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
             elif envelope.type in ("content.course.unpublished", "content.course.deleted"):
                 task.status = PRIVATE
     await session.execute(delete(CourseTask).where(CourseTask.course_id == key))
+
+
+async def on_schedule_event(envelope: Envelope, session: AsyncSession) -> None:
+    """Занятие удалили из расписания (решение №54) — ДЗ и тесты к нему остаются, привязка к уроку снимается."""
+    if envelope.type != "schedule.lesson.deleted":
+        return
+    ids = [UUID(x) for x in envelope.data.get("lesson_ids", [])]
+    if ids:
+        await session.execute(update(Assignment).where(Assignment.lesson_id.in_(ids)).values(lesson_id=None))
 
 
 async def on_moderation_decision(envelope: Envelope, session: AsyncSession) -> None:

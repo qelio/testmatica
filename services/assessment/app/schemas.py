@@ -163,6 +163,7 @@ class TaskOut(TaskSummary):
 class TaskPage(BaseModel):
     items: list[TaskSummary]
     total: int
+    details: list[TaskOut] | None = Field(None, description="С full=true — полные задачи (условие, ответы — кому можно) в том же порядке")
 
 
 # ---------- решение ----------

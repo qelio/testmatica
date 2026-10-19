@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { BellsModal } from "@/components/bells-modal";
 import { MonthGrid, rangeFor, TimeGrid, type View } from "@/components/calendar";
 import { CreateLessonModal, LessonModal, type LessonPreset } from "@/components/lesson-modals";
 import { Alert, Button, Spinner } from "@/components/ui";
-import { type Lesson, schedule } from "@/lib/api";
+import { type BellSchedule, type Lesson, schedule } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { addDays, fmtDateTime, fmtDay, fromInputs, unzoned, zoned } from "@/lib/dates";
 import { useLoad } from "@/lib/hooks";
@@ -70,6 +72,11 @@ function Schedule() {
 
   const { from, to, days } = rangeFor(view, anchor);
   const lessons = useLoad(() => schedule.lessons(unzoned(from), unzoned(to)), [from.toISOString(), to.toISOString()]);
+  // Расписание звонков педагога (решение №55) — полосами уроков в календаре.
+  const bellsLoad = useLoad(() => (isTeacher ? schedule.bells() : Promise.resolve(null)), [isTeacher]);
+  const [bellsSaved, setBellsSaved] = useState<BellSchedule | null>(null);
+  const bells = bellsSaved ?? bellsLoad.data ?? null;
+  const [editingBells, setEditingBells] = useState(false);
   const requests = useLoad(() => schedule.requests(), []);
 
   function shift(dir: -1 | 1) {
@@ -92,8 +99,29 @@ function Schedule() {
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Расписание</h1>
-        {isTeacher && <Button onClick={() => setCreating(null)}>Новое занятие</Button>}
+        {isTeacher && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setEditingBells(true)} disabled={!bells}>
+              Звонки
+            </Button>
+            <Link href="/dashboard/schedule/tasks" className="inline-flex h-11 items-center rounded-xl border border-line px-4 text-sm font-medium hover:bg-muted">
+              Планировщик задач
+            </Link>
+            <Button onClick={() => setCreating(null)}>Новое занятие</Button>
+          </div>
+        )}
       </div>
+
+      {editingBells && bells && (
+        <BellsModal
+          initial={bells}
+          onClose={() => setEditingBells(false)}
+          onSaved={(b) => {
+            setBellsSaved(b);
+            setEditingBells(false);
+          }}
+        />
+      )}
 
       {notice && (
         <div onClick={() => setNotice(undefined)}>
@@ -177,6 +205,7 @@ function Schedule() {
           lessons={lessons.data ?? []}
           onOpen={setOpen}
           onSlot={isTeacher ? (at) => setCreating(at) : undefined}
+          bells={bells}
         />
       )}
 

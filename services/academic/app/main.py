@@ -6,7 +6,7 @@ from testmatica_common.logging import configure_logging
 from testmatica_common.messaging import EVENTS_EXCHANGE
 from testmatica_common.service import ServiceRuntime, health_router
 
-from . import moderation, people, subjects_sync, test_grades
+from . import moderation, people, schedule_sync, subjects_sync, test_grades
 from .api import analytics, grade_types, journal, me, planning
 from .config import settings
 from .deps import db
@@ -22,6 +22,7 @@ runtime.consumer(
      (EVENTS_EXCHANGE, "assessment.assignment.students_removed")],
     test_grades.on_assessment_event,
 )
+runtime.consumer("academic.schedule", [(EVENTS_EXCHANGE, "schedule.lesson.deleted")], schedule_sync.on_schedule_event)
 runtime.consumer("academic.moderation", [(EVENTS_EXCHANGE, "moderation.decision.made")], moderation.on_moderation_decision)
 
 

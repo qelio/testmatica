@@ -1,8 +1,24 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, Computed, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, false, func, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Computed,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    Uuid,
+    false,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSTZRANGE, ExcludeConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from testmatica_common.ids import uuid7
@@ -155,3 +171,31 @@ class ScheduledJob(Base):
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TeacherTask(Base):
+    """Планировщик педагога (решение №54): простые дела на день — «выставить оценки», «проверить ДЗ 7А».
+    Два состояния: выполнено или нет."""
+
+    __tablename__ = "teacher_tasks"
+    __table_args__ = (Index("ix_teacher_tasks_day", "teacher_id", "day"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    teacher_id: Mapped[UUID]
+    day: Mapped[date] = mapped_column(Date)
+    title: Mapped[str] = mapped_column(String(300))
+    done: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BellSchedule(Base):
+    """Расписание звонков педагога (решение №55): уроки по номерам и дни недели — полосами в календаре."""
+
+    __tablename__ = "bell_schedules"
+
+    teacher_id: Mapped[UUID] = mapped_column(primary_key=True)
+    # [{"start": "08:30", "end": "09:15"}, …] — по порядку; номер урока = место в списке.
+    periods: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)
+    weekdays: Mapped[list[int]] = mapped_column(ARRAY(SmallInteger), default=lambda: [0, 1, 2, 3, 4])  # 0 — понедельник
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

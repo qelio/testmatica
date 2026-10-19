@@ -14,6 +14,7 @@ from ..models import (
     KIND_GROUP,
     KIND_INDIVIDUAL,
     REQUEST_PENDING,
+    STATUS_CANCELLED,
     STATUS_SCHEDULED,
     Lesson,
     LessonParticipant,
@@ -21,7 +22,7 @@ from ..models import (
     RescheduleRequest,
 )
 from ..recurrence import expand, zone
-from ..schemas import CancelRequest, CreatedLessons, LessonCreate, LessonOut, LessonUpdate, RescheduleCreate
+from ..schemas import CancelRequest, CreatedLessons, LessonCreate, LessonOut, LessonUpdate, RescheduleCreate, Scope
 
 router = APIRouter(prefix="/lessons", tags=["lessons"])
 teacher = auth.require(ROLE_TEACHER)
@@ -220,6 +221,47 @@ async def cancel_lesson(
     await logic.cancel(session, targets, principal.user_id, body.reason)
     await session.commit()
     return (await logic.serialize(session, [lesson], principal))[0]
+
+
+@router.post("/{lesson_id}/restore", response_model=LessonOut)
+async def restore_lesson(
+    lesson_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
+) -> LessonOut:
+    """Вернуть отменённое занятие (решение №54) — если время педагога свободно."""
+    lesson = await logic.visible_lesson(session, lesson_id, principal, lock=True)
+    logic.require_owner(lesson, principal)
+    if lesson.status != STATUS_CANCELLED:
+        raise ApiError(409, "lesson_not_cancelled", "Занятие не отменено")
+    await logic.check_conflicts(session, lesson.teacher_id, [(lesson.starts_at, lesson.ends_at)], exclude=[lesson.id])
+    lesson.status, lesson.cancelled_at, lesson.cancelled_by, lesson.cancel_reason = STATUS_SCHEDULED, None, None, None
+    await logic.flush_or_conflict(session)
+    logic.plan_reminders(session, [lesson])
+    await logic.publish(session, "schedule.lesson.updated", [lesson], principal.user_id, {"scope": "this", "restored": True})
+    await session.commit()
+    return (await logic.serialize(session, [lesson], principal))[0]
+
+
+@router.delete("/{lesson_id}", status_code=204)
+async def delete_lesson(
+    lesson_id: UUID,
+    scope: Scope = Query("this", description="this — только это занятие; following — и все следующие в серии"),
+    principal: Principal = Depends(teacher),
+    session: AsyncSession = Depends(db.session),
+) -> None:
+    """Удалить занятие совсем (решение №54) — его больше нет в расписании. Отменённое — тоже. Оценки и посещаемость
+    за него в журнале удаляются, привязки КТП и ДЗ к нему снимаются (событие schedule.lesson.deleted)."""
+    lesson = await logic.visible_lesson(session, lesson_id, principal, lock=True)
+    logic.require_owner(lesson, principal)
+    targets = [lesson]
+    if scope == "following" and lesson.series_id is not None:
+        targets = list((await session.execute(
+            select(Lesson).where(Lesson.series_id == lesson.series_id, Lesson.starts_at >= lesson.starts_at)
+            .order_by(Lesson.starts_at).with_for_update()
+        )).scalars())
+    await logic.publish(session, "schedule.lesson.deleted", targets, principal.user_id, {"scope": scope})
+    for t in targets:
+        await session.delete(t)
+    await session.commit()
 
 
 @router.post("/{lesson_id}/reschedule", response_model=LessonOut)

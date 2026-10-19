@@ -84,3 +84,29 @@ async def test_grade_removed_with_assignment(client, world):
     body = (await journal()).json()
     assert body["grades"] == [] and body["works"] == []
     assert len(await outbox("academic.grade.deleted")) == 2
+
+
+async def test_deleted_lesson_removed_from_journal(client, world):
+    """Занятие удалили из расписания — его оценки и посещаемость уходят из журнала, другие — остаются (решение №54)."""
+    from uuid import UUID
+
+    from sqlalchemy import func, select
+
+    from app import schedule_sync
+    from app.models import Attendance, Grade
+
+    teacher, pupil = uuid4(), uuid4()
+    type_id = await grade_type_id(client, teacher, "Работа на уроке")
+    gone, kept = uuid4(), uuid4()
+    now = datetime.now(UTC)
+    async with db.sessionmaker() as s, s.begin():
+        for lesson in (gone, kept):
+            s.add(Grade(teacher_id=teacher, student_id=pupil, lesson_id=lesson, lesson_starts_at=now, value=5,
+                        grade_type_id=UUID(type_id), comment="Ответ у доски"))
+            s.add(Attendance(lesson_id=lesson, student_id=pupil, teacher_id=teacher, lesson_starts_at=now, status="present"))
+    async with db.sessionmaker() as s, s.begin():
+        await schedule_sync.on_schedule_event(make_envelope("schedule.lesson.deleted", {"lesson_ids": [str(gone)]}), s)
+    async with db.sessionmaker() as s:
+        grades = (await s.execute(select(Grade.lesson_id))).scalars().all()
+        visits = await s.scalar(select(func.count()).select_from(Attendance))
+    assert grades == [kept] and visits == 1

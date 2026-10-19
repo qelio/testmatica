@@ -306,7 +306,7 @@ function CreateLessonForm({ initial, preset, onCreated }: { initial: Date; prese
 
 // ---------- карточка занятия ----------
 
-type Mode = "view" | "move" | "edit" | "cancel";
+type Mode = "view" | "move" | "edit" | "cancel" | "delete";
 
 export function LessonModal({
   lesson,
@@ -320,7 +320,7 @@ export function LessonModal({
   onChanged: (message?: string) => void;
 }) {
   return (
-    <Modal open={!!lesson} onClose={onClose} title={lesson ? lesson.title : ""}>
+    <Modal open={!!lesson} onClose={onClose} title={lesson ? lesson.title : ""} wide>
       {lesson && <LessonDetails key={lesson.id} lesson={lesson} isTeacher={isTeacher} onChanged={onChanged} />}
     </Modal>
   );
@@ -369,6 +369,7 @@ function LessonDetails({
   }
   if (mode === "edit") return <EditForm lesson={lesson} onBack={() => setMode("view")} onDone={() => onChanged("Сохранено")} />;
   if (mode === "cancel") return <CancelForm lesson={lesson} onBack={() => setMode("view")} onDone={() => onChanged("Занятие отменено")} />;
+  if (mode === "delete") return <DeleteForm lesson={lesson} onBack={() => setMode("view")} onDone={() => onChanged("Занятие удалено")} />;
 
   return (
     <div className="space-y-4">
@@ -465,13 +466,12 @@ function LessonDetails({
       )}
       <LessonRecordings lessonId={lesson.id} />
 
-      {!cancelled && !past && (
+      {/* Педагог переносит и правит и прошедшие занятия (решение №54); ученик предлагает перенос только будущего. */}
+      {!cancelled && (isTeacher || (!past && canPropose && !req)) && (
         <div className="flex flex-wrap gap-2 border-t border-line pt-4">
-          {(isTeacher || (canPropose && !req)) && (
-            <Button variant="secondary" onClick={() => setMode("move")}>
-              {isTeacher ? "Перенести" : "Предложить перенос"}
-            </Button>
-          )}
+          <Button variant="secondary" onClick={() => setMode("move")}>
+            {isTeacher ? "Перенести" : "Предложить перенос"}
+          </Button>
           {isTeacher && (
             <>
               <Button variant="secondary" onClick={() => setMode("edit")}>
@@ -480,8 +480,21 @@ function LessonDetails({
               <Button variant="ghost" className="text-danger" onClick={() => setMode("cancel")}>
                 Отменить занятие
               </Button>
+              <Button variant="ghost" className="text-danger" onClick={() => setMode("delete")}>
+                Удалить
+              </Button>
             </>
           )}
+        </div>
+      )}
+      {cancelled && isTeacher && (
+        <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+          <Button variant="secondary" loading={loading} onClick={() => act(() => schedule.restore(lesson.id), "Занятие возвращено")}>
+            Вернуть занятие
+          </Button>
+          <Button variant="ghost" className="text-danger" onClick={() => setMode("delete")}>
+            Удалить из расписания
+          </Button>
         </div>
       )}
       {isTeacher && !cancelled && new Date(lesson.starts_at) <= new Date() && (
@@ -491,9 +504,6 @@ function LessonDetails({
         >
           Открыть журнал
         </Link>
-      )}
-      {isTeacher && !cancelled && (
-        <p className="text-xs text-fg-soft">Домашние задания и встроенный видеозвонок появятся на следующих этапах.</p>
       )}
     </div>
   );
@@ -621,6 +631,46 @@ function EditForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => vo
         </Button>
         <Button type="submit" loading={loading} className="flex-1">
           Сохранить
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Удалить занятие совсем (решение №54): его не будет в расписании, оценки и посещаемость за него уйдут из журнала. */
+function DeleteForm({ lesson, onBack, onDone }: { lesson: Lesson; onBack: () => void; onDone: () => void }) {
+  const [scope, setScope] = useState<Scope>("this");
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError(undefined);
+        try {
+          await schedule.remove(lesson.id, scope);
+          onDone();
+        } catch (err) {
+          setError(errorText(err));
+          setLoading(false);
+        }
+      }}
+    >
+      {error && <Alert>{error}</Alert>}
+      <p className="text-sm">
+        Занятие исчезнет из расписания у вас и у учеников. Оценки и посещаемость за него будут удалены из журнала, домашние задания
+        останутся, но без привязки к уроку. Если занятие просто не состоится, лучше <b>отменить</b> его — оно останется
+        зачёркнутым.
+      </p>
+      {lesson.series_id && <ScopeChoice value={scope} onChange={setScope} />}
+      <div className="flex gap-2">
+        <Button type="button" variant="secondary" onClick={onBack}>
+          Назад
+        </Button>
+        <Button type="submit" loading={loading} className="flex-1 bg-danger hover:bg-danger/90">
+          Удалить занятие
         </Button>
       </div>
     </form>
