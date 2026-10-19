@@ -8,7 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import proctoring, storage
+from . import board, proctoring, storage
 from .config import settings
 from testmatica_common.ids import uuid7
 from testmatica_common.plans import BASIC, FREE
@@ -89,6 +89,9 @@ async def on_webhook(session: AsyncSession, ev: WebhookEvent) -> None:
         return
     if ev.room and ev.room.startswith(proctoring.PREFIX):
         await proctoring.on_webhook(session, ev)
+        return
+    if ev.room and ev.room.startswith(board.PREFIX):
+        await board.on_webhook(session, ev)
         return
     if not ev.room or not ev.room.startswith("lesson-"):
         return

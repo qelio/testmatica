@@ -122,3 +122,21 @@ class ProctorRecording(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class BoardSession(Base):
+    """Показ экрана педагога на интерактивной доске (решение №53). Доска без входа в аккаунт получает код; педагог
+    вводит его у себя и показывает экран. В LiveKit — комната board-<id>: педагог только показывает, доска только смотрит."""
+
+    __tablename__ = "board_sessions"
+    __table_args__ = (Index("ix_board_sessions_code", "code"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    code: Mapped[str] = mapped_column(String(6))
+    secret_hash: Mapped[str] = mapped_column(String(64))  # sha256 секрета доски — им она узнаёт статус и получает пропуск
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # до какого времени код ждёт педагога
+    teacher_id: Mapped[UUID | None]
+    teacher_name: Mapped[str | None] = mapped_column(String(200))
+    paired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

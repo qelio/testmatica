@@ -77,3 +77,31 @@ class ProctorRecordingOut(BaseModel):
     url: str | None
     download_url: str | None
     expires_at: datetime | None
+
+
+class BoardCreated(BaseModel):
+    """Новая доска: код показывается на экране, secret хранит только сама доска."""
+
+    id: UUID
+    code: str
+    secret: str
+    expires_at: datetime
+
+
+class BoardStatus(BaseModel):
+    status: str = Field(description="waiting — ждёт педагога; live — педагог подключился; ended — показ завершён; expired — код истёк")
+    code: str
+    expires_at: datetime
+    teacher_name: str | None = None
+    url: str | None = Field(None, description="Адрес LiveKit — когда live")
+    token: str | None = Field(None, description="Пропуск доски (только смотреть) — когда live")
+
+
+class BoardPairIn(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class BoardPairOut(BaseModel):
+    id: UUID
+    url: str
+    token: str = Field(description="Пропуск педагога: только показ экрана (со звуком вкладки)")
