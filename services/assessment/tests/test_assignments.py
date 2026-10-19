@@ -939,3 +939,17 @@ async def test_lists_paged_and_filtered(client, fakes):
     assert {a["target_id"] for a in eighth} == {str(petya)} and len(eighth) == 3
     targets = (await client.get("/assignments/targets", headers=bearer(teacher))).json()
     assert {t["target_id"] for t in targets} == {str(olya), str(petya)}
+
+
+async def test_lesson_deleted_unlinks_homework(client, fakes):
+    """Занятие удалили из расписания — ДЗ к нему остаётся, привязка к уроку снимается (решение №54)."""
+    teacher, olya = uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks[:1])
+    await link(teacher, olya)
+    lesson = str(uuid4())
+    fakes.lessons[lesson] = str(teacher)
+    a = await assign(client, teacher, test, kind="homework", target_type="student", target_id=str(olya), lesson_id=lesson)
+    await apply(handlers.on_schedule_event, "schedule.lesson.deleted", lesson_ids=[lesson])
+    after = (await client.get(f"/assignments/{a['id']}", headers=bearer(teacher))).json()
+    assert after["lesson_id"] is None and after["kind"] == "homework"

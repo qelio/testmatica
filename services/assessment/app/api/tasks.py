@@ -33,6 +33,7 @@ async def search(
     q: str | None = Query(None, max_length=100),
     limit: int = Query(30, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    full: bool = Query(False, description="Полные задачи (условие, ответы, разбор) — для банка с условиями"),
     principal: Principal = Depends(author),
     session: AsyncSession = Depends(db.session),
 ) -> TaskPage:
@@ -63,7 +64,8 @@ async def search(
         query = query.where(or_(Task.title.ilike(like), Task.statement.ilike(like), *by_number))
     total = await session.scalar(select(func.count()).select_from(query.subquery()))
     rows = (await session.execute(query.order_by(Task.updated_at.desc()).limit(limit).offset(offset))).scalars().all()
-    return TaskPage(items=await views.summaries(session, rows), total=total or 0)
+    details = [await views.full(session, t, principal) for t in rows] if full else None
+    return TaskPage(items=await views.summaries(session, rows), total=total or 0, details=details)
 
 
 async def _set_topic(session: AsyncSession, task: Task, topic_id: UUID | None) -> None:

@@ -197,3 +197,16 @@ async def test_default_rubric_seed():
     async with db.sessionmaker() as s, s.begin():
         created = await rubric.seed(s, [{"id": str(uuid4()), "name": "Информатика"}, {"id": str(uuid4()), "name": "Неизвестный"}])
     assert created == 4 + sum(len(v) for v in rubric.DEFAULT_TOPICS["Информатика"].values())
+
+
+async def test_search_with_full_tasks(client):
+    """Банк с условиями: full=true — полные задачи (условие, ответы, разбор) в том же порядке, что и список."""
+    teacher = uuid4()
+    for body in (CHOICE, SHORT):
+        await client.post("/tasks", json=body, headers=bearer(teacher))
+    page = (await client.get("/tasks", params={"scope": "mine", "full": "true"}, headers=bearer(teacher))).json()
+    assert [d["id"] for d in page["details"]] == [t["id"] for t in page["items"]]
+    by_type = {d["type"]: d for d in page["details"]}
+    assert by_type["short"]["statement"] == SHORT["statement"] and by_type["short"]["answers"]
+    assert by_type["choice"]["explanation"] and any(o["is_correct"] for o in by_type["choice"]["options"])
+    assert (await client.get("/tasks", params={"scope": "mine"}, headers=bearer(teacher))).json()["details"] is None

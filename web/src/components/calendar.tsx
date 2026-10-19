@@ -1,6 +1,6 @@
 "use client";
 
-import type { Lesson } from "@/lib/api";
+import type { BellSchedule, Lesson } from "@/lib/api";
 import { addDays, fmtTime, sameDay, startOfWeek, unzoned, WEEKDAYS_SHORT, zoned } from "@/lib/dates";
 
 // Дни и часы сетки — «настенное» время пользователя (lib/dates): занятия ставятся по zoned(начало).
@@ -49,13 +49,23 @@ export function TimeGrid({
   lessons,
   onOpen,
   onSlot,
+  bells,
 }: {
   days: Date[];
   lessons: Lesson[];
   onOpen: (lesson: Lesson) => void;
   onSlot?: (at: Date) => void;
+  /** Расписание звонков педагога — полосы уроков с номерами (решение №55). */
+  bells?: BellSchedule | null;
 }) {
   const hours = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i);
+  const periods = (bells?.periods ?? []).map((p, i) => {
+    const [sh, sm] = p.start.split(":").map(Number);
+    const [eh, em] = p.end.split(":").map(Number);
+    const top = ((sh * 60 + sm - DAY_START * 60) / 60) * HOUR_PX;
+    return { n: i + 1, top, height: (((eh - sh) * 60 + (em - sm)) / 60) * HOUR_PX, label: `${p.start}–${p.end}` };
+  });
+  const showBells = periods.length > 0 && days.some((d) => bells!.weekdays.includes((d.getDay() + 6) % 7));
   const today = zoned(new Date());
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-surface">
@@ -74,17 +84,40 @@ export function TimeGrid({
           ))}
         </div>
         <div className="relative grid" style={{ gridTemplateColumns: `56px repeat(${days.length}, 1fr)` }}>
-          <div>
+          <div className="relative">
             {hours.map((h) => (
               <div key={h} className="relative text-right text-xs text-fg-soft" style={{ height: HOUR_PX }}>
                 <span className="absolute -top-2 right-2">{h}:00</span>
               </div>
             ))}
+            {/* Номер урока по звонкам — у шкалы времени, напротив начала урока. */}
+            {showBells &&
+              periods.map((p) => (
+                <span
+                  key={p.n}
+                  title={`${p.n} урок · ${p.label}`}
+                  className="pointer-events-none absolute left-1 grid h-4 min-w-4 place-items-center rounded bg-brand/15 px-1 text-[10px] font-semibold text-brand"
+                  style={{ top: p.top + 2 }}
+                >
+                  {p.n}
+                </span>
+              ))}
           </div>
           {days.map((day) => {
             const dayLessons = lessons.filter((l) => sameDay(zoned(l.starts_at), day));
             return (
               <div key={day.toISOString()} className="relative border-l border-line">
+                {/* Уроки по звонкам — светлые полосы под занятиями. */}
+                {bells?.weekdays.includes((day.getDay() + 6) % 7) &&
+                  periods.map((p) => (
+                    <div
+                      key={p.n}
+                      aria-hidden
+                      title={`${p.n} урок · ${p.label}`}
+                      className="pointer-events-none absolute inset-x-0 border-y border-brand/25 bg-brand/[0.08]"
+                      style={{ top: p.top, height: p.height }}
+                    />
+                  ))}
                 {hours.map((h) => (
                   <button
                     key={h}

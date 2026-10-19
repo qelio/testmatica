@@ -146,3 +146,51 @@ class RescheduleWithLesson(RescheduleOut):
 class CreatedLessons(BaseModel):
     count: int
     lessons: list[LessonOut]
+
+
+class TeacherTaskIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    day: date
+
+
+class TeacherTaskUpdate(BaseModel):
+    title: str | None = Field(None, min_length=1, max_length=300)
+    day: date | None = None
+    done: bool | None = None
+
+
+class TeacherTaskOut(BaseModel):
+    id: UUID
+    title: str
+    day: date
+    done: bool
+    done_at: datetime | None
+    created_at: datetime
+
+
+class BellPeriod(BaseModel):
+    start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="ЧЧ:ММ")
+    end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class BellScheduleIn(BaseModel):
+    periods: list[BellPeriod] = Field(default_factory=list, max_length=16, description="Уроки по порядку; пусто — без звонков")
+    weekdays: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4], description="Дни недели: 0 — пн … 6 — вс")
+
+    @model_validator(mode="after")
+    def _order(self) -> "BellScheduleIn":
+        if any(not 0 <= d <= 6 for d in self.weekdays):
+            raise ValueError("Дни недели — от 0 (пн) до 6 (вс)")
+        self.weekdays = sorted(set(self.weekdays))
+        prev = ""
+        for n, p in enumerate(self.periods, 1):
+            if p.end <= p.start:
+                raise ValueError(f"Урок {n}: конец должен быть позже начала")
+            if p.start < prev:
+                raise ValueError(f"Урок {n} начинается раньше, чем заканчивается предыдущий")
+            prev = p.end
+        return self
+
+
+class BellScheduleOut(BellScheduleIn):
+    pass

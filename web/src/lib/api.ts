@@ -391,6 +391,10 @@ export type Lesson = {
   pending_reschedule: RescheduleRequest | null;
 };
 
+/** Расписание звонков педагога (решение №55): уроки по порядку, «ЧЧ:ММ»; weekdays — 0 (пн) … 6 (вс). */
+export type BellSchedule = { periods: { start: string; end: string }[]; weekdays: number[] };
+export type TeacherTodo = { id: string; title: string; day: string; done: boolean; done_at: string | null; created_at: string };
+
 export type Repeat = { weekdays: number[]; interval_weeks: number; until?: string | null; count?: number | null };
 
 export type LessonCreate = {
@@ -424,6 +428,18 @@ export const schedule = {
   ) => api<Lesson>(`${SC}/lessons/${id}`, { method: "PATCH", body: data }),
   cancel: (id: string, scope: Scope, reason?: string | null) =>
     api<Lesson>(`${SC}/lessons/${id}/cancel`, { method: "POST", body: { scope, reason } }),
+  /** Вернуть отменённое занятие (решение №54). */
+  restore: (id: string) => api<Lesson>(`${SC}/lessons/${id}/restore`, { method: "POST" }),
+  /** Удалить занятие совсем: из расписания и журнала (решение №54). */
+  remove: (id: string, scope: Scope) => api<void>(`${SC}/lessons/${id}?scope=${scope}`, { method: "DELETE" }),
+  /** Планировщик педагога: дела по дням (решение №54); from/to — даты «ГГГГ-ММ-ДД». */
+  todos: (from: string, to: string) => api<TeacherTodo[]>(`${SC}/todos?from=${from}&to=${to}`),
+  addTodo: (title: string, day: string) => api<TeacherTodo>(`${SC}/todos`, { method: "POST", body: { title, day } }),
+  updateTodo: (id: string, data: { title?: string; day?: string; done?: boolean }) =>
+    api<TeacherTodo>(`${SC}/todos/${id}`, { method: "PATCH", body: data }),
+  deleteTodo: (id: string) => api<void>(`${SC}/todos/${id}`, { method: "DELETE" }),
+  bells: () => api<BellSchedule>(`${SC}/bells`),
+  saveBells: (data: BellSchedule) => api<BellSchedule>(`${SC}/bells`, { method: "PUT", body: data }),
   reschedule: (id: string, starts_at: string, comment?: string | null) =>
     api<Lesson>(`${SC}/lessons/${id}/reschedule`, { method: "POST", body: { starts_at, comment } }),
   requests: () => api<(RescheduleRequest & { lesson: Lesson })[]>(`${SC}/reschedule-requests`),
@@ -1327,7 +1343,8 @@ export const assessment = {
         .filter(([, v]) => v !== undefined && v !== "" && v !== false)
         .map(([k, v]) => [k, String(v)]),
     );
-    return api<{ items: TaskSummary[]; total: number }>(`${AS}/tasks?${qs}`);
+    // full: true — ещё и полные задачи (условие, ответы, разбор) в details.
+    return api<{ items: TaskSummary[]; total: number; details: TaskFull[] | null }>(`${AS}/tasks?${qs}`);
   },
   task: (id: string) => api<TaskFull>(`${AS}/tasks/${id}`),
   create: (data: TaskInput) => api<TaskFull>(`${AS}/tasks`, { method: "POST", body: data }),

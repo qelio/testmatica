@@ -200,11 +200,14 @@ export function Modal({
   onClose,
   title,
   children,
+  wide = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  /** Шире обычного — когда в окне много кнопок в ряд. */
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   // Окно рендерится в конец <body> (портал): так форма внутри окна не окажется вложенной в форму страницы.
@@ -225,7 +228,7 @@ export function Modal({
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/50"
+      className={`m-auto w-[calc(100%-2rem)] ${wide ? "max-w-2xl" : "max-w-lg"} rounded-2xl border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/50`}
     >
       <div className="flex items-center justify-between border-b border-line px-5 py-4">
         <h2 className="text-lg font-semibold">{title}</h2>
