@@ -24,7 +24,7 @@ async def test_grade_from_test_goes_to_journal(client, world):
     type_id = await grade_type_id(client, teacher, "Контрольная работа")
     assignment = str(uuid4())
     base = {"attempt_id": str(uuid4()), "assignment_id": assignment, "student_id": str(pupil), "teacher_id": str(teacher),
-            "title": "Дроби", "kind": "homework", "score": 5, "max_score": 6, "percent": 83.3, "grade": 4,
+            "title": "Дроби", "subject": "Алгебра", "kind": "homework", "score": 5, "max_score": 6, "percent": 83.3, "grade": 4,
             "to_journal": True, "lesson_id": str(lesson), "group_id": str(group), "grade_type_id": type_id,
             "assigned_at": datetime.now(UTC).isoformat()}
 
@@ -66,7 +66,7 @@ async def test_grade_removed_with_assignment(client, world):
     group = world.group(teacher, [pupil, other])
     type_id = await grade_type_id(client, teacher, "Контрольная работа")
     assignment = str(uuid4())
-    base = {"attempt_id": str(uuid4()), "assignment_id": assignment, "teacher_id": str(teacher), "title": "Дроби", "kind": "test",
+    base = {"attempt_id": str(uuid4()), "assignment_id": assignment, "teacher_id": str(teacher), "title": "Дроби", "subject": "Алгебра", "kind": "test",
             "score": 5, "max_score": 6, "percent": 83.3, "grade": 4, "to_journal": True, "group_id": str(group),
             "grade_type_id": type_id, "assigned_at": datetime.now(UTC).isoformat()}
     await graded(**base | {"student_id": str(pupil)})
@@ -110,3 +110,48 @@ async def test_deleted_lesson_removed_from_journal(client, world):
         grades = (await s.execute(select(Grade.lesson_id))).scalars().all()
         visits = await s.scalar(select(func.count()).select_from(Attendance))
     assert grades == [kept] and visits == 1
+
+
+async def test_subject_journals_shared_with_colleague(client, world):
+    """Журналы класса по предметам; журнал общий с коллегой: видны занятия и оценки обоих, менять — только свои (решение №59)."""
+    import httpx
+
+    from app.deps import assessment
+
+    maria, petr, pupil = uuid4(), uuid4(), uuid4()
+    await add_person(maria, "Иванова Мария", ("teacher",))
+    await add_person(petr, "Петров Пётр", ("teacher",))
+    group = world.group(maria, [pupil])
+    world.shares.add((str(group), str(petr)))
+    algebra = world.lesson(maria, [pupil], days=-2, group_id=group)
+    informatics = world.lesson(petr, [pupil], days=-1, group_id=group, subject="Информатика")
+    type_id = await grade_type_id(client, maria, "Работа на уроке")
+    grade = {"student_id": str(pupil), "value": 5, "grade_type_id": type_id, "comment": "Ответ у доски"}
+    assert (await client.post(f"/lessons/{algebra}/grades", json=grade, headers=bearer(maria))).status_code == 201
+    mine = (await client.post(f"/lessons/{informatics}/grades", json=grade | {"value": 4}, headers=bearer(petr))).json()
+    # Пётр не может ставить оценки на занятии Марии.
+    assert (await client.post(f"/lessons/{algebra}/grades", json=grade, headers=bearer(petr))).status_code == 404
+    # Оценка за тест по информатике без урока — в журнал информатики; старая без предмета — в «Без предмета».
+    base = {"attempt_id": str(uuid4()), "student_id": str(pupil), "teacher_id": str(petr), "kind": "test", "score": 3,
+            "max_score": 3, "percent": 100.0, "grade": 5, "to_journal": True, "group_id": str(group), "grade_type_id": type_id,
+            "assigned_at": datetime.now(UTC).isoformat()}
+    await graded(**base | {"assignment_id": str(uuid4()), "title": "Циклы", "subject": "Информатика"})
+    old = str(uuid4())
+    await graded(**base | {"assignment_id": old, "title": "Старый", "subject": None})
+
+    get = lambda who, **q: client.get("/journal", params={"group_id": str(group), **period(), **q}, headers=bearer(who))  # noqa: E731
+    body = (await get(maria)).json()
+    assert body["subjects"] == ["Алгебра", "Информатика", None] and body["subject"] == "Алгебра"  # предмет класса — первым
+    assert [(g["value"], g["own"]) for g in body["grades"]] == [(5, True)]
+    body = (await get(maria, subject="Информатика")).json()
+    assert [(lesson["own"], lesson["teacher_name"]) for lesson in body["lessons"]] == [(False, "Петров Пётр")]
+    assert sorted((g["value"], g["own"], g["teacher_name"]) for g in body["grades"]) == [(4, False, "Петров Пётр"), (5, False, "Петров Пётр")]
+    assert [w["title"] for w in body["works"]] == ["Циклы"]
+    assert [w["title"] for w in (await get(petr, subject="")).json()["works"]] == ["Старый"]
+    # Мария не может менять оценку Петра.
+    assert (await client.patch(f"/grades/{mine['id']}", json={"value": 2}, headers=bearer(maria))).status_code == 404
+
+    # Разноска старых оценок: предмет — у работы в assessment.
+    assessment.transport = httpx.MockTransport(lambda r: httpx.Response(200, json={old: "Информатика"}))
+    await test_grades.backfill_subjects()
+    assert [w["title"] for w in (await get(petr, subject="Информатика")).json()["works"]] == ["Циклы", "Старый"]

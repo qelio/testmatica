@@ -266,7 +266,7 @@ async def recompute(session: AsyncSession, attempt: Attempt, a: Assignment | Non
         await outbox.event(
             session, "assessment.attempt.graded",
             {"attempt_id": str(best.id), "assignment_id": str(a.id), "student_id": str(attempt.student_id),
-             "teacher_id": str(a.teacher_id), "title": a.title, "kind": a.kind, "score": best.score,
+             "teacher_id": str(a.teacher_id), "title": a.title, "kind": a.kind, "subject": a.subject_name, "score": best.score,
              "max_score": best.max_score, "percent": best.percent, "grade": best.grade, "attempts": len(checked),
              "by_teacher": best.grade_override is not None,
              "to_journal": a.grade_to_journal, "lesson_id": str(a.lesson_id) if a.lesson_id else None,

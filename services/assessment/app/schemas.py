@@ -349,6 +349,8 @@ class QuizIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field("", max_length=5000)
     grade_level: int = Field(ge=1, le=11, description="Для какого класса тест (1–11)")
+    subject_id: UUID | None = Field(None, description="Предмет (решение №59); не указан — самый частый у задач теста")
+    subject_name: str | None = Field(None, max_length=80)
     order_mode: Literal["fixed", "random"] = "fixed"
     shuffle_options: bool = False
     time_mode: Literal["none", "total", "per_task"] = "none"
@@ -399,6 +401,8 @@ class QuizOut(BaseModel):
     time_mode: str
     time_limit_s: int | None
     theme: str = Field(description="course — как у курса привязанного модуля, иначе classic (решение №44)")
+    subject_id: UUID | None = None
+    subject_name: str | None = None
     module: ModuleRef | None
     shared: bool = False
     visibility: str | None = Field(None, description="public, teachers или private — при модуле курса (решение №46)")
@@ -418,6 +422,7 @@ class QuizSummary(BaseModel):
     id: UUID
     title: str
     grade_level: int | None
+    subject_name: str | None = None
     module: ModuleRef | None = None
     shared: bool = False
     visibility: str | None = None

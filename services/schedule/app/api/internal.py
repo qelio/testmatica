@@ -65,12 +65,16 @@ async def lessons(
     student_id: UUID | None = None,
     start: datetime = Query(alias="from"),
     end: datetime = Query(alias="to"),
+    all_teachers: bool = Query(False, description="Занятия группы всех педагогов — для общего журнала класса (решение №59)"),
     session: AsyncSession = Depends(db.session),
 ) -> list[LessonInfo]:
-    """Занятия педагога за период: группы (group_id) или индивидуальные с учеником (student_id)."""
+    """Занятия педагога за период: группы (group_id) или индивидуальные с учеником (student_id).
+    all_teachers — занятия группы у всех педагогов (доступ к группе проверяет вызывающий сервис)."""
     if (group_id is None) == (student_id is None):
         raise ApiError(422, "invalid_target", "Нужен ровно один параметр: group_id или student_id")
-    query = select(Lesson).where(Lesson.teacher_id == teacher_id, Lesson.starts_at >= start, Lesson.starts_at < end)
+    query = select(Lesson).where(Lesson.starts_at >= start, Lesson.starts_at < end)
+    if not (all_teachers and group_id):
+        query = query.where(Lesson.teacher_id == teacher_id)
     query = query.where(Lesson.group_id == group_id) if group_id else query.where(Lesson.student_id == student_id)
     rows = (await session.execute(query.order_by(Lesson.starts_at))).scalars().all()
     return await _info(session, list(rows))

@@ -28,6 +28,8 @@ function JournalScreen() {
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [cell, setCell] = useState<{ lessonId: string; studentId: string } | null>(null);
+  // Журнал предмета (решение №59): undefined — первый (предмет класса), null — «Без предмета».
+  const [subject, setSubject] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string>();
 
   const targets = useLoad(async () => {
@@ -45,13 +47,14 @@ function JournalScreen() {
   const journal = useLoad(
     () =>
       hasTarget
-        ? academic.journal({ group_id: groupId, student_id: studentId }, from, to)
+        ? academic.journal({ group_id: groupId, student_id: studentId }, from, to, subject)
         : Promise.resolve(null),
-    [groupId, studentId, from.toISOString()],
+    [groupId, studentId, from.toISOString(), subject],
   );
 
   function choose(value: string) {
     const [kind, id] = value.split(":");
+    setSubject(undefined);
     router.replace(id ? `/dashboard/journal?${kind}=${id}` : "/dashboard/journal");
   }
 
@@ -99,6 +102,25 @@ function JournalScreen() {
           </Button>
         </div>
       </div>
+
+      {journal.data && (
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Журналы по предметам">
+          {journal.data.subjects.map((x) => {
+            const active = x === journal.data!.subject;
+            return (
+              <button
+                key={x ?? ""}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setSubject(x)}
+                className={`h-9 rounded-full border px-4 text-sm font-medium ${active ? "border-brand bg-brand text-white" : "border-line hover:bg-muted"}`}
+              >
+                {x ?? "Без предмета"}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {(journal.error || error) && <Alert>{journal.error ?? error}</Alert>}
       {!hasTarget ? (
@@ -164,10 +186,15 @@ function JournalTable({
             {journal.lessons.map((l) => {
               const d = zoned(l.starts_at);
               return (
-                <th key={l.id} className={`min-w-14 border-l border-line px-1 py-1.5 text-center font-normal ${l.started ? "" : "text-fg-soft/50"}`}>
+                <th
+                  key={l.id}
+                  title={l.own ? undefined : `Занятие коллеги: ${l.teacher_name}`}
+                  className={`min-w-14 border-l border-line px-1 py-1.5 text-center font-normal ${l.started ? "" : "text-fg-soft/50"} ${l.own ? "" : "bg-muted/60"}`}
+                >
                   <span className="block text-[11px] text-fg-soft">{WEEKDAYS_SHORT[(d.getDay() + 6) % 7]}</span>
                   <span className="block font-medium">{fmtDate(l.starts_at, { day: "2-digit", month: "2-digit" })}</span>
-                  {l.started && (
+                  {!l.own && <span className="block max-w-16 truncate text-[11px] text-fg-soft">{l.teacher_name?.split(" ")[0]}</span>}
+                  {l.started && l.own && (
                     <button
                       onClick={() => onAllPresent(l.id)}
                       title="Отметить всех присутствующими"
@@ -180,11 +207,22 @@ function JournalTable({
               );
             })}
             {journal.works.map((w) => (
-              <th key={w.id} className="max-w-28 min-w-20 border-l border-line bg-brand/5 px-1.5 py-1.5 text-center font-normal" title={w.title}>
+              <th
+                key={w.id}
+                className="max-w-28 min-w-20 border-l border-line bg-brand/5 px-1.5 py-1.5 text-center font-normal"
+                title={w.own ? w.title : `${w.title} — работа коллеги: ${w.teacher_name}`}
+              >
                 <span className="block text-[11px] text-fg-soft">{fmtDate(w.at, { day: "2-digit", month: "2-digit" })}</span>
-                <Link href={`/dashboard/assignments/${w.id}`} className="line-clamp-2 text-xs font-medium hover:text-brand">
-                  {w.title}
-                </Link>
+                {w.own ? (
+                  <Link href={`/dashboard/assignments/${w.id}`} className="line-clamp-2 text-xs font-medium hover:text-brand">
+                    {w.title}
+                  </Link>
+                ) : (
+                  <>
+                    <span className="line-clamp-2 text-xs font-medium">{w.title}</span>
+                    <span className="block truncate text-[11px] text-fg-soft">{w.teacher_name?.split(" ")[0]}</span>
+                  </>
+                )}
               </th>
             ))}
             <th className="border-l border-line px-2 py-2 text-center font-medium">Ср. балл</th>
@@ -227,19 +265,23 @@ function JournalTable({
               })}
               {journal.works.map((w) => {
                 const cellGrades = grades.get(`${w.id}:${s.id}`) ?? [];
+                const values = cellGrades.map((g) => (
+                  <span key={g.id} className={`font-semibold ${gradeTone(g.value)}`}>
+                    {g.value}
+                  </span>
+                ));
+                const hint = cellGrades.map((g) => `${g.grade_type}. ${g.comment}`).join("\n") || "Оценки пока нет";
                 return (
                   <td key={w.id} className="border-l border-line/70 bg-brand/5 p-0 text-center">
-                    <Link
-                      href={`/dashboard/assignments/${w.id}`}
-                      title={cellGrades.map((g) => `${g.grade_type}. ${g.comment}`).join("\n") || "Оценки пока нет"}
-                      className="flex h-11 w-full items-center justify-center gap-1 hover:bg-muted"
-                    >
-                      {cellGrades.map((g) => (
-                        <span key={g.id} className={`font-semibold ${gradeTone(g.value)}`}>
-                          {g.value}
-                        </span>
-                      ))}
-                    </Link>
+                    {w.own ? (
+                      <Link href={`/dashboard/assignments/${w.id}`} title={hint} className="flex h-11 w-full items-center justify-center gap-1 hover:bg-muted">
+                        {values}
+                      </Link>
+                    ) : (
+                      <span title={`${hint}\nПоставил(а): ${w.teacher_name}`} className="flex h-11 w-full items-center justify-center gap-1">
+                        {values}
+                      </span>
+                    )}
                   </td>
                 );
               })}
@@ -254,6 +296,7 @@ function JournalTable({
             <td colSpan={journal.lessons.length + journal.works.length} className="border-l border-line px-3 text-xs text-fg-soft">
               Н — отсутствовал, О — опоздал, Б — болел, · — присутствовал
               {journal.works.length > 0 && " · выделенные колонки — оценки за тесты и ДЗ; изменить — на странице работы"}
+              {journal.lessons.some((l) => !l.own) && " · серые колонки — занятия коллег: их оценки видны, но менять их нельзя"}
             </td>
             <td className="border-l border-line px-2 text-center font-semibold">{fmtAverage(journal.stats.average)}</td>
             <td className="px-2 text-center text-fg-soft">{fmtRate(journal.stats.attendance_rate)}</td>
@@ -341,101 +384,125 @@ function CellEditor({
       {lesson.ktp.length > 0 && <p className="text-sm">По КТП: {lesson.ktp.join("; ")}</p>}
       {error && <Alert>{error}</Alert>}
 
-      <section>
-        <h3 className="mb-2 text-sm font-medium">Посещаемость</h3>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {(Object.keys(ATTENDANCE_LABELS) as AttendanceStatus[]).map((status) => (
-            <button
-              key={status}
-              disabled={busy}
-              aria-pressed={mark === status}
-              onClick={() => act(() => academic.setAttendance(lessonId, studentId, mark === status ? null : status))}
-              className={`h-10 rounded-xl border text-sm font-medium ${mark === status ? "border-brand bg-brand text-white" : "border-line hover:bg-muted"}`}
-            >
-              {ATTENDANCE_LABELS[status].full}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-2">
-        <h3 className="text-sm font-medium">Оценки</h3>
-        {grades.length === 0 && <p className="text-sm text-fg-soft">Оценок за это занятие нет.</p>}
-        {grades.map((g) => (
-          <div key={g.id} className="flex items-start gap-3 rounded-xl bg-muted px-3 py-2">
-            <span className={`text-xl font-bold ${gradeTone(g.value)}`}>{g.value}</span>
-            <div className="min-w-0 flex-1 text-sm">
-              <p className="font-medium">
-                {g.grade_type}
-                {g.source === "test" && <Badge tone="brand">из теста</Badge>}
-              </p>
-              <p className="text-fg-soft">{g.comment}</p>
-            </div>
-            <button
-              disabled={busy}
-              onClick={() => act(() => academic.deleteGrade(g.id))}
-              className="text-sm text-danger hover:underline"
-            >
-              Удалить
-            </button>
+      {!lesson.own ? (
+        <>
+          <p className="rounded-xl bg-muted px-3 py-2 text-sm">
+            Занятие коллеги — {lesson.teacher_name}. Оценки и посещаемость на нём ставит коллега, вы их только видите.
+          </p>
+          {mark && <p className="text-sm">Посещаемость: {ATTENDANCE_LABELS[mark].full}</p>}
+          <section className="space-y-2">
+            <h3 className="text-sm font-medium">Оценки</h3>
+            {grades.length === 0 && <p className="text-sm text-fg-soft">Оценок за это занятие нет.</p>}
+            {grades.map((g) => (
+              <div key={g.id} className="flex items-start gap-3 rounded-xl bg-muted px-3 py-2">
+                <span className={`text-xl font-bold ${gradeTone(g.value)}`}>{g.value}</span>
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="font-medium">{g.grade_type}</p>
+                  <p className="text-fg-soft">{g.comment}</p>
+                </div>
+              </div>
+            ))}
+          </section>
+        </>
+      ) : (
+        <>
+        <section>
+          <h3 className="mb-2 text-sm font-medium">Посещаемость</h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {(Object.keys(ATTENDANCE_LABELS) as AttendanceStatus[]).map((status) => (
+              <button
+                key={status}
+                disabled={busy}
+                aria-pressed={mark === status}
+                onClick={() => act(() => academic.setAttendance(lessonId, studentId, mark === status ? null : status))}
+                className={`h-10 rounded-xl border text-sm font-medium ${mark === status ? "border-brand bg-brand text-white" : "border-line hover:bg-muted"}`}
+              >
+                {ATTENDANCE_LABELS[status].full}
+              </button>
+            ))}
           </div>
-        ))}
-      </section>
+        </section>
 
-      <form
-        className="space-y-3 border-t border-line pt-4"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (value === null) {
-            setError("Выберите оценку");
-            return;
-          }
-          const ok = await act(() =>
-            academic.addGrade(lessonId, { student_id: studentId, value, grade_type_id: effectiveType, comment }),
-          );
-          if (ok) {
-            setValue(null);
-            setComment("");
-          }
-        }}
-      >
-        <h3 className="text-sm font-medium">Новая оценка</h3>
-        <div className="flex gap-2">
-          {[5, 4, 3, 2, 1].map((v) => (
-            <button
-              key={v}
-              type="button"
-              aria-pressed={value === v}
-              onClick={() => setValue(v)}
-              className={`h-11 w-11 rounded-xl border text-lg font-bold ${value === v ? "border-brand bg-brand text-white" : `border-line hover:bg-muted ${gradeTone(v)}`}`}
-            >
-              {v}
-            </button>
+        <section className="space-y-2">
+          <h3 className="text-sm font-medium">Оценки</h3>
+          {grades.length === 0 && <p className="text-sm text-fg-soft">Оценок за это занятие нет.</p>}
+          {grades.map((g) => (
+            <div key={g.id} className="flex items-start gap-3 rounded-xl bg-muted px-3 py-2">
+              <span className={`text-xl font-bold ${gradeTone(g.value)}`}>{g.value}</span>
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="font-medium">
+                  {g.grade_type}
+                  {g.source === "test" && <Badge tone="brand">из теста</Badge>}
+                </p>
+                <p className="text-fg-soft">{g.comment}</p>
+              </div>
+              <button
+                disabled={busy}
+                onClick={() => act(() => academic.deleteGrade(g.id))}
+                className="text-sm text-danger hover:underline"
+              >
+                Удалить
+              </button>
+            </div>
           ))}
-        </div>
-        <Select label="Тип оценки" value={effectiveType} onChange={(e) => setTypeId(e.target.value)}>
-          {types.data?.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </Select>
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium">Комментарий (обязательно)</span>
-          <textarea
-            rows={2}
-            required
-            maxLength={1000}
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="За что оценка"
-            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-        </label>
-        <Button type="submit" loading={busy} disabled={value === null || !comment.trim()} className="w-full">
-          Поставить оценку
-        </Button>
-      </form>
+        </section>
+
+        <form
+          className="space-y-3 border-t border-line pt-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (value === null) {
+              setError("Выберите оценку");
+              return;
+            }
+            const ok = await act(() =>
+              academic.addGrade(lessonId, { student_id: studentId, value, grade_type_id: effectiveType, comment }),
+            );
+            if (ok) {
+              setValue(null);
+              setComment("");
+            }
+          }}
+        >
+          <h3 className="text-sm font-medium">Новая оценка</h3>
+          <div className="flex gap-2">
+            {[5, 4, 3, 2, 1].map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={value === v}
+                onClick={() => setValue(v)}
+                className={`h-11 w-11 rounded-xl border text-lg font-bold ${value === v ? "border-brand bg-brand text-white" : `border-line hover:bg-muted ${gradeTone(v)}`}`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          <Select label="Тип оценки" value={effectiveType} onChange={(e) => setTypeId(e.target.value)}>
+            {types.data?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </Select>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium">Комментарий (обязательно)</span>
+            <textarea
+              rows={2}
+              required
+              maxLength={1000}
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="За что оценка"
+              className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <Button type="submit" loading={busy} disabled={value === null || !comment.trim()} className="w-full">
+            Поставить оценку
+          </Button>
+        </form>
+        </>
+      )}
     </div>
   );
 }

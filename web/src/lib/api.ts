@@ -490,6 +490,10 @@ export type Grade = {
   source: "manual" | "test";
   lesson_starts_at: string;
   created_at: string;
+  /** Кто поставил — в общем журнале класса (решение №59). */
+  teacher_name?: string | null;
+  /** Своя оценка; оценку коллеги можно только смотреть. */
+  own?: boolean;
 };
 
 export type Stats = {
@@ -504,9 +508,23 @@ export type Stats = {
 
 export type Journal = {
   title: string;
-  lessons: { id: string; starts_at: string; subject: string | null; topic: string | null; started: boolean; ktp: string[] }[];
+  /** Предмет журнала; null — «Без предмета» (решение №59). */
+  subject: string | null;
+  /** Журналы класса или ученика по предметам. */
+  subjects: (string | null)[];
+  /** own — своё занятие; занятие коллеги в общем журнале класса — только смотреть. */
+  lessons: {
+    id: string;
+    starts_at: string;
+    subject: string | null;
+    topic: string | null;
+    started: boolean;
+    ktp: string[];
+    own: boolean;
+    teacher_name: string | null;
+  }[];
   /** Колонки оценок за тесты и ДЗ без привязки к уроку. */
-  works: { id: string; title: string; at: string }[];
+  works: { id: string; title: string; at: string; own: boolean; teacher_name: string | null }[];
   students: { id: string; full_name: string; current: boolean; stats: Stats }[];
   grades: Grade[];
   attendance: { lesson_id: string; student_id: string; status: AttendanceStatus }[];
@@ -631,9 +649,11 @@ export const academic = {
   updateGradeType: (id: string, data: Partial<Pick<GradeType, "name" | "position" | "is_active">>) =>
     api<GradeType>(`${AC}/grade-types/${id}`, { method: "PATCH", body: data }),
 
-  journal: (target: { group_id?: string; student_id?: string }, from: Date, to: Date) => {
+  /** subject: undefined — первый журнал (предмет класса), null — «Без предмета». */
+  journal: (target: { group_id?: string; student_id?: string }, from: Date, to: Date, subject?: string | null) => {
     const t = target.group_id ? `group_id=${target.group_id}` : `student_id=${target.student_id}`;
-    return api<Journal>(`${AC}/journal?${t}&${period(from, to)}`);
+    const s = subject === undefined ? "" : `&subject=${encodeURIComponent(subject ?? "")}`;
+    return api<Journal>(`${AC}/journal?${t}&${period(from, to)}${s}`);
   },
   setAttendance: (lessonId: string, studentId: string, status: AttendanceStatus | null) =>
     api<void>(`${AC}/lessons/${lessonId}/attendance/${studentId}`, { method: "PUT", body: { status } }),
@@ -1099,6 +1119,9 @@ export type QuizInput = TestSettings & {
   title: string;
   description: string;
   grade_level: number;
+  /** Предмет (решение №59): по нему оценки за работу идут в журнал предмета. */
+  subject_id: string | null;
+  subject_name: string | null;
   module_id: string | null;
   /** «Для всех, кто проходит курс» — только у автора курса (решение №44). */
   shared: boolean;
@@ -1108,6 +1131,8 @@ export type Quiz = TestSettings & {
   id: string;
   title: string;
   description: string;
+  subject_id: string | null;
+  subject_name: string | null;
   theme: TestTheme;
   module: ModuleRef | null;
   shared: boolean;
@@ -1135,6 +1160,7 @@ export type QuizSummary = {
   id: string;
   title: string;
   grade_level: number | null;
+  subject_name: string | null;
   module: ModuleRef | null;
   shared: boolean;
   visibility: TestVisibility | null;

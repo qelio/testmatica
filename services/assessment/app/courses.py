@@ -112,7 +112,8 @@ def write_test(test: Test, body: QuizIn, module: dict | None) -> None:
     test.shared = body.shared
     # Оформление — как у курса привязанного модуля, у остальных тестов — обычное (решение №44).
     test.theme = "course" if test.module_id else "classic"
-    for field in ("title", "description", "grade_level", "order_mode", "shuffle_options", "time_mode", "time_limit_s"):
+    for field in ("title", "description", "grade_level", "subject_id", "subject_name", "order_mode", "shuffle_options",
+                  "time_mode", "time_limit_s"):
         setattr(test, field, getattr(body, field))
     test.items = [TestItem(task_id=i.task_id, points=i.points, solution_file=i.solution_file, code_check=i.code_check, position=n) for n, i in enumerate(body.items)]
     test.updated_at = datetime.now(UTC)

@@ -60,7 +60,7 @@ export default function TestsPage() {
                 <span className="font-medium">{t.title}</span>
                 {t.shared_with_me && <span className="ml-2 text-sm text-brand">тест коллеги · {t.owner_name}</span>}
                 <span className="block text-sm text-fg-soft">
-                  {[gradeLevelLabel(t.grade_level), `заданий: ${t.tasks_count}`, `баллов: ${t.max_score}`, fmtLimit(t), t.assignments_count ? `назначен ${t.assignments_count} раз` : null]
+                  {[t.subject_name, gradeLevelLabel(t.grade_level), `заданий: ${t.tasks_count}`, `баллов: ${t.max_score}`, fmtLimit(t), t.assignments_count ? `назначен ${t.assignments_count} раз` : null]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
