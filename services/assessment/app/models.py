@@ -283,6 +283,9 @@ class Test(Base):
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text, default="")
     grade_level: Mapped[int | None] = mapped_column(SmallInteger)  # для какого класса (1–11); у старых тестов — не указан
+    # Предмет (решение №59): по нему оценка за работу попадает в журнал предмета. У старых тестов — по задачам.
+    subject_id: Mapped[UUID | None]
+    subject_name: Mapped[str | None] = mapped_column(String(80))
     order_mode: Mapped[str] = mapped_column(String(6), default="fixed")  # порядок заданий
     shuffle_options: Mapped[bool] = mapped_column(Boolean, default=False)  # варианты ответа у каждого свои
     time_mode: Mapped[str] = mapped_column(String(8), default="none")  # таймер на весь тест или на каждое задание
@@ -354,6 +357,9 @@ class Assignment(Base):
     title: Mapped[str] = mapped_column(String(200))
     test_title: Mapped[str] = mapped_column(String(200))
     grade_level: Mapped[int | None] = mapped_column(SmallInteger)  # класс теста при назначении — для фильтра
+    # Предмет теста при назначении — журнал, в который идёт оценка (решение №59).
+    subject_id: Mapped[UUID | None]
+    subject_name: Mapped[str | None] = mapped_column(String(80))
     description: Mapped[str] = mapped_column(Text, default="")
     kind: Mapped[str] = mapped_column(String(8))
     target_type: Mapped[str] = mapped_column(String(10))

@@ -30,6 +30,7 @@ export function TestView({ test }: { test: Quiz }) {
           ) : (
             <Badge tone={test.visibility === "public" ? "ok" : "brand"}>{test.visibility === "public" ? "публичный" : "для педагогов"}</Badge>
           )}
+          {test.subject_name && <span className="text-sm text-fg-soft">{test.subject_name}</span>}
           {test.grade_level && <span className="text-sm text-fg-soft">{test.grade_level} класс</span>}
         </div>
         {test.module && (

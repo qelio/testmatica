@@ -35,6 +35,7 @@ class World:
         self.links: set[tuple[str, str]] = set()
         self.lessons: dict[str, dict] = {}
         self.basic: set[str] = set()  # педагоги на тарифе «Базовый»
+        self.shares: set[tuple[str, str]] = set()  # (группа, коллега) — классом поделились (решение №57)
 
     def group(self, teacher: UUID, members: list[UUID], title="7А") -> UUID:
         gid = uuid4()
@@ -66,7 +67,7 @@ class World:
             key, value = ("group_id", params["group_id"]) if "group_id" in params else ("student_id", params["student_id"])
             found = [
                 lesson for lesson in self.lessons.values()
-                if lesson["teacher_id"] == params["teacher_id"] and lesson[key] == value
+                if (lesson["teacher_id"] == params["teacher_id"] or params.get("all_teachers") == "true") and lesson[key] == value
                 and start <= datetime.fromisoformat(lesson["starts_at"]) < end
             ]
             return httpx.Response(200, json=sorted(found, key=lambda lesson: lesson["starts_at"]))
@@ -82,7 +83,7 @@ class World:
             return httpx.Response(200, json=[g for g in self.groups.values() if g["teacher_id"] == teacher])
         if path.startswith("/internal/groups/"):
             group = self.groups.get(path.rsplit("/", 1)[1])
-            if group is None or group["teacher_id"] != params["teacher_id"]:
+            if group is None or (group["teacher_id"] != params["teacher_id"] and (group["id"], params["teacher_id"]) not in self.shares):
                 return not_found("group_not_found")
             return httpx.Response(200, json=group)
         key = (params["teacher_id"], params["student_id"])

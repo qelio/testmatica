@@ -1017,3 +1017,31 @@ async def test_share_test_with_colleagues(client, fakes):
     await client.post(shares, json={"colleague_id": str(ivan)}, headers=bearer(petr))
     await apply(handlers.on_classroom_event, "classroom.colleague.removed", requester_id=maria, addressee_id=petr, request_id=uuid4())
     assert [s["user_id"] for s in (await client.get(shares, headers=bearer(maria))).json()] == [str(ivan)]
+
+
+async def test_test_subject(client, fakes):
+    """Предмет теста (решение №59): не выбран — самый частый у задач; без предмета тест не сохранить; уходит в журнал."""
+    from app.models import Task as TaskModel
+
+    teacher, olya = uuid4(), uuid4()
+    tasks = await make_tasks(client, teacher)
+    test = await make_test(client, teacher, tasks)
+    assert test["subject_name"] == "Алгебра"
+    subject = str(uuid4())
+    chosen = await client.put(f"/tests/{test['id']}", headers=bearer(teacher), json={
+        "title": "Контрольная", "grade_level": 9, "subject_id": subject, "subject_name": "Информатика",
+        "items": [{"task_id": t["id"]} for t in tasks]})
+    assert chosen.json()["subject_name"] == "Информатика"
+    async with db.sessionmaker() as s, s.begin():
+        await s.execute(update(TaskModel).values(subject_id=None, subject_name=None))
+    bare = await client.post("/tests", json={"title": "Без", "grade_level": 9, "items": [{"task_id": tasks[0]["id"]}]},
+                             headers=bearer(teacher))
+    assert bare.json()["error"]["code"] == "subject_required"
+
+    await link(teacher, olya)
+    a = await assign(client, teacher, chosen.json(), target_type="student", target_id=str(olya))
+    attempt = (await client.post(f"/assignments/{a['id']}/start", json={}, headers=student(olya))).json()
+    await client.post(f"/attempts/{attempt['id']}/submit", headers=student(olya))
+    await run_code_checks()
+    [graded] = await outbox("assessment.attempt.graded")
+    assert graded["data"]["subject"] == "Информатика"

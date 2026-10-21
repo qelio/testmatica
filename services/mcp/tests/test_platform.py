@@ -83,6 +83,8 @@ async def test_tests_tools(monkeypatch):
         body = json.loads(request.content) if request.content else None
         sent.append((request.method, request.url.path, body))
         path = request.url.path
+        if path == "/subjects":
+            return httpx.Response(200, json=[{"id": "s-inf", "name": "Информатика"}, {"id": "s-alg", "name": "Алгебра"}])
         if path == "/tasks":
             n = int(request.url.params["q"])
             return httpx.Response(200, json={"items": [{"id": f"t{n}", "number": n}], "total": 1})
@@ -108,13 +110,16 @@ async def test_tests_tools(monkeypatch):
     module = "11111111-1111-1111-1111-111111111111"
 
     created = await tools.create_test(ctx, tools.TestFields(
-        title="Практическая работа 1", grade_level=7, module_id=module, shared=True, time_mode="total", time_limit_min=20,
+        title="Практическая работа 1", grade_level=7, subject="информатика", module_id=module, shared=True, time_mode="total", time_limit_min=20,
         items=[tools.TestItem(task="(100345)", points=2), tools.TestItem(task="100346")],
     ))
     body = sent[-1][2]
     assert [i["task_id"] for i in body["items"]] == ["t100345", "t100346"] and body["items"][0]["points"] == 2
     assert (body["module_id"], body["shared"], body["time_limit_s"]) == (module, True, 1200)
     assert created["module"]["title"] == "Миссия 1" and created["shared"] is True
+    assert (body["subject_id"], body["subject_name"]) == ("s-inf", "Информатика") and created["subject"] == "Информатика"
+    with pytest.raises(ToolError, match="Предмет «Физика» не найден. Есть: Информатика, Алгебра"):
+        await tools.create_test(ctx, tools.TestFields(title="Т", grade_level=7, subject="Физика"))
 
     # Правка частями: заголовок поменялся, состав, привязка и таймер — прежние.
     await tools.update_test(ctx, "22222222-2222-2222-2222-222222222222", {"title": "Практическая работа №1"})
@@ -122,6 +127,9 @@ async def test_tests_tools(monkeypatch):
     assert sent[-1][0] == "PUT" and body["title"] == "Практическая работа №1"
     assert (body["module_id"], body["shared"], body["time_limit_s"]) == (module, True, 1200)
     assert [i["task_id"] for i in body["items"]] == ["t100345", "t100346"]
+    assert body["subject_name"] == "Информатика"  # предмет не меняли — прежний
+    await tools.update_test(ctx, "22222222-2222-2222-2222-222222222222", {"subject": "Алгебра"})
+    assert sent[-1][2]["subject_id"] == "s-alg"
     with pytest.raises(ToolError, match="Неизвестные поля: theme"):
         await tools.update_test(ctx, "22222222-2222-2222-2222-222222222222", {"theme": "comics"})
 

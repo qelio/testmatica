@@ -32,8 +32,12 @@ teacher = auth.require(ROLE_TEACHER)
 MAX_RANGE = timedelta(days=190)  # примерно полугодие
 
 
-def grade_out(g: Grade, type_names: dict[UUID, str]) -> GradeOut:
+def grade_out(g: Grade, type_names: dict[UUID, str], viewer: UUID | None = None, names: dict[UUID, str] | None = None) -> GradeOut:
+    """viewer — кто смотрит журнал: чужие оценки (коллеги) помечаются own=False и подписываются его именем."""
     return GradeOut(
+        teacher_id=g.teacher_id,
+        teacher_name=names.get(g.teacher_id) if names else None,
+        own=viewer is None or g.teacher_id == viewer,
         id=g.id,
         lesson_id=g.lesson_id,
         work_id=g.source_ref if g.lesson_id is None else None,
@@ -56,33 +60,47 @@ async def type_names(session: AsyncSession) -> dict[UUID, str]:
 # ---------- журнал ----------
 
 
+NO_SUBJECT = ""  # значение параметра subject для журнала «Без предмета»
+
+
+def _subjects(found: set[str | None], main: str | None) -> list[str | None]:
+    """Журналы по предметам: предмет класса — первым, дальше по алфавиту, «Без предмета» — последним."""
+    named = sorted({x for x in found if x and x != main})
+    out = ([main] if main else []) + named
+    return out + [None] if None in found or not out else out
+
+
 @router.get("/journal", response_model=Journal)
 async def journal(
     group_id: UUID | None = None,
     student_id: UUID | None = None,
     start: datetime = Query(alias="from"),
     end: datetime = Query(alias="to"),
+    subject: str | None = Query(None, description="Журнал предмета; пустая строка — «Без предмета», не указан — первый"),
     principal: Principal = Depends(teacher),
     session: AsyncSession = Depends(db.session),
 ) -> Journal:
+    """Журнал класса (группы) или ученика по предмету (решение №59). Журнал класса — общий для педагогов, с которыми
+    им поделились: видны занятия и оценки всех, менять можно только свои."""
     if (group_id is None) == (student_id is None):
         raise ApiError(422, "invalid_target", "Выберите группу или ученика")
     if end <= start or end - start > MAX_RANGE:
         raise ApiError(422, "invalid_range", "Период — не больше полугода")
 
+    me = principal.user_id
     target = {"group_id": str(group_id)} if group_id else {"student_id": str(student_id)}
+    main_subject = None
     if group_id:
-        group = await classroom.get(f"/internal/groups/{group_id}", params={"teacher_id": str(principal.user_id)})
-        title, current = group["title"], {UUID(s) for s in group["member_ids"]}
+        group = await classroom.get(f"/internal/groups/{group_id}", params={"teacher_id": str(me)})
+        title, current, main_subject = group["title"], {UUID(s) for s in group["member_ids"]}, group.get("subject")
     else:
-        link = await classroom.get(
-            "/internal/links", params={"teacher_id": str(principal.user_id), "student_id": str(student_id)}
-        )
+        link = await classroom.get("/internal/links", params={"teacher_id": str(me), "student_id": str(student_id)})
         title, current = "", ({student_id} if link["active"] else set())
 
     lessons = await schedule.get(
         "/internal/lessons",
-        params={"teacher_id": str(principal.user_id), "from": start.isoformat(), "to": end.isoformat(), **target},
+        params={"teacher_id": str(me), "from": start.isoformat(), "to": end.isoformat(), **target,
+                **({"all_teachers": "true"} if group_id else {})},
     )
     lessons = [lesson for lesson in lessons if lesson["status"] == "scheduled"]
     lesson_ids = [UUID(lesson["id"]) for lesson in lessons]
@@ -94,20 +112,29 @@ async def journal(
         if lesson_ids
         else []
     )
-    # Оценки за работы без урока: у группы — работы группе, у ученика — выданные лично ему.
-    work_filter = Grade.group_id == group_id if group_id else (Grade.student_id == student_id) & Grade.group_id.is_(None)
+    # Оценки за работы без урока: у группы — работы группе (всех педагогов), у ученика — свои, выданные лично ему.
+    work_filter = (Grade.group_id == group_id) if group_id else (
+        (Grade.teacher_id == me) & (Grade.student_id == student_id) & Grade.group_id.is_(None))
     grades += (
         await session.execute(
             select(Grade)
-            .where(Grade.teacher_id == principal.user_id, Grade.lesson_id.is_(None), work_filter,
-                   Grade.lesson_starts_at >= start, Grade.lesson_starts_at < end)
+            .where(Grade.lesson_id.is_(None), work_filter, Grade.lesson_starts_at >= start, Grade.lesson_starts_at < end)
             .order_by(Grade.created_at)
         )
     ).scalars().all()
-    works: dict[UUID, JournalWork] = {}
-    for g in grades:
-        if g.lesson_id is None and g.source_ref and g.source_ref not in works:
-            works[g.source_ref] = JournalWork(id=g.source_ref, title=g.title or "Работа", at=g.lesson_starts_at)
+
+    # Предмет журнала: занятия — по своему предмету, оценки за работы — по предмету теста.
+    subjects = _subjects({lesson["subject"] or None for lesson in lessons} | {g.subject or None for g in grades if g.lesson_id is None},
+                         main_subject)
+    chosen = (subject or None) if subject is not None else subjects[0]
+    if chosen not in subjects:
+        subjects.append(chosen)
+    lessons = [lesson for lesson in lessons if (lesson["subject"] or None) == chosen]
+    lesson_ids = [UUID(lesson["id"]) for lesson in lessons]
+    kept = set(lesson_ids)
+    grades = [g for g in grades if (g.lesson_id in kept if g.lesson_id else (g.subject or None) == chosen)]
+
+    work_grades = {g.source_ref: g for g in grades if g.lesson_id is None and g.source_ref}
     marks = (
         (await session.execute(select(Attendance).where(Attendance.lesson_id.in_(lesson_ids)))).scalars().all()
         if lesson_ids
@@ -120,9 +147,12 @@ async def journal(
         student_ids.update(UUID(s) for s in lesson["participant_ids"])
     student_ids.update(g.student_id for g in grades)
     student_ids.update(a.student_id for a in marks)
-    names = await people.names(session, student_ids)
+    teacher_ids = {UUID(lesson["teacher_id"]) for lesson in lessons} | {g.teacher_id for g in grades}
+    names = await people.names(session, student_ids | teacher_ids)
     if student_id and not title:
         title = names.get(student_id, people.UNKNOWN_NAME)
+    works = [JournalWork(id=ref, title=g.title or "Работа", at=g.lesson_starts_at, own=g.teacher_id == me,
+                         teacher_name=names.get(g.teacher_id, people.UNKNOWN_NAME)) for ref, g in work_grades.items()]
 
     by_student_grades: dict[UUID, list[Grade]] = defaultdict(list)
     by_student_marks: dict[UUID, list[Attendance]] = defaultdict(list)
@@ -148,7 +178,7 @@ async def journal(
     if lesson_ids:
         linked = await session.execute(
             select(PlanLesson.schedule_lesson_id, PlanLesson.topic).join(Plan, Plan.id == PlanLesson.plan_id)
-            .where(Plan.teacher_id == principal.user_id, PlanLesson.schedule_lesson_id.in_(lesson_ids))
+            .where(Plan.teacher_id == me, PlanLesson.schedule_lesson_id.in_(lesson_ids))
             .order_by(PlanLesson.position)
         )
         for lid, topic in linked:
@@ -156,6 +186,8 @@ async def journal(
 
     return Journal(
         title=title,
+        subject=chosen,
+        subjects=subjects,
         lessons=[
             JournalLesson(
                 id=lesson["id"],
@@ -164,12 +196,14 @@ async def journal(
                 topic=lesson["topic"],
                 started=datetime.fromisoformat(lesson["starts_at"]) <= now,
                 ktp=ktp.get(UUID(lesson["id"]), []),
+                own=UUID(lesson["teacher_id"]) == me,
+                teacher_name=names.get(UUID(lesson["teacher_id"]), people.UNKNOWN_NAME),
             )
             for lesson in lessons
         ],
-        works=sorted(works.values(), key=lambda w: w.at),
+        works=sorted(works, key=lambda w: w.at),
         students=rows,
-        grades=[grade_out(g, types) for g in grades],
+        grades=[grade_out(g, types, me, names) for g in grades],
         attendance=[AttendanceOut(lesson_id=a.lesson_id, student_id=a.student_id, status=a.status) for a in marks],
         stats=stats.compute(grades, marks),
     )

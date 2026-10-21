@@ -22,6 +22,8 @@ runtime.consumer(
      (EVENTS_EXCHANGE, "assessment.assignment.students_removed")],
     test_grades.on_assessment_event,
 )
+# Старые оценки за тесты — по журналам предметов (решение №59); после разноски запросов почти нет.
+runtime.every("test-grade-subjects", 6 * 3600, test_grades.backfill_subjects)
 runtime.consumer("academic.schedule", [(EVENTS_EXCHANGE, "schedule.lesson.deleted")], schedule_sync.on_schedule_event)
 runtime.consumer("academic.moderation", [(EVENTS_EXCHANGE, "moderation.decision.made")], moderation.on_moderation_decision)
 

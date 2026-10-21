@@ -45,6 +45,17 @@ async def lookup(body: LookupIn, session: AsyncSession = Depends(db.session)) ->
     ]
 
 
+class SubjectsIn(BaseModel):
+    assignment_ids: list[UUID] = Field(max_length=1000)
+
+
+@router.post("/assignments/subjects", response_model=dict[UUID, str | None])
+async def assignment_subjects(body: SubjectsIn, session: AsyncSession = Depends(db.session)) -> dict[UUID, str | None]:
+    """Предметы работ — academic разносит по журналам предметов старые оценки за тесты (решение №59)."""
+    rows = await session.execute(select(Assignment.id, Assignment.subject_name).where(Assignment.id.in_(body.assignment_ids)))
+    return dict(rows.all())
+
+
 @router.get("/proctoring/{assignment_id}", response_model=ProctorAccess)
 async def proctoring_access(assignment_id: UUID, user_id: UUID = Query(), session: AsyncSession = Depends(db.session)) -> ProctorAccess:
     """Кто пользователь в прокторинге: педагог назначения или ученик с идущей попыткой. Остальным — 404."""

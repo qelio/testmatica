@@ -1,5 +1,6 @@
 """Тесты педагога: набор задач из банка с настройками (порядок, перемешивание, таймер)."""
 
+from collections import Counter
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -71,7 +72,8 @@ async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None =
     summaries = {s.id: s for s in await views.summaries(session, list(tasks.values()))}
     module = (await modules_info([view.module_id], test.owner_id)).get(view.module_id) if view.module_id else None
     return QuizOut(
-        id=test.id, title=view.title, description=view.description, grade_level=view.grade_level, order_mode=view.order_mode,
+        id=test.id, title=view.title, description=view.description, grade_level=view.grade_level,
+        subject_id=view.subject_id, subject_name=view.subject_name, order_mode=view.order_mode,
         shuffle_options=view.shuffle_options, time_mode=view.time_mode, time_limit_s=view.time_limit_s,
         theme=view.theme, module=module_ref(view), shared=view.shared, visibility=visibility(test.owner_id, view.shared, module),
         published=test.published_at is not None, pending=test.pending is not None,
@@ -111,7 +113,7 @@ async def my_tests(
     authors = await views.names(session, {t.owner_id for t in tests if t.owner_id != principal.user_id})
     modules = await modules_info([t.module_id for t in tests], principal.user_id)
     return [
-        QuizSummary(id=t.id, title=t.title, grade_level=t.grade_level, module=module_ref(t), shared=t.shared,
+        QuizSummary(id=t.id, title=t.title, grade_level=t.grade_level, subject_name=t.subject_name, module=module_ref(t), shared=t.shared,
                     visibility=visibility(t.owner_id, t.shared, modules.get(t.module_id)), published=t.published_at is not None,
                     pending=t.pending is not None, tasks_count=len(t.items), max_score=sum(i.points for i in t.items),
                     time_mode=t.time_mode, time_limit_s=t.time_limit_s, assignments_count=counts.get(t.id, 0), updated_at=t.updated_at,
@@ -127,6 +129,12 @@ async def _validate(session: AsyncSession, test: Test, body: QuizIn, p: Principa
     """Задачи доступны, модуль можно привязать, «публичный» — только у автора курса. Возвращает сведения о модуле."""
     # В тест можно добавить свою задачу (в любом статусе) или опубликованную из банка.
     tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_([i.task_id for i in body.items])))).scalars()}
+    if body.subject_id is None:  # предмет не выбран — самый частый у задач теста (решение №59)
+        found = Counter((t.subject_id, t.subject_name) for t in tasks.values() if t.subject_id)
+        if found:
+            body.subject_id, body.subject_name = found.most_common(1)[0][0]
+    if body.subject_id is None or not body.subject_name:
+        raise ApiError(422, "subject_required", "Выберите предмет теста — по нему оценки попадают в журнал")
     for item in body.items:
         task = tasks.get(item.task_id)
         if task is None or not await access.can_view(session, task, p) or not (task.owner_id == p.user_id or task.status == "published") \

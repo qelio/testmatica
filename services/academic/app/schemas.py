@@ -67,6 +67,9 @@ class GradeOut(BaseModel):
     source: str
     lesson_starts_at: datetime
     created_at: datetime
+    teacher_id: UUID | None = None
+    teacher_name: str | None = Field(None, description="Кто поставил — в общем журнале класса (решение №59)")
+    own: bool = Field(True, description="Своя оценка — её можно менять; чужую (коллеги) — только смотреть")
 
 
 class AttendanceSet(BaseModel):
@@ -96,6 +99,8 @@ class JournalLesson(BaseModel):
     topic: str | None
     started: bool
     ktp: list[str] = Field(default_factory=list, description="Темы уроков КТП, привязанных к занятию")
+    own: bool = Field(True, description="Своё занятие — можно ставить оценки и отмечать; занятие коллеги — только смотреть")
+    teacher_name: str | None = None
 
 
 class JournalWork(BaseModel):
@@ -104,6 +109,8 @@ class JournalWork(BaseModel):
     id: UUID = Field(description="id выданной работы в assessment")
     title: str
     at: datetime = Field(description="Когда работа назначена")
+    own: bool = True
+    teacher_name: str | None = None
 
 
 class JournalStudent(BaseModel):
@@ -115,6 +122,8 @@ class JournalStudent(BaseModel):
 
 class Journal(BaseModel):
     title: str
+    subject: str | None = Field(None, description="Предмет журнала; null — «Без предмета» (решение №59)")
+    subjects: list[str | None] = Field(default_factory=list, description="Журналы класса или ученика по предметам")
     lessons: list[JournalLesson]
     works: list[JournalWork] = Field(default_factory=list)
     students: list[JournalStudent]

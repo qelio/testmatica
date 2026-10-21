@@ -470,6 +470,8 @@ class TestItem(BaseModel):
 class TestFields(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     grade_level: int = Field(ge=1, le=11, description="Для какого класса (1–11)")
+    subject: str = Field(min_length=1, description="Предмет теста — название или id из list_subjects. Обязателен: по нему "
+                                                    "оценки за тест попадают в журнал этого предмета")
     description: str = Field("", description="Описание для учеников")
     items: list[TestItem] = Field(default_factory=list, description="Задания в порядке теста")
     module_id: UUID | None = Field(None, description="Модуль курса (get_course), к которому относится тест; оформление — как у курса")
@@ -484,7 +486,7 @@ class TestFields(BaseModel):
 def _test_brief(t: dict) -> dict:
     module = t.get("module")
     return {
-        "id": t["id"], "title": t["title"], "grade_level": t.get("grade_level"),
+        "id": t["id"], "title": t["title"], "grade_level": t.get("grade_level"), "subject": t.get("subject_name"),
         "tasks_count": t.get("tasks_count", len(t.get("items") or [])), "max_score": t.get("max_score"),
         "module": {"id": module["id"], "title": module["title"], "course_title": module.get("course_title")} if module else None,
         "shared": t.get("shared", False), "visibility": t.get("visibility"), "published": t.get("published", False),
@@ -492,12 +494,23 @@ def _test_brief(t: dict) -> dict:
     }
 
 
+async def _resolve_subject(key: str, subject: str) -> tuple[str, str]:
+    """Предмет по названию (без учёта регистра) или id из справочника платформы."""
+    rows = await call(key, "content", "GET", "/subjects")
+    wanted = subject.strip().lower()
+    for s in rows:
+        if wanted in (str(s["id"]).lower(), s["name"].lower()):
+            return str(s["id"]), s["name"]
+    raise ToolError(f"Предмет «{subject}» не найден. Есть: {', '.join(s['name'] for s in rows)}")
+
+
 async def _test_body(key: str, fields: TestFields) -> dict:
     items = []
     for item in fields.items:
         task = await _resolve_task(key, item.task)
         items.append({"task_id": task["id"], "points": item.points, "solution_file": item.solution_file, "code_check": item.code_check})
-    body = fields.model_dump(mode="json", exclude={"items", "time_limit_min"})
+    body = fields.model_dump(mode="json", exclude={"items", "time_limit_min", "subject"})
+    body["subject_id"], body["subject_name"] = await _resolve_subject(key, fields.subject)
     body["description"] = await localize_images(key, body["description"])
     body["items"] = items
     body["time_limit_s"] = round(fields.time_limit_min * 60) if fields.time_mode != "none" and fields.time_limit_min else None
@@ -539,7 +552,7 @@ async def list_module_tests(ctx: Context, module_id: UUID) -> dict:
 async def _get_test(key: str, test_id: UUID) -> dict:
     t = await call(key, "assessment", "GET", f"/tests/{test_id}")
     return _test_brief(t) | {
-        "description": t["description"], "order_mode": t["order_mode"], "shuffle_options": t["shuffle_options"],
+        "description": t["description"], "subject_id": t.get("subject_id"), "order_mode": t["order_mode"], "shuffle_options": t["shuffle_options"],
         "time_mode": t["time_mode"], "time_limit_min": t["time_limit_s"] / 60 if t["time_limit_s"] else None,
         "items": [{"task": str(i["task"]["number"]), "title": i["task"]["title"], "points": i["points"],
                    "solution_file": i["solution_file"], "code_check": i.get("code_check", "after")} for i in t["items"]],
@@ -554,7 +567,8 @@ async def get_test(ctx: Context, test_id: UUID) -> dict:
 
 @mcp.tool()
 async def create_test(ctx: Context, test: TestFields) -> dict:
-    """Создать тест из задач банка (свои или опубликованные). Назначает его ученикам педагог в интерфейсе."""
+    """Создать тест из задач банка (свои или опубликованные). Предмет обязателен (list_subjects): по нему оценки идут
+    в журнал предмета. Назначает тест ученикам педагог в интерфейсе."""
     key = _key(ctx)
     created = await call(key, "assessment", "POST", "/tests", json=await _test_body(key, test))
     return _test_brief(created)
@@ -573,7 +587,11 @@ async def update_test(
     unknown = set(changes) - set(TestFields.model_fields)
     if unknown:
         raise ToolError(f"Неизвестные поля: {', '.join(sorted(unknown))}")
-    base = {f: current.get(f) for f in TestFields.model_fields if f not in ("items", "module_id")}
+    base = {f: current.get(f) for f in TestFields.model_fields if f not in ("items", "module_id", "subject")}
+    # Предмет не меняли — остаётся прежний; у старого теста без предмета его нужно указать.
+    base["subject"] = current.get("subject_id") or ""
+    if not base["subject"] and not changes.get("subject"):
+        raise ToolError("У теста не указан предмет — передайте subject (list_subjects)")
     base["items"] = [{k: i[k] for k in ("task", "points", "solution_file", "code_check")} for i in current["items"]]
     base["module_id"] = current["module"]["id"] if current["module"] else None
     merged = TestFields.model_validate(base | changes)

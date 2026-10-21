@@ -11,5 +11,6 @@ auth = Auth(TokenVerifier(settings.jwt_issuer, settings.jwt_audience, jwks_url=s
 outbox = Outbox(producer=settings.service_name)
 schedule = InternalClient(settings.schedule_url, settings.internal_token)
 classroom = InternalClient(settings.classroom_url, settings.internal_token)
+assessment = InternalClient(settings.assessment_url, settings.internal_token)
 billing = InternalClient(settings.billing_url, settings.internal_token)
 plans = Plans(billing)

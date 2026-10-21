@@ -7,11 +7,12 @@ import logging
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
 
 from .api.journal import _grade_event
+from .deps import assessment, db
 from .models import Grade, GradeType
 
 log = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
         assigned = datetime.fromisoformat(d["assigned_at"]) if d.get("assigned_at") else envelope.occurred_at
         grade = Grade(
             teacher_id=UUID(d["teacher_id"]), student_id=student_id, lesson_id=None, lesson_starts_at=assigned,
-            group_id=UUID(d["group_id"]) if d.get("group_id") else None, subject=None, title=d["title"],
+            group_id=UUID(d["group_id"]) if d.get("group_id") else None, subject=d.get("subject"), title=d["title"],
             grade_type_id=grade_type.id, source="test", source_ref=ref, value=d["grade"], comment=_comment(d),
         )
         session.add(grade)
@@ -75,3 +76,21 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
         grade.value, grade.comment = d["grade"], _comment(d)
     await session.flush()
     await _grade_event(session, event, grade, grade_type, UUID(d["teacher_id"]))
+
+
+async def backfill_subjects() -> None:
+    """Старые оценки за тесты — по журналам предметов (решение №59): предмет берётся у работы (у теста — по его задачам).
+    Чей предмет не определился, остаются в «Без предмета»."""
+    async with db.sessionmaker() as session:
+        refs = list((await session.execute(
+            select(Grade.source_ref).where(Grade.source == "test", Grade.subject.is_(None), Grade.source_ref.is_not(None))
+            .distinct().limit(1000)
+        )).scalars())
+    if not refs:
+        return
+    found = await assessment.post("/internal/assignments/subjects", json={"assignment_ids": [str(r) for r in refs]})
+    async with db.sessionmaker() as session, session.begin():
+        for ref, subject in found.items():
+            if subject:
+                await session.execute(update(Grade).where(Grade.source == "test", Grade.source_ref == UUID(ref), Grade.subject.is_(None))
+                                      .values(subject=subject))

@@ -98,6 +98,7 @@ def copy_of(test: Test, theme: str) -> dict:
     """Состав и настройки теста на момент выдачи — правка теста выданное не меняет."""
     return {
         "test_id": test.id, "test_title": test.title, "grade_level": test.grade_level, "description": test.description,
+        "subject_id": test.subject_id, "subject_name": test.subject_name,
         "module_id": test.module_id, "course_id": test.course_id, "module_title": test.module_title,
         "settings": {"order_mode": test.order_mode, "shuffle_options": test.shuffle_options, "time_mode": test.time_mode,
                      "time_limit_s": test.time_limit_s, "theme": theme},

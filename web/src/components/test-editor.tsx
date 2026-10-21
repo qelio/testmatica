@@ -55,6 +55,9 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
   const [title, setTitle] = useState(test?.title ?? "");
   const [description, setDescription] = useState(test?.description ?? "");
   const [gradeLevel, setGradeLevel] = useState(test?.grade_level ? String(test.grade_level) : "");
+  // Предмет (решение №59): по нему оценки идут в журнал предмета. Не выбран — самый частый у задач теста.
+  const [subjectId, setSubjectId] = useState(test?.subject_id ?? "");
+  const subjects = useLoad(() => content.subjects(), []);
   const [orderMode, setOrderMode] = useState(test?.order_mode ?? "fixed");
   const [shuffle, setShuffle] = useState(test?.shuffle_options ?? false);
   const [timeMode, setTimeMode] = useState<TimeMode>(test?.time_mode ?? "none");
@@ -99,6 +102,13 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
   const move = (i: number, j: number) =>
     change(setItems)(items.map((x, n) => (n === i ? items[j] : n === j ? items[i] : x)));
 
+  const counts = new Map<string, number>();
+  for (const i of items) if (i.task?.subject_id) counts.set(i.task.subject_id, (counts.get(i.task.subject_id) ?? 0) + 1);
+  const fromTasks = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  const subject = subjectId || fromTasks;
+  const subjectName =
+    subjects.data?.find((x) => x.id === subject)?.name ?? items.find((i) => i.task?.subject_id === subject)?.task?.subject_name ?? test?.subject_name ?? null;
+
   async function save(e?: React.FormEvent) {
     e?.preventDefault();
     setBusy(true);
@@ -107,6 +117,8 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
       title,
       description,
       grade_level: Number(gradeLevel),
+      subject_id: subject || null,
+      subject_name: subject ? subjectName : null,
       order_mode: orderMode,
       shuffle_options: shuffle,
       time_mode: timeMode,
@@ -150,8 +162,17 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
     <form className="space-y-6" onSubmit={save}>
       {error && <Alert>{error}</Alert>}
       <section className="space-y-4 rounded-2xl border border-line bg-surface p-5">
-        <div className="grid gap-3 sm:grid-cols-[1fr_12rem]">
+        <div className="grid gap-3 sm:grid-cols-[1fr_12rem_12rem]">
           <Field label="Название" required maxLength={200} value={title} onChange={(e) => change(setTitle)(e.target.value)} />
+          <Select label="Предмет" required value={subject} onChange={(e) => change(setSubjectId)(e.target.value)}>
+            <option value="">Выберите</option>
+            {subject && subjects.data && !subjects.data.some((x) => x.id === subject) && <option value={subject}>{subjectName}</option>}
+            {subjects.data?.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </Select>
           <Select label="Для какого класса" required value={gradeLevel} onChange={(e) => change(setGradeLevel)(e.target.value)}>
             <option value="">Выберите</option>
             {GRADE_LEVELS.map((g) => (
