@@ -56,7 +56,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation assessment video marketplace billing
+      SERVICE_DATABASES: identity notification audit classroom schedule academic chat media content moderation assessment video marketplace billing whiteboard
     ports:
       - "5433:5432"
     volumes:
@@ -304,6 +304,37 @@ services:
       - traefik.http.routers.chat.middlewares=chat-strip,api-ratelimit@docker
       - traefik.http.middlewares.chat-strip.stripprefix.prefixes=/api/chat
       - traefik.http.services.chat.loadbalancer.server.port=8000
+
+  whiteboard:
+    build:
+      context: .
+      dockerfile: infra/docker/python-service.Dockerfile
+      args: { SERVICE: whiteboard, DEV: "1" }
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+             --reload-dir /app/app --reload-dir /libs/platform-common/src
+             --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/whiteboard
+      DATABASE_URL: postgresql+asyncpg://whiteboard:whiteboard_dev@postgres:5432/whiteboard
+      TEST_DATABASE_URL: postgresql+asyncpg://whiteboard:whiteboard_dev@postgres:5432/whiteboard_test
+      REDIS_URL: redis://redis:6379/0
+      TEST_REDIS_URL: redis://redis:6379/13
+    volumes:
+      - ./services/whiteboard:/app
+      - *libs-volume
+    depends_on:
+      <<: *python-depends
+      redis:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.whiteboard.rule=PathPrefix(`/api/whiteboard`) && !PathPrefix(`/api/whiteboard/internal`)
+      - traefik.http.routers.whiteboard.middlewares=whiteboard-strip,api-ratelimit@docker
+      - traefik.http.middlewares.whiteboard-strip.stripprefix.prefixes=/api/whiteboard
+      - traefik.http.services.whiteboard.loadbalancer.server.port=8000
 
   media:
     build:

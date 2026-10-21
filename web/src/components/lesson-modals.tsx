@@ -7,6 +7,7 @@ import { BillingSelect } from "@/components/billing";
 import { SubjectSelect } from "@/components/subject-select";
 import { ExamItemsByIds, ExamItemsField } from "@/components/exams";
 import { LessonAssignments } from "@/components/lesson-assignments";
+import { LessonBoardButton } from "@/components/lesson-board";
 import { LessonKtp } from "@/components/lesson-ktp";
 import { JoinLessonButton, LessonRecordings } from "@/components/lesson-video";
 import { Alert, Badge, Button, Field, Modal, Select } from "@/components/ui";
@@ -454,6 +455,7 @@ function LessonDetails({
       )}
 
       {!cancelled && <JoinLessonButton lesson={lesson} isTeacher={isTeacher} />}
+      {!cancelled && <LessonBoardButton lessonId={lesson.id} isTeacher={isTeacher} />}
       {!cancelled && lesson.video_url && (
         <a
           href={lesson.video_url}

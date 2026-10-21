@@ -2121,3 +2121,62 @@ export type NewsInput = {
   cover_file_id: string | null;
   status: "draft" | "published";
 };
+
+// ---------- доски (решение №60) ----------
+
+const WB = "/api/whiteboard";
+
+export type BoardAccess = "none" | "read" | "edit";
+export type PaperStyle = "plain" | "lines_narrow" | "lines" | "lines_wide" | "grid_small" | "grid" | "grid_big" | "dots";
+export type PaperColor = "white" | "cream" | "yellow" | "blue" | "green" | "pink" | "gray" | "chalk";
+/** owner — педагог доски; edit — ученик, которому разрешено рисовать; read — только смотрит. */
+export type BoardRole = "owner" | "edit" | "read";
+export type BoardSummary = {
+  id: string;
+  title: string;
+  owner_id: string;
+  owner_name: string;
+  lesson_id: string | null;
+  lesson_starts_at: string | null;
+  group_id: string | null;
+  student_id: string | null;
+  /** Кому видна: класс или ученик. */
+  target_title: string | null;
+  access: BoardAccess;
+  paper_style: PaperStyle;
+  paper_color: PaperColor;
+  role: BoardRole;
+  items_count: number;
+  updated_at: string;
+};
+export type BoardItemKind = "stroke" | "shape" | "text" | "image" | "formula";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type BoardItem = { id: string; kind: BoardItemKind; data: any; z: number; author_id?: string };
+export type Board = BoardSummary & { items: BoardItem[] };
+
+export const whiteboard = {
+  list: (params: { kind?: "all" | "lesson" | "free"; offset?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).flatMap(([k, v]) => (v === undefined ? [] : [[k, String(v)]])));
+    return api<BoardSummary[]>(`${WB}/boards?${qs}`);
+  },
+  create: (data: { title: string; group_id?: string | null; student_id?: string | null; access?: BoardAccess }) =>
+    api<Board>(`${WB}/boards`, { method: "POST", body: data }),
+  get: (id: string) => api<Board>(`${WB}/boards/${id}`),
+  update: (
+    id: string,
+    data: {
+      title?: string;
+      access?: BoardAccess;
+      paper_style?: PaperStyle;
+      paper_color?: PaperColor;
+      target?: { group_id?: string | null; student_id?: string | null };
+    },
+  ) => api<BoardSummary>(`${WB}/boards/${id}`, { method: "PATCH", body: data }),
+  remove: (id: string) => api<void>(`${WB}/boards/${id}`, { method: "DELETE" }),
+  /** Доска занятия: педагог открывает (первый раз — создаётся). */
+  openLesson: (lessonId: string) => api<BoardSummary>(`${WB}/lessons/${lessonId}/board`, { method: "POST" }),
+  /** Доска занятия для ученика: 404 — педагог её не открывал или закрыл доступ. */
+  lessonBoard: (lessonId: string) => api<BoardSummary>(`${WB}/lessons/${lessonId}/board`),
+  ops: (id: string, data: { upsert?: BoardItem[]; delete?: string[] }) =>
+    api<void>(`${WB}/boards/${id}/ops`, { method: "POST", body: data }),
+};

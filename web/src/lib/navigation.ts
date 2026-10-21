@@ -3,6 +3,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
+  PenLine,
   BookOpen,
   ChartLine,
   ChartNoAxesCombined,
@@ -63,6 +64,7 @@ export const NAV = {
       title: "Мой день",
       items: [
         { title: "Расписание", href: "/dashboard/schedule", icon: CalendarDays, ready: true },
+        { title: "Доски", href: "/dashboard/boards", icon: PenLine, ready: true },
         { title: "Показать на доске", href: "/dashboard/board", icon: MonitorUp, ready: true },
       ],
     },
@@ -110,6 +112,7 @@ export const NAV = {
       items: [
         { title: "Расписание", href: "/dashboard/schedule", icon: CalendarDays, ready: true },
         { title: "Назначенные тесты", href: "/dashboard/assignments", icon: ClipboardCheck, ready: true },
+        { title: "Доски", href: "/dashboard/boards", icon: PenLine, ready: true },
         { title: "Оценки", href: "/dashboard/grades", icon: Star, ready: true },
         { title: "ЕГЭ и ОГЭ", href: "/dashboard/exams", icon: Target, ready: true },
         { title: "Библиотека", href: "/dashboard/library", icon: BookOpen, ready: true },

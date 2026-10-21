@@ -89,7 +89,7 @@ services:
       POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD:?}
       # Русская сортировка (как ru_RU.UTF-8 в Managed PostgreSQL): «Ё» после «Е», строчные вместе с заглавными.
       POSTGRES_INITDB_ARGS: --locale-provider=icu --icu-locale=ru-RU --encoding=UTF8
-      SERVICE_DATABASES: &pg-databases identity notification audit classroom schedule academic chat media content moderation assessment marketplace billing video
+      SERVICE_DATABASES: &pg-databases identity notification audit classroom schedule academic chat media content moderation assessment marketplace billing video whiteboard
       PG_PASSWORD_IDENTITY: ${PG_PASSWORD_IDENTITY:?}
       PG_PASSWORD_NOTIFICATION: ${PG_PASSWORD_NOTIFICATION:?}
       PG_PASSWORD_AUDIT: ${PG_PASSWORD_AUDIT:?}
@@ -104,7 +104,8 @@ services:
       PG_PASSWORD_MARKETPLACE: ${PG_PASSWORD_MARKETPLACE:?}
       PG_PASSWORD_BILLING: ${PG_PASSWORD_BILLING:?}
       PG_PASSWORD_VIDEO: ${PG_PASSWORD_VIDEO:?}
-    # ВМ на 4 ГБ, рядом ещё 15 сервисов: память — скромно, соединений — на пулы всех сервисов (14 × до 10).
+      PG_PASSWORD_WHITEBOARD: ${PG_PASSWORD_WHITEBOARD:?}
+    # ВМ на 4 ГБ, рядом ещё 16 сервисов: память — скромно, соединений — на пулы всех сервисов (15 × до 10).
     command: >-
       postgres -c shared_buffers=256MB -c effective_cache_size=1GB -c work_mem=4MB -c maintenance_work_mem=64MB
       -c max_connections=200 -c wal_compression=on -c checkpoint_timeout=15min
@@ -286,6 +287,25 @@ services:
       - traefik.http.routers.chat.middlewares=chat-strip,api-ratelimit@docker
       - traefik.http.middlewares.chat-strip.stripprefix.prefixes=/api/chat
       - traefik.http.services.chat.loadbalancer.server.port=8000
+
+  whiteboard:
+    <<: *python-service
+    image: ${REGISTRY:?}/whiteboard:${TAG:-latest}
+    environment:
+      <<: *python-env
+      ROOT_PATH: /api/whiteboard
+      DATABASE_URL: postgresql+asyncpg://whiteboard:${PG_PASSWORD_WHITEBOARD:?}@postgres:5432/whiteboard
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      <<: *python-depends
+      redis:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.whiteboard.rule=PathPrefix(`/api/whiteboard`) && !PathPrefix(`/api/whiteboard/internal`)
+      - traefik.http.routers.whiteboard.middlewares=whiteboard-strip,api-ratelimit@docker
+      - traefik.http.middlewares.whiteboard-strip.stripprefix.prefixes=/api/whiteboard
+      - traefik.http.services.whiteboard.loadbalancer.server.port=8000
 
   media:
     <<: *python-service
