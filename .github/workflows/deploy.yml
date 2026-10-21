@@ -57,6 +57,7 @@ jobs:
           - { name: schedule, context: ., file: infra/docker/python-service.Dockerfile }
           - { name: academic, context: ., file: infra/docker/python-service.Dockerfile }
           - { name: chat, context: ., file: infra/docker/python-service.Dockerfile }
+          - { name: whiteboard, context: ., file: infra/docker/python-service.Dockerfile }
           - { name: media, context: ., file: infra/docker/python-service.Dockerfile }
           - { name: content, context: ., file: infra/docker/python-service.Dockerfile }
           - { name: moderation, context: ., file: infra/docker/python-service.Dockerfile }
