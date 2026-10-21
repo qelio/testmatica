@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
@@ -282,7 +282,7 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
         id=a.id, test_id=a.test_id, title=a.title, test_title=a.test_title, grade_level=a.grade_level,
         description=a.description, kind=a.kind,
         proctoring=a.proctoring, target_type=a.target_type,
-        target_id=a.target_id, teacher_id=a.teacher_id,
+        target_id=a.target_id, teacher_id=a.teacher_id, teacher_view=teacher_view,
         # Ученику — текущее имя из реплики («Фамилия Имя»), а не копия на момент выдачи.
         target_title=names.get(a.target_id, a.target_title) if a.target_type == "student" else a.target_title,
         teacher_name=names.get(a.teacher_id, "Педагог"), lesson_id=a.lesson_id, opens_at=a.opens_at,
@@ -305,6 +305,8 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
 @router.get("/assignments", response_model=list[AssignmentOut])
 async def list_assignments(
     role: str = Query("student", pattern="^(teacher|student)$"),
+    scope: str = Query("mine", pattern="^(mine|classes)$",
+                       description="Педагогу: mine — выданные им; classes — работы его классов, выданные другими (решение №61)"),
     lesson_id: UUID | None = None,
     target_id: UUID | None = None,
     module_id: UUID | None = Query(None, description="Работы по модулю курса — для страницы модуля"),
@@ -314,17 +316,18 @@ async def list_assignments(
     principal: Principal = Depends(auth.principal),
     session: AsyncSession = Depends(db.session),
 ) -> list[AssignmentOut]:
-    """Педагогу — выданные им работы и работы его классов (свои классы и общие с правом «Работы класса», решение №61);
-    ученику — выданные ему. Новые — первыми, постранично."""
+    """Педагогу — выданные им работы (scope=mine) или работы его классов, выданные другими педагогами (scope=classes:
+    свои классы и общие с правом «Работы класса», решение №61); ученику — выданные ему. Новые — первыми, постранично."""
     as_teacher = role == "teacher"
     if as_teacher:
         if not principal.has_any(ROLE_TEACHER, ROLE_MODERATOR):
             raise ApiError(403, "forbidden", "Недостаточно прав")
-        groups = await class_access.work_groups(principal.user_id) if principal.has_any(ROLE_TEACHER) else []
-        query = select(Assignment).where(or_(
-            Assignment.teacher_id == principal.user_id,
-            (Assignment.target_type == "group") & Assignment.target_id.in_(groups),
-        ))
+        if scope == "classes":
+            groups = await class_access.work_groups(principal.user_id) if principal.has_any(ROLE_TEACHER) else []
+            query = select(Assignment).where(Assignment.teacher_id != principal.user_id, Assignment.target_type == "group",
+                                             Assignment.target_id.in_(groups))
+        else:
+            query = select(Assignment).where(Assignment.teacher_id == principal.user_id)
     else:
         query = select(Assignment).join(AssignmentStudent).where(AssignmentStudent.student_id == principal.user_id)
     query = query.where(Assignment.kind != SELF)  # самостоятельные — под модулем курса и в карточке ученика
@@ -343,14 +346,21 @@ async def list_assignments(
     return out
 
 
+@router.get("/assignments/classes", response_model=list[AssignmentTarget])
+async def work_classes(principal: Principal = Depends(teacher)) -> list[AssignmentTarget]:
+    """Классы, работы которых педагог ведёт (свои и общие с правом «Работы класса», решение №61) — для раздела
+    «Работы классов»."""
+    rows = await class_access.work_classes(principal.user_id)
+    return sorted((AssignmentTarget(target_type="group", target_id=g["id"], target_title=g["title"]) for g in rows),
+                  key=lambda x: x.target_title.lower())
+
+
 @router.get("/assignments/targets", response_model=list[AssignmentTarget])
 async def assignment_targets(principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)) -> list[AssignmentTarget]:
     """Кому педагог назначал работы — для фильтра списка (группы и ученики)."""
     rows = (await session.execute(
         select(Assignment.target_type, Assignment.target_id, func.max(Assignment.target_title))
-        .where(or_(Assignment.teacher_id == principal.user_id,
-                   (Assignment.target_type == "group") & Assignment.target_id.in_(await class_access.work_groups(principal.user_id))),
-               Assignment.kind != SELF)
+        .where(Assignment.teacher_id == principal.user_id, Assignment.kind != SELF)
         .group_by(Assignment.target_type, Assignment.target_id)
     )).all()
     names = await views.names(session, [r[1] for r in rows if r[0] == "student"])

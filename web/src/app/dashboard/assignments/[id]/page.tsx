@@ -20,7 +20,8 @@ export default function AssignmentPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const a = useLoad(() => assessment.assignment(id), [id]);
-  const isTeacher = !!a.data && a.data.teacher_id === user?.id;
+  // Ведёт работу: автор или педагог класса с правом «Работы класса» (решение №61); у самостоятельной — сам ученик.
+  const isTeacher = !!a.data && (a.data.kind === "self" ? a.data.teacher_id === user?.id : !!a.data.teacher_view);
 
   // Начал, сдал, завершил педагог — сразу, через WebSocket.
   useRealtime((e) => {

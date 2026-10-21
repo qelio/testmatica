@@ -622,6 +622,7 @@ class AssignmentOut(BaseModel):
     target_title: str
     teacher_id: UUID
     teacher_name: str
+    teacher_view: bool = Field(False, description="Смотрящий ведёт работу: автор или педагог класса с правом (решение №61)")
     lesson_id: UUID | None
     module: ModuleRef | None = None
     opens_at: datetime | None

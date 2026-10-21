@@ -1059,9 +1059,12 @@ async def test_class_works_for_class_teachers(client, fakes):
     a = await assign(client, petr, test, target_type="group", target_id=gid)  # назначил коллега
 
     # Владелец класса и Пётр видят работу в списке; Иван без права — нет.
-    listed = lambda who: client.get("/assignments", params={"role": "teacher"}, headers=bearer(who))  # noqa: E731
-    assert [x["id"] for x in (await listed(maria)).json()] == [a["id"]]
-    assert (await listed(ivan)).json() == []
+    listed = lambda who, scope: client.get("/assignments", params={"role": "teacher", "scope": scope}, headers=bearer(who))  # noqa: E731
+    assert (await listed(maria, "mine")).json() == []  # «Мои работы» — только выданные самим
+    classes = (await listed(maria, "classes")).json()
+    assert [(x["id"], x["teacher_view"]) for x in classes] == [(a["id"], True)]
+    assert (await listed(ivan, "classes")).json() == []
+    assert [c["target_id"] for c in (await client.get("/assignments/classes", headers=bearer(petr))).json()] == [gid]
     assert (await client.get(f"/assignments/{a['id']}", headers=bearer(ivan))).status_code == 404
 
     # Ученица начала — событие уходит и педагогам класса (ход вживую).
