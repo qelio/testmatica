@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.messaging import Envelope
 
 from .courses import apply_pending, test_task_ids
+from . import class_access
 from .deps import outbox
 from .models import IN_PROGRESS, PENDING, PRIVATE, PUBLISHED, REJECTED, Assignment, Attempt, CourseTask, Person, RelLink, Task, Test, TestShare
 
@@ -146,5 +147,5 @@ async def on_video_event(envelope: Envelope, session: AsyncSession) -> None:
         # Уже записано — страница ученика (шторка) и наблюдение педагога обновятся сразу (chat → WebSocket).
         await outbox.event(session, "assessment.attempt.screen", {
             "attempt_id": str(attempt.id), "assignment_id": str(attempt.assignment_id), "student_id": str(attempt.student_id),
-            "teacher_id": str(a.teacher_id), "sharing": attempt.screen_sharing,
+            "teacher_id": str(a.teacher_id), "sharing": attempt.screen_sharing, "watcher_ids": await class_access.watchers(a),
         })

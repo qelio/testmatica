@@ -69,7 +69,8 @@ class GradeOut(BaseModel):
     created_at: datetime
     teacher_id: UUID | None = None
     teacher_name: str | None = Field(None, description="Кто поставил — в общем журнале класса (решение №59)")
-    own: bool = Field(True, description="Своя оценка — её можно менять; чужую (коллеги) — только смотреть")
+    own: bool = Field(True, description="Своя оценка")
+    can_edit: bool = Field(True, description="Можно менять: своя или право «правка всех оценок» в классе (решение №61)")
 
 
 class AttendanceSet(BaseModel):

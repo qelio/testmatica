@@ -1045,3 +1045,41 @@ async def test_test_subject(client, fakes):
     await run_code_checks()
     [graded] = await outbox("assessment.attempt.graded")
     assert graded["data"]["subject"] == "Информатика"
+
+
+async def test_class_works_for_class_teachers(client, fakes):
+    """Работы класса (решение №61): владелец класса и коллега с правом «Работы класса» видят и ведут любую работу классу —
+    список, ход вживую, проверка, оценка; коллега без права — нет."""
+    maria, petr, ivan, olya = uuid4(), uuid4(), uuid4(), uuid4()
+    gid = await group_of(fakes, maria, olya)
+    fakes.groups[gid]["shares"] = {str(petr): ["class_works"], str(ivan): []}
+    await link(petr, olya)
+    tasks = await make_tasks(client, petr)
+    test = await make_test(client, petr, tasks)
+    a = await assign(client, petr, test, target_type="group", target_id=gid)  # назначил коллега
+
+    # Владелец класса и Пётр видят работу в списке; Иван без права — нет.
+    listed = lambda who: client.get("/assignments", params={"role": "teacher"}, headers=bearer(who))  # noqa: E731
+    assert [x["id"] for x in (await listed(maria)).json()] == [a["id"]]
+    assert (await listed(ivan)).json() == []
+    assert (await client.get(f"/assignments/{a['id']}", headers=bearer(ivan))).status_code == 404
+
+    # Ученица начала — событие уходит и педагогам класса (ход вживую).
+    attempt = (await client.post(f"/assignments/{a['id']}/start", json={}, headers=student(olya))).json()
+    [started] = await outbox("assessment.attempt.started")
+    assert started["data"]["watcher_ids"] == [str(maria)]
+    # Владелец видит попытку с ключами и меняет оценку.
+    view = (await client.get(f"/attempts/{attempt['id']}", headers=bearer(maria))).json()
+    assert view["tasks"] and view["tasks"][0]["task"]["options"]
+    await client.post(f"/attempts/{attempt['id']}/submit", headers=student(olya))
+    await run_code_checks()
+    reviewed = await client.post(f"/attempts/{attempt['id']}/review", json={"grade": 5}, headers=bearer(maria))
+    assert reviewed.status_code == 200 and reviewed.json()["grade"] == 5
+    assert (await client.post(f"/attempts/{attempt['id']}/review", json={"grade": 4}, headers=bearer(ivan))).status_code == 404
+
+    # Работа владельца классу видна Петру с правом; право забрали — доступа больше нет.
+    own_test = await make_test(client, maria, await make_tasks(client, maria))
+    own = await assign(client, maria, own_test, target_type="group", target_id=gid)
+    assert (await client.get(f"/assignments/{own['id']}", headers=bearer(petr))).status_code == 200
+    fakes.groups[gid]["shares"][str(petr)] = []
+    assert (await client.get(f"/assignments/{own['id']}", headers=bearer(petr))).status_code == 404

@@ -104,8 +104,8 @@ async def test_share_class_with_colleague(client, teacher, fake_identity):
     assert info.status_code == 200 and info.json()["member_ids"] == [anya]  # расписание и тесты пускают коллегу
 
     # Управлять составом и классом коллега не может; отвязать ученика класса — тоже.
-    assert (await client.patch(f"/groups/{group['id']}", json={"title": "x"}, headers=bearer(petr))).status_code == 404
-    assert (await client.delete(f"/groups/{group['id']}/members/{anya}", headers=bearer(petr))).status_code == 404
+    assert (await client.patch(f"/groups/{group['id']}", json={"title": "x"}, headers=bearer(petr))).status_code == 403
+    assert (await client.delete(f"/groups/{group['id']}/members/{anya}", headers=bearer(petr))).status_code == 403
     unlink = await client.delete(f"/students/{anya}", headers=bearer(petr))
     assert unlink.status_code == 409 and unlink.json()["error"]["code"] == "colleague_student"
 
@@ -133,3 +133,47 @@ async def test_removing_colleague_closes_shared_classes(client, teacher, fake_id
     assert (await client.get("/groups", headers=bearer(petr))).json() == []
     assert (await client.get("/students", headers=bearer(petr))).json() == []
     assert (await client.get(f"/groups/{group['id']}", headers=bearer(teacher))).json()["shares"] == []
+
+
+async def test_share_permissions(client, teacher, fake_identity):
+    """Права коллеги в общем классе (решение №61): добавлять своих учеников (убирать — только их), управлять составом;
+    ученик коллеги становится учеником владельца и уходит от него, когда его убрали из класса."""
+    petr = await befriend(client, fake_identity, teacher)
+    group = (await client.post("/groups", json={"title": "7А", "kind": "class"}, headers=bearer(teacher))).json()
+    gid = group["id"]
+    anya = await add_student(client, teacher, gid, "Петрова")
+    url = f"/groups/{gid}/shares"
+    shared = (await client.post(url, json={"colleague_id": str(petr), "permissions": ["add_students", "class_works"]},
+                                headers=bearer(teacher))).json()
+    assert shared["shares"][0]["permissions"] == ["add_students", "class_works"]
+
+    # Свой ученик Петра — в класс; чужого (ученика класса «от коллеги») добавить нельзя.
+    kolya = (await client.post("/students/manual", json={"last_name": "Колин", "first_name": "Коля"},
+                               headers=bearer(petr))).json()["student"]["student_id"]
+    assert (await client.post(f"/groups/{gid}/members", json={"student_id": kolya}, headers=bearer(petr))).status_code == 204
+    detail = (await client.get(f"/groups/{gid}", headers=bearer(petr))).json()
+    assert detail["permissions"] == ["add_students", "class_works"]
+    assert {m["student_id"]: (m["added_by"], m["can_remove"]) for m in detail["members"]} == {
+        anya: (None, False), kolya: (str(petr), True)}
+    owner_students = {s["student_id"]: s["source"] for s in (await client.get("/students", headers=bearer(teacher))).json()}
+    assert owner_students[kolya] == "colleague"  # ученик коллеги — теперь и ученик владельца
+    h = {INTERNAL_HEADER: settings.internal_token}
+    info = (await client.get(f"/internal/groups/{gid}", params={"teacher_id": str(petr)}, headers=h)).json()
+    assert info["permissions"] == ["add_students", "class_works"]
+    assert [(t["teacher_id"], "owner" in t["permissions"]) for t in info["teachers"]] == [(str(teacher), True), (str(petr), False)]
+    works = (await client.get(f"/internal/teachers/{petr}/groups", params={"with_permission": "class_works"}, headers=h)).json()
+    assert [g["id"] for g in works] == [gid]
+
+    # Убрать: Пётр — только своего, владелец — любого; убрали Колю — у владельца он больше не ученик.
+    assert (await client.delete(f"/groups/{gid}/members/{anya}", headers=bearer(petr))).status_code == 403
+    assert (await client.patch(f"/groups/{gid}", json={"title": "8А"}, headers=bearer(petr))).status_code == 403
+    assert (await client.delete(f"/groups/{gid}/members/{kolya}", headers=bearer(petr))).status_code == 204
+    assert kolya not in {s["student_id"] for s in (await client.get("/students", headers=bearer(teacher))).json()}
+    assert kolya in {s["student_id"] for s in (await client.get("/students", headers=bearer(petr))).json()}
+
+    # «Управлять составом»: убирает любого и меняет класс, но платность — только владелец.
+    await client.put(f"{url}/{petr}", json={"permissions": ["manage"]}, headers=bearer(teacher))
+    assert (await client.patch(f"/groups/{gid}", json={"title": "8А"}, headers=bearer(petr))).json()["title"] == "8А"
+    assert (await client.patch(f"/groups/{gid}", json={"paid": True}, headers=bearer(petr))).status_code == 403
+    assert (await client.delete(f"/groups/{gid}/members/{anya}", headers=bearer(petr))).status_code == 204
+    assert (await client.post(f"/groups/{gid}/archive", headers=bearer(petr))).status_code == 404

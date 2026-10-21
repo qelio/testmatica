@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 from testmatica_common.internal import internal_guard
 
-from .. import views
+from .. import class_access, views
 from ..config import settings
 from ..deps import db
 from ..models import AUTO_TYPES, IN_PROGRESS, PUBLISHED, REMOVED, Assignment, Attempt, Task
@@ -58,7 +58,8 @@ async def assignment_subjects(body: SubjectsIn, session: AsyncSession = Depends(
 
 @router.get("/proctoring/{assignment_id}", response_model=ProctorAccess)
 async def proctoring_access(assignment_id: UUID, user_id: UUID = Query(), session: AsyncSession = Depends(db.session)) -> ProctorAccess:
-    """Кто пользователь в прокторинге: педагог назначения или ученик с идущей попыткой. Остальным — 404."""
+    """Кто пользователь в прокторинге: педагог назначения (или педагог класса с правом «Работы класса», решение №61)
+    или ученик с идущей попыткой. Остальным — 404."""
     a = await session.get(Assignment, assignment_id)
     if a is None or not a.proctoring:
         raise ApiError(404, "assignment_not_found", "Тест с прокторингом не найден")
@@ -66,7 +67,7 @@ async def proctoring_access(assignment_id: UUID, user_id: UUID = Query(), sessio
         select(Attempt).where(Attempt.assignment_id == a.id, Attempt.status == IN_PROGRESS)
     )).scalars()}
     base = {"assignment_id": a.id, "teacher_id": a.teacher_id, "title": a.title, "closed": a.closed_at is not None}
-    if a.teacher_id == user_id:
+    if a.teacher_id == user_id or await class_access.runs(a, user_id):
         ids = [r.student_id for r in a.students]
         names = await views.names(session, ids)
         students = sorted((ProctorStudent(id=i, full_name=names.get(i, "Ученик"), attempt_id=open_attempts.get(i)) for i in ids),

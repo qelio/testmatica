@@ -70,6 +70,8 @@ class GroupMember(Base):
     student_id: Mapped[UUID] = mapped_column(primary_key=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Кто добавил: коллега, с которым поделились классом (решение №61), убирает только своих; пусто — владелец.
+    added_by: Mapped[UUID | None]
 
 
 class TeacherStudentLink(Base):
@@ -139,13 +141,23 @@ class Colleague(Base):
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+# Права коллеги в общем классе (решение №61) — сверх базовых (видеть класс, свои занятия и тесты).
+PERM_ADD_STUDENTS = "add_students"  # добавлять своих учеников, убирать — только их
+PERM_CLASS_WORKS = "class_works"  # полный доступ ко всем работам класса: ход вживую, проверка, результаты
+PERM_JOURNAL_ALL = "journal_all"  # править все оценки в журнале класса
+PERM_MANAGE = "manage"  # управлять составом и классом, как владелец (без удаления, архива и передачи)
+PERMISSIONS = (PERM_ADD_STUDENTS, PERM_CLASS_WORKS, PERM_JOURNAL_ALL, PERM_MANAGE)
+OWNER = "owner"  # не хранится: так помечаются права владельца в ответах
+
+
 class GroupShare(Base):
     """Класс, которым педагог поделился с коллегой (решение №57). Коллега видит класс и учеников, ведёт с ними свои
-    занятия и тесты; управлять составом и самим классом не может. Ученики класса — его ученики (связь source=colleague)."""
+    занятия и тесты; остальное — по правам permissions (решение №61). Ученики класса — его ученики (source=colleague)."""
 
     __tablename__ = "group_shares"
     __table_args__ = (Index("ix_group_shares_colleague", "colleague_id"),)
 
     group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
     colleague_id: Mapped[UUID] = mapped_column(primary_key=True)
+    permissions: Mapped[list[str]] = mapped_column(ARRAY(String(16)), default=list, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

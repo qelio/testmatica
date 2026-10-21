@@ -27,7 +27,9 @@ async def on_assessment_event(envelope: Envelope, session: AsyncSession) -> None
     if kind is None:
         return
     d = envelope.data
-    await realtime.publish([UUID(d["teacher_id"]), UUID(d["student_id"])], {
+    # watcher_ids — педагоги класса с правом «Работы класса» (решение №61): тоже видят ход работы вживую.
+    watchers = [UUID(w) for w in d.get("watcher_ids") or []]
+    await realtime.publish([UUID(d["teacher_id"]), UUID(d["student_id"]), *watchers], {
         "type": "assignment", "kind": kind, "assignment_id": d["assignment_id"], "attempt_id": d["attempt_id"],
         "student_id": d["student_id"], "by_teacher": bool(d.get("by_teacher")), "sharing": d.get("sharing"),
     })

@@ -8,7 +8,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 
 from .deps import identity, outbox
-from .models import LINK_ACTIVE, LINK_ENDED, LINK_PENDING, SOURCE_COLLEAGUE, Group, GroupMember, GroupShare, TeacherStudentLink
+from .models import (
+    LINK_ACTIVE,
+    LINK_ENDED,
+    LINK_PENDING,
+    OWNER,
+    PERM_ADD_STUDENTS,
+    PERM_MANAGE,
+    PERMISSIONS,
+    SOURCE_COLLEAGUE,
+    Group,
+    GroupMember,
+    GroupShare,
+    TeacherStudentLink,
+)
 from .people import name_of
 
 
@@ -143,6 +156,45 @@ async def readable_group(session: AsyncSession, group_id: UUID, teacher_id: UUID
     raise ApiError(404, "group_not_found", "Группа не найдена")
 
 
+def share_permissions(share: GroupShare) -> set[str]:
+    perms = set(share.permissions or [])
+    if PERM_MANAGE in perms:
+        perms.add(PERM_ADD_STUDENTS)  # управляет составом — может и добавлять своих
+    return perms
+
+
+async def group_access(session: AsyncSession, group_id: UUID, teacher_id: UUID) -> tuple[Group, set[str]]:
+    """Класс и права педагога в нём (решение №61): владелец — всё (owner), коллега — права доступа. 404 — нет доступа."""
+    group = await session.get(Group, group_id)
+    if group is not None and group.teacher_id == teacher_id:
+        return group, {OWNER, *PERMISSIONS}
+    share = await session.get(GroupShare, (group_id, teacher_id)) if group is not None else None
+    if share is None:
+        raise ApiError(404, "group_not_found", "Группа не найдена")
+    return group, share_permissions(share)
+
+
+async def group_with(session: AsyncSession, group_id: UUID, teacher_id: UUID, *need: str) -> tuple[Group, set[str]]:
+    """Класс, если у педагога есть хотя бы одно из прав need (владелец — всегда)."""
+    group, perms = await group_access(session, group_id, teacher_id)
+    if OWNER not in perms and not perms & set(need):
+        raise ApiError(403, "forbidden", "У вас нет такого права в этом классе — его даёт владелец класса")
+    return group, perms
+
+
+async def refresh_owner_link(session: AsyncSession, owner_id: UUID, student_id: UUID, actor_id: UUID) -> None:
+    """Ученик пришёл к владельцу через класс от коллеги (source=colleague) и больше не в его классах — связь закрывается."""
+    link = await get_link(session, owner_id, student_id, lock=True)
+    if link is None or link.status != LINK_ACTIVE or link.source != SOURCE_COLLEAGUE:
+        return
+    in_classes = await session.scalar(
+        select(func.count()).select_from(GroupMember).join(Group, Group.id == GroupMember.group_id)
+        .where(Group.teacher_id == owner_id, GroupMember.student_id == student_id, GroupMember.left_at.is_(None))
+    )
+    if not in_classes:
+        await end_link(session, link, actor_id)
+
+
 async def group_colleagues(session: AsyncSession, group_ids: list[UUID]) -> list[UUID]:
     if not group_ids:
         return []
@@ -183,18 +235,31 @@ async def unshare(session: AsyncSession, share: GroupShare, actor_id: UUID) -> N
     await refresh_colleague_links(session, share.colleague_id, members, actor_id)
 
 
-async def add_member(session: AsyncSession, group: Group, student_id: UUID, actor_id: UUID) -> None:
+async def add_member(
+    session: AsyncSession, group: Group, student_id: UUID, actor_id: UUID, colleague_id: UUID | None = None
+) -> None:
+    """Добавить в класс. Добавляет коллега (решение №61) — ученик должен быть его, и он становится учеником владельца."""
     if group.archived_at is not None:
         raise ApiError(409, "group_archived", "Группа в архиве")
-    await active_link(session, group.teacher_id, student_id)
+    by_colleague = colleague_id is not None
+    if by_colleague:
+        link = await active_link(session, colleague_id, student_id)
+        if link.source == SOURCE_COLLEAGUE:
+            raise ApiError(409, "not_own_student", "Добавить можно только своего ученика")
+        owner_link = await get_link(session, group.teacher_id, student_id)
+        if owner_link is None or owner_link.status != LINK_ACTIVE:
+            await activate_link(session, group.teacher_id, student_id, SOURCE_COLLEAGUE, actor_id)
+    else:
+        await active_link(session, group.teacher_id, student_id)
     member = await session.get(GroupMember, (group.id, student_id), with_for_update=True)
     if member is not None and member.left_at is None:
         return
     if member is None:
-        session.add(GroupMember(group_id=group.id, student_id=student_id, joined_at=now()))
+        session.add(GroupMember(group_id=group.id, student_id=student_id, joined_at=now(), added_by=colleague_id))
     else:
         member.left_at = None
         member.joined_at = now()
+        member.added_by = colleague_id
     await session.flush()
     await outbox.event(
         session,
@@ -218,3 +283,4 @@ async def remove_member(session: AsyncSession, group: Group, student_id: UUID, a
     )
     await session.flush()
     await refresh_shared(session, [group.id], [student_id], actor_id)
+    await refresh_owner_link(session, group.teacher_id, student_id, actor_id)

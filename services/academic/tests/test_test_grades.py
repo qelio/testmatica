@@ -148,8 +148,14 @@ async def test_subject_journals_shared_with_colleague(client, world):
     assert sorted((g["value"], g["own"], g["teacher_name"]) for g in body["grades"]) == [(4, False, "Петров Пётр"), (5, False, "Петров Пётр")]
     assert [w["title"] for w in body["works"]] == ["Циклы"]
     assert [w["title"] for w in (await get(petr, subject="")).json()["works"]] == ["Старый"]
-    # Мария не может менять оценку Петра.
-    assert (await client.patch(f"/grades/{mine['id']}", json={"value": 2}, headers=bearer(maria))).status_code == 404
+    # Владелец класса меняет любые оценки журнала класса (решение №61); Пётр без права — только свои.
+    maria_grade = next(g for g in (await get(maria)).json()["grades"] if g["own"])
+    assert (await client.patch(f"/grades/{maria_grade['id']}", json={"value": 2}, headers=bearer(petr))).status_code == 404
+    petr_view = (await get(petr, subject="Алгебра")).json()["grades"]
+    assert [g["can_edit"] for g in petr_view] == [False]
+    assert (await client.patch(f"/grades/{mine['id']}", json={"value": 3}, headers=bearer(maria))).json()["value"] == 3
+    world.share_perms[(str(group), str(petr))] = ["journal_all"]  # дали право «правка всех оценок»
+    assert (await client.patch(f"/grades/{maria_grade['id']}", json={"value": 4}, headers=bearer(petr))).json()["value"] == 4
 
     # Разноска старых оценок: предмет — у работы в assessment.
     assessment.transport = httpx.MockTransport(lambda r: httpx.Response(200, json={old: "Информатика"}))
