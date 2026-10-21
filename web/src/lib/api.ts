@@ -263,16 +263,39 @@ export type Group = {
   owner_name?: string | null;
 };
 
-export type Member = { student_id: string; full_name: string; login: string | null; joined_at: string };
+export type Member = {
+  student_id: string;
+  full_name: string;
+  login: string | null;
+  joined_at: string;
+  /** Коллега, который добавил ученика (решение №61); null — владелец класса. */
+  added_by?: string | null;
+  added_by_name?: string | null;
+  can_remove?: boolean;
+};
 
-export type GroupDetail = Group & { members: Member[]; shares: { user_id: string; full_name: string }[] };
+/** Права коллеги в общем классе (решение №61). */
+export type SharePermission = "add_students" | "class_works" | "journal_all" | "manage";
+export const SHARE_PERMISSIONS: { id: SharePermission; label: string; hint: string }[] = [
+  { id: "add_students", label: "Добавлять своих учеников", hint: "убирать — только тех, кого добавил сам" },
+  { id: "class_works", label: "Работы класса", hint: "все работы класса: ход вживую, проверка, результаты и оценки" },
+  { id: "journal_all", label: "Правка всех оценок в журнале", hint: "и ваших, и других коллег" },
+  { id: "manage", label: "Управлять составом и классом", hint: "убирать любых учеников, менять название и предмет" },
+];
+
+export type GroupDetail = Group & {
+  members: Member[];
+  shares: { user_id: string; full_name: string; permissions: SharePermission[] }[];
+  /** Права смотрящего: "owner" — владелец, иначе права коллеги. */
+  permissions: string[];
+};
 
 export type Student = {
   student_id: string;
   full_name: string;
   login: string | null;
   status: "active" | "pending";
-  source: "invite" | "manual" | "request" | "marketplace";
+  source: "invite" | "manual" | "request" | "marketplace" | "colleague";
   managed: boolean;
   group_ids: string[];
   paid: boolean; // индивидуальные занятия платные
@@ -327,8 +350,10 @@ export const classroom = {
   groups: (archived = false) => api<Group[]>(`${CR}/groups?archived=${archived}`),
   group: (id: string) => api<GroupDetail>(`${CR}/groups/${id}`),
   /** Поделиться классом с коллегой / закрыть доступ (или отказаться от класса коллеги) — решение №57. */
-  shareGroup: (id: string, colleagueId: string) =>
-    api<GroupDetail>(`${CR}/groups/${id}/shares`, { method: "POST", body: { colleague_id: colleagueId } }),
+  shareGroup: (id: string, colleagueId: string, permissions: SharePermission[] = []) =>
+    api<GroupDetail>(`${CR}/groups/${id}/shares`, { method: "POST", body: { colleague_id: colleagueId, permissions } }),
+  setSharePermissions: (id: string, colleagueId: string, permissions: SharePermission[]) =>
+    api<GroupDetail>(`${CR}/groups/${id}/shares/${colleagueId}`, { method: "PUT", body: { permissions } }),
   unshareGroup: (id: string, colleagueId: string) => api<void>(`${CR}/groups/${id}/shares/${colleagueId}`, { method: "DELETE" }),
   createGroup: (data: { title: string; kind: "class" | "group"; paid: boolean; subject?: string | null }) =>
     api<Group>(`${CR}/groups`, { method: "POST", body: data }),
@@ -492,8 +517,10 @@ export type Grade = {
   created_at: string;
   /** Кто поставил — в общем журнале класса (решение №59). */
   teacher_name?: string | null;
-  /** Своя оценка; оценку коллеги можно только смотреть. */
+  /** Своя оценка. */
   own?: boolean;
+  /** Можно менять: своя или право «правка всех оценок» в классе (решение №61). */
+  can_edit?: boolean;
 };
 
 export type Stats = {

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 from testmatica_common.internal import internal_guard
@@ -12,11 +12,16 @@ from testmatica_common.internal import internal_guard
 from .. import logic
 from ..config import settings
 from ..deps import db
-from ..models import LINK_ACTIVE, Group, GroupMember
+from ..models import LINK_ACTIVE, OWNER, PERMISSIONS, Group, GroupMember, GroupShare
 from .colleagues import are_colleagues
 from .groups import check_group_limit
 
 router = APIRouter(prefix="/internal", tags=["internal"], dependencies=[Depends(internal_guard(settings.internal_token))])
+
+
+class TeacherAccess(BaseModel):
+    teacher_id: UUID
+    permissions: list[str]
 
 
 class GroupInfo(BaseModel):
@@ -28,6 +33,9 @@ class GroupInfo(BaseModel):
     kind: str
     archived: bool
     member_ids: list[UUID]
+    # Решение №61: права запросившего педагога (owner — владелец) и все педагоги класса с их правами.
+    permissions: list[str] = []
+    teachers: list[TeacherAccess] = []
 
 
 class LinkInfo(BaseModel):
@@ -41,8 +49,10 @@ class LinkInfo(BaseModel):
 async def group_info(
     group_id: UUID, teacher_id: UUID = Query(), session: AsyncSession = Depends(db.session)
 ) -> GroupInfo:
-    """Группа педагога (своя или общая с коллегой, решение №57) и её текущий состав. 404, если чужая."""
-    group, _ = await logic.readable_group(session, group_id, teacher_id)
+    """Группа педагога (своя или общая с коллегой, решение №57) и её текущий состав. 404, если чужая.
+    permissions — права этого педагога, teachers — владелец и коллеги с правами (решение №61)."""
+    group, perms = await logic.group_access(session, group_id, teacher_id)
+    shares = (await session.execute(select(GroupShare).where(GroupShare.group_id == group.id))).scalars().all()
     members = await session.execute(
         select(GroupMember.student_id).where(GroupMember.group_id == group.id, GroupMember.left_at.is_(None))
     )
@@ -55,15 +65,25 @@ async def group_info(
         kind=group.kind,
         archived=group.archived_at is not None,
         member_ids=list(members.scalars()),
+        permissions=sorted(perms),
+        teachers=[TeacherAccess(teacher_id=group.teacher_id, permissions=[OWNER, *PERMISSIONS])]
+        + [TeacherAccess(teacher_id=s.colleague_id, permissions=sorted(logic.share_permissions(s))) for s in shares],
     )
 
 
 @router.get("/teachers/{teacher_id}/groups", response_model=list[GroupInfo])
 async def teacher_groups(
-    teacher_id: UUID, archived: bool = Query(False), session: AsyncSession = Depends(db.session)
+    teacher_id: UUID, archived: bool = Query(False), with_permission: str | None = Query(None),
+    session: AsyncSession = Depends(db.session),
 ) -> list[GroupInfo]:
-    """Группы педагога с составом — для сводной ведомости в academic."""
-    query = select(Group).where(Group.teacher_id == teacher_id)
+    """Группы педагога с составом — для сводной ведомости в academic. with_permission — и общие классы коллег,
+    где у него есть это право (решение №61; например, class_works — для списка работ в assessment)."""
+    owned = Group.teacher_id == teacher_id
+    if with_permission:
+        owned = or_(owned, Group.id.in_(select(GroupShare.group_id).where(
+            GroupShare.colleague_id == teacher_id,
+            GroupShare.permissions.contains([with_permission]))))
+    query = select(Group).where(owned)
     if not archived:
         query = query.where(Group.archived_at.is_(None))
     groups = (await session.execute(query.order_by(Group.title))).scalars().all()

@@ -32,12 +32,17 @@ teacher = auth.require(ROLE_TEACHER)
 MAX_RANGE = timedelta(days=190)  # примерно полугодие
 
 
-def grade_out(g: Grade, type_names: dict[UUID, str], viewer: UUID | None = None, names: dict[UUID, str] | None = None) -> GradeOut:
-    """viewer — кто смотрит журнал: чужие оценки (коллеги) помечаются own=False и подписываются его именем."""
+def grade_out(
+    g: Grade, type_names: dict[UUID, str], viewer: UUID | None = None, names: dict[UUID, str] | None = None, edit_all: bool = False
+) -> GradeOut:
+    """viewer — кто смотрит журнал: чужие оценки (коллеги) помечаются own=False и подписываются его именем;
+    edit_all — у смотрящего право менять все оценки класса (владелец или «правка всех оценок», решение №61)."""
+    own = viewer is None or g.teacher_id == viewer
     return GradeOut(
         teacher_id=g.teacher_id,
         teacher_name=names.get(g.teacher_id) if names else None,
-        own=viewer is None or g.teacher_id == viewer,
+        own=own,
+        can_edit=own or edit_all,
         id=g.id,
         lesson_id=g.lesson_id,
         work_id=g.source_ref if g.lesson_id is None else None,
@@ -89,10 +94,11 @@ async def journal(
 
     me = principal.user_id
     target = {"group_id": str(group_id)} if group_id else {"student_id": str(student_id)}
-    main_subject = None
+    main_subject, edit_all = None, False
     if group_id:
         group = await classroom.get(f"/internal/groups/{group_id}", params={"teacher_id": str(me)})
         title, current, main_subject = group["title"], {UUID(s) for s in group["member_ids"]}, group.get("subject")
+        edit_all = bool({"owner", "journal_all"} & set(group.get("permissions", [])))
     else:
         link = await classroom.get("/internal/links", params={"teacher_id": str(me), "student_id": str(student_id)})
         title, current = "", ({student_id} if link["active"] else set())
@@ -203,7 +209,7 @@ async def journal(
         ],
         works=sorted(works, key=lambda w: w.at),
         students=rows,
-        grades=[grade_out(g, types, me, names) for g in grades],
+        grades=[grade_out(g, types, me, names, edit_all) for g in grades],
         attendance=[AttendanceOut(lesson_id=a.lesson_id, student_id=a.student_id, status=a.status) for a in marks],
         stats=stats.compute(grades, marks),
     )
@@ -353,7 +359,17 @@ async def add_grade(
 
 
 async def _own_grade(session: AsyncSession, grade_id: UUID, principal: Principal) -> Grade:
+    """Своя оценка или оценка в журнале класса, где у педагога право менять все (владелец, «правка всех оценок»)."""
     grade = await session.get(Grade, grade_id, with_for_update=True)
+    if grade is not None and grade.teacher_id != principal.user_id and grade.group_id:
+        try:
+            group = await classroom.get(f"/internal/groups/{grade.group_id}", params={"teacher_id": str(principal.user_id)})
+        except ApiError as e:
+            if e.status != 404:
+                raise
+        else:
+            if {"owner", "journal_all"} & set(group.get("permissions", [])):
+                return grade
     if grade is None or grade.teacher_id != principal.user_id:
         raise ApiError(404, "grade_not_found", "Оценка не найдена")
     return grade

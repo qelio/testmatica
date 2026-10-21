@@ -122,6 +122,7 @@ function Given() {
 
 function GivenCard({ a }: { a: Assignment }) {
   const s = summary(a);
+  const me = useAuth().user?.id;
   const live = a.kind === "live" && !a.closed && !a.not_open_yet;
   return (
     <Link href={`/dashboard/assignments/${a.id}`} className="block rounded-2xl border border-line bg-surface px-5 py-4 hover:border-brand/50">
@@ -136,6 +137,8 @@ function GivenCard({ a }: { a: Assignment }) {
       <p className="mt-1 text-sm text-fg-soft">
         {[
           a.target_title,
+          // Работа класса, которую назначил коллега или владелец класса (решение №61).
+          me && a.teacher_id !== me ? `назначил(а) ${a.teacher_name}` : null,
           gradeLevelLabel(a.grade_level),
           a.not_open_yet && a.opens_at ? `откроется ${fmtDateTime(a.opens_at)}` : null,
           a.deadline ? `до ${fmtDateTime(a.deadline)}` : null,

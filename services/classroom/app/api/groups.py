@@ -9,8 +9,19 @@ from testmatica_common.plans import BASIC
 
 from .. import logic, people
 from ..deps import auth, db, outbox, plans, subjects
-from ..models import Group, GroupMember, GroupShare
-from ..schemas import AddMember, GroupCreate, GroupDetail, GroupOut, GroupUpdate, MemberOut, ShareIn, ShareOut, SignedOut
+from ..models import OWNER, PERM_ADD_STUDENTS, PERM_MANAGE, Group, GroupMember, GroupShare
+from ..schemas import (
+    AddMember,
+    GroupCreate,
+    GroupDetail,
+    GroupOut,
+    GroupUpdate,
+    MemberOut,
+    ShareIn,
+    ShareOut,
+    SharePermissions,
+    SignedOut,
+)
 from .colleagues import are_colleagues
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -110,13 +121,15 @@ async def create_group(
 async def get_group(
     group_id: UUID, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> GroupDetail:
-    group, own = await logic.readable_group(session, group_id, principal.user_id)
+    group, perms = await logic.group_access(session, group_id, principal.user_id)
+    own = OWNER in perms
+    full = own or PERM_MANAGE in perms
     rows = (
         await session.execute(
             select(GroupMember).where(GroupMember.group_id == group.id, GroupMember.left_at.is_(None))
         )
     ).scalars().all()
-    persons = await people.names(session, (m.student_id for m in rows))
+    persons = await people.names(session, [*(m.student_id for m in rows), *(m.added_by for m in rows if m.added_by)])
     members = sorted(
         (
             MemberOut(
@@ -124,6 +137,10 @@ async def get_group(
                 full_name=persons[m.student_id].full_name if m.student_id in persons else people.UNKNOWN_NAME,
                 login=persons[m.student_id].login if m.student_id in persons else None,
                 joined_at=m.joined_at,
+                added_by=m.added_by,
+                added_by_name=persons[m.added_by].full_name if m.added_by in persons else None,
+                # Владелец и коллега с правом «управлять составом» убирают любых, с правом «добавлять» — своих.
+                can_remove=full or (m.added_by == principal.user_id and PERM_ADD_STUDENTS in perms),
             )
             for m in rows
         ),
@@ -132,23 +149,29 @@ async def get_group(
     owner = None if own else await people.name_of(session, group.teacher_id)
     shares: list[ShareOut] = []
     if own:
-        ids = list((await session.execute(select(GroupShare.colleague_id).where(GroupShare.group_id == group.id))).scalars())
-        names = await people.names(session, ids)
-        shares = sorted((ShareOut(user_id=i, full_name=names[i].full_name if i in names else people.UNKNOWN_NAME) for i in ids),
+        rows_s = (await session.execute(select(GroupShare).where(GroupShare.group_id == group.id))).scalars().all()
+        names = await people.names(session, [r.colleague_id for r in rows_s])
+        shares = sorted((ShareOut(user_id=r.colleague_id, full_name=names[r.colleague_id].full_name if r.colleague_id in names
+                                  else people.UNKNOWN_NAME, permissions=r.permissions or []) for r in rows_s),
                         key=lambda x: x.full_name)
-    return GroupDetail(**_out(group, len(members), owner).model_dump(), members=members, shares=shares)
+    return GroupDetail(**_out(group, len(members), owner).model_dump(), members=members, shares=shares,
+                       permissions=sorted(perms))
 
 
 @router.post("/{group_id}/shares", response_model=GroupDetail)
 async def share_group(
     group_id: UUID, body: ShareIn, principal: Principal = Depends(teacher), session: AsyncSession = Depends(db.session)
 ) -> GroupDetail:
-    """Поделиться классом с коллегой (решение №57): ученики класса становятся и его учениками."""
+    """Поделиться классом с коллегой (решение №57) с выбранными правами (№61): ученики класса становятся и его учениками.
+    Уже поделились — права обновляются."""
     group = await logic.owned_group(session, group_id, principal.user_id)
     if not await are_colleagues(session, principal.user_id, body.colleague_id):
         raise ApiError(404, "colleague_not_found", "Это не ваш коллега — сначала добавьте его в «Мои коллеги»")
-    if await session.get(GroupShare, (group.id, body.colleague_id)) is None:
-        session.add(GroupShare(group_id=group.id, colleague_id=body.colleague_id))
+    existing = await session.get(GroupShare, (group.id, body.colleague_id), with_for_update=True)
+    if existing is not None:
+        existing.permissions = sorted(set(body.permissions))
+    else:
+        session.add(GroupShare(group_id=group.id, colleague_id=body.colleague_id, permissions=sorted(set(body.permissions))))
         await session.flush()
         members = list((await session.execute(
             select(GroupMember.student_id).where(GroupMember.group_id == group.id, GroupMember.left_at.is_(None))
@@ -160,6 +183,21 @@ async def share_group(
              "teacher_name": await people.name_of(session, principal.user_id), "colleague_id": str(body.colleague_id)},
             actor_id=principal.user_id,
         )
+    await session.commit()
+    return await get_group(group_id, principal, session)
+
+
+@router.put("/{group_id}/shares/{colleague_id}", response_model=GroupDetail)
+async def set_share_permissions(
+    group_id: UUID, colleague_id: UUID, body: SharePermissions, principal: Principal = Depends(teacher),
+    session: AsyncSession = Depends(db.session),
+) -> GroupDetail:
+    """Поменять права коллеги в классе (решение №61)."""
+    group = await logic.owned_group(session, group_id, principal.user_id)
+    share = await session.get(GroupShare, (group.id, colleague_id), with_for_update=True)
+    if share is None:
+        raise ApiError(404, "share_not_found", "Доступа к классу нет")
+    share.permissions = sorted(set(body.permissions))
     await session.commit()
     return await get_group(group_id, principal, session)
 
@@ -186,8 +224,11 @@ async def update_group(
     principal: Principal = Depends(teacher),
     session: AsyncSession = Depends(db.session),
 ) -> GroupOut:
-    group = await logic.owned_group(session, group_id, principal.user_id)
+    """Название, предмет, описание — владелец и коллега с правом «управлять» (решение №61); платность — только владелец."""
+    group, perms = await logic.group_with(session, group_id, principal.user_id, PERM_MANAGE)
     data = body.model_dump(exclude_unset=True)
+    if data.get("paid") is not None and OWNER not in perms and data["paid"] != group.paid:
+        raise ApiError(403, "forbidden", "Платность класса меняет только владелец")
     if data.get("title"):
         group.title = data["title"]
     if "subject" in data:
@@ -264,8 +305,10 @@ async def add_member(
     principal: Principal = Depends(teacher),
     session: AsyncSession = Depends(db.session),
 ) -> None:
-    group = await logic.owned_group(session, group_id, principal.user_id)
-    await logic.add_member(session, group, body.student_id, principal.user_id)
+    """Владелец добавляет своего ученика; коллега с правом (решение №61) — своего, и тот становится учеником владельца."""
+    group, perms = await logic.group_with(session, group_id, principal.user_id, PERM_ADD_STUDENTS)
+    await logic.add_member(session, group, body.student_id, principal.user_id,
+                           colleague_id=None if OWNER in perms else principal.user_id)
     await session.commit()
 
 
@@ -276,7 +319,12 @@ async def remove_member(
     principal: Principal = Depends(teacher),
     session: AsyncSession = Depends(db.session),
 ) -> None:
-    group = await logic.owned_group(session, group_id, principal.user_id)
+    """Убрать из класса: владелец и коллега с правом «управлять» — любого, с правом «добавлять» — только своего."""
+    group, perms = await logic.group_with(session, group_id, principal.user_id, PERM_ADD_STUDENTS)
+    if OWNER not in perms and PERM_MANAGE not in perms:
+        member = await session.get(GroupMember, (group.id, student_id))
+        if member is None or member.added_by != principal.user_id:
+            raise ApiError(403, "forbidden", "Убрать можно только ученика, которого вы добавили сами")
     await logic.remove_member(session, group, student_id, principal.user_id)
     await session.commit()
 

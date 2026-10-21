@@ -8,8 +8,8 @@ import { AddStudentModal } from "@/components/add-student";
 import { BillingSelect, PaidBadge } from "@/components/billing";
 import { SubjectSelect } from "@/components/subject-select";
 import { ExamBoardView } from "@/components/exams";
-import { Alert, Badge, Button, EmptyState, Field, Modal, Spinner } from "@/components/ui";
-import { classroom, colleagues, type GroupDetail } from "@/lib/api";
+import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
+import { classroom, colleagues, type GroupDetail, SHARE_PERMISSIONS, type SharePermission } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { pluralStudents } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
@@ -36,10 +36,16 @@ export default function GroupPage() {
   const g = group.data;
   if (!g) return <Spinner />;
 
-  // Класс коллеги (решение №57): только смотреть состав, вести свои занятия и тесты.
+  // Класс коллеги (решение №57): состав и класс — по правам, которые дал владелец (№61).
   const own = !g.shared;
+  const perms = new Set(g.permissions ?? []);
+  const canManage = own || perms.has("manage");
+  const canAdd = canManage || perms.has("add_students");
   const memberIds = new Set(g.members.map((m) => m.student_id));
-  const candidates = (students.data ?? []).filter((s) => s.status === "active" && !memberIds.has(s.student_id));
+  // Коллега добавляет только своих учеников — не тех, кто пришёл к нему через общий класс.
+  const candidates = (students.data ?? []).filter(
+    (s) => s.status === "active" && !memberIds.has(s.student_id) && (own || s.source !== "colleague"),
+  );
 
   async function signOut(action: () => Promise<{ count: number }>, text: (n: number) => string) {
     setError(undefined);
@@ -76,8 +82,10 @@ export default function GroupPage() {
           </div>
           {g.shared && (
             <p className="mt-1 text-sm">
-              Класс ведёт <b>{g.owner_name}</b> и поделился им с вами: ставьте классу и ученикам свои занятия, назначайте тесты. Состав
-              меняет только он.
+              Класс ведёт <b>{g.owner_name}</b> и поделился им с вами: ставьте классу и ученикам свои занятия, назначайте тесты.
+              {perms.size > 0
+                ? ` Ещё вам доступно: ${SHARE_PERMISSIONS.filter((p) => perms.has(p.id)).map((p) => p.label.toLowerCase()).join(", ")}.`
+                : " Состав меняет только он."}
             </p>
           )}
           <p className="mt-1 text-fg-soft">
@@ -92,12 +100,12 @@ export default function GroupPage() {
           >
             Журнал
           </Link>
-          {own && (
+          {canManage && (
             <Button variant="secondary" onClick={() => setEditing(true)}>
               Изменить
             </Button>
           )}
-          {own && !g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
+          {canAdd && !g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
         </div>
       </div>
       {own && <SharesBlock g={g} onChanged={() => group.reload()} onError={setError} />}
@@ -126,7 +134,7 @@ export default function GroupPage() {
       {g.members.length === 0 ? (
         <EmptyState
           title="В группе пока нет учеников"
-          action={own && !g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
+          action={canAdd && !g.archived && <Button onClick={() => setAdding(true)}>Добавить ученика</Button>}
         />
       ) : (
         <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
@@ -138,7 +146,13 @@ export default function GroupPage() {
                   {m.full_name}
                 </Link>
                 {m.login && <p className="font-mono text-sm text-fg-soft">{m.login}</p>}
+                {m.added_by_name && <p className="text-xs text-fg-soft">добавил(а) {m.added_by_name}</p>}
               </div>
+              {!own && m.can_remove && (
+                <Button variant="ghost" className="h-9 text-fg-soft" onClick={() => act(() => classroom.removeMember(g.id, m.student_id))}>
+                  Убрать из группы
+                </Button>
+              )}
               {own && (
                 <>
               <Button
@@ -197,8 +211,20 @@ export default function GroupPage() {
         )}
       </div>
 
+      {!own && (
+        <ColleagueAddModal
+          open={adding}
+          onClose={() => setAdding(false)}
+          groupId={g.id}
+          candidates={candidates}
+          onDone={() => {
+            group.reload();
+            students.reload();
+          }}
+        />
+      )}
       <AddStudentModal
-        open={adding}
+        open={adding && own}
         onClose={() => setAdding(false)}
         onDone={() => {
           group.reload();
@@ -293,6 +319,7 @@ function EditGroupModal({
 function SharesBlock({ g, onChanged, onError }: { g: GroupDetail; onChanged: () => void; onError: (e: string) => void }) {
   const list = useLoad(() => colleagues.list(), []);
   const [pick, setPick] = useState("");
+  const [perms, setPerms] = useState<SharePermission[]>([]);
   const [busy, setBusy] = useState(false);
   const sharedIds = new Set(g.shares.map((s) => s.user_id));
   const options = (list.data?.colleagues ?? []).filter((c) => !sharedIds.has(c.user_id));
@@ -302,6 +329,7 @@ function SharesBlock({ g, onChanged, onError }: { g: GroupDetail; onChanged: () 
     try {
       await action();
       setPick("");
+      setPerms([]);
       onChanged();
     } catch (e) {
       onError(errorText(e));
@@ -314,14 +342,21 @@ function SharesBlock({ g, onChanged, onError }: { g: GroupDetail; onChanged: () 
     <section className="space-y-3 rounded-2xl border border-line bg-surface px-5 py-4">
       <h2 className="font-medium">Коллеги с доступом к классу</h2>
       <p className="text-sm text-fg-soft">
-        Коллега видит класс и учеников, ставит им свои занятия и назначает тесты. Менять состав и сам класс он не может, ваши занятия у
-        него в расписании не появятся.
+        Коллега всегда видит класс и учеников, ставит им свои занятия и назначает тесты; ваши занятия у него в расписании не появятся.
+        Остальное — по правам, которые вы отметите. Удалить класс, отправить в архив и делиться им может только владелец.
       </p>
       {g.shares.length > 0 && (
         <ul className="divide-y divide-line rounded-xl border border-line">
           {g.shares.map((s) => (
-            <li key={s.user_id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              <span className="min-w-0 flex-1 font-medium">{s.full_name}</span>
+            <li key={s.user_id} className="flex flex-wrap items-start gap-3 px-4 py-2.5 text-sm">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <span className="font-medium">{s.full_name}</span>
+                <PermissionBoxes
+                  value={s.permissions}
+                  disabled={busy}
+                  onChange={(next) => run(() => classroom.setSharePermissions(g.id, s.user_id, next))}
+                />
+              </div>
               <Button
                 variant="ghost"
                 className="h-9 text-danger"
@@ -347,6 +382,7 @@ function SharesBlock({ g, onChanged, onError }: { g: GroupDetail; onChanged: () 
         </p>
       ) : (
         options.length > 0 && (
+          <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
             <select
               value={pick}
@@ -361,12 +397,108 @@ function SharesBlock({ g, onChanged, onError }: { g: GroupDetail; onChanged: () 
                 </option>
               ))}
             </select>
-            <Button className="h-10" loading={busy} disabled={!pick} onClick={() => run(() => classroom.shareGroup(g.id, pick))}>
+            <Button className="h-10" loading={busy} disabled={!pick} onClick={() => run(() => classroom.shareGroup(g.id, pick, perms))}>
               Поделиться
             </Button>
+          </div>
+          {pick && <PermissionBoxes value={perms} onChange={setPerms} />}
           </div>
         )
       )}
     </section>
+  );
+}
+
+function PermissionBoxes({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: SharePermission[];
+  disabled?: boolean;
+  onChange: (next: SharePermission[]) => void;
+}) {
+  return (
+    <div className="grid gap-1.5 sm:grid-cols-2">
+      {SHARE_PERMISSIONS.map((p) => (
+        <label key={p.id} className="flex items-start gap-2 text-sm" title={p.hint}>
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-brand"
+            checked={value.includes(p.id)}
+            disabled={disabled}
+            onChange={() => onChange(value.includes(p.id) ? value.filter((x) => x !== p.id) : [...value, p.id])}
+          />
+          <span>
+            {p.label}
+            <span className="block text-xs text-fg-soft">{p.hint}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** Коллега с правом добавляет в общий класс своих учеников (решение №61). */
+function ColleagueAddModal({
+  open,
+  onClose,
+  groupId,
+  candidates,
+  onDone,
+}: {
+  open: boolean;
+  onClose: () => void;
+  groupId: string;
+  candidates: { student_id: string; full_name: string }[];
+  onDone: () => void;
+}) {
+  const [pick, setPick] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  return (
+    <Modal open={open} onClose={onClose} title="Добавить своего ученика">
+      <div className="space-y-4">
+        {error && <Alert>{error}</Alert>}
+        {candidates.length === 0 ? (
+          <p className="text-sm text-fg-soft">
+            Своих учеников, которых ещё нет в классе, у вас нет. Добавьте ученика в разделе «Классы, группы, ученики».
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-fg-soft">Ученик станет учеником и владельца класса. Убрать его сможете вы и владелец.</p>
+            <Select label="Ученик" value={pick} onChange={(e) => setPick(e.target.value)}>
+              <option value="">Выберите</option>
+              {candidates.map((c) => (
+                <option key={c.student_id} value={c.student_id}>
+                  {c.full_name}
+                </option>
+              ))}
+            </Select>
+            <Button
+              className="w-full"
+              loading={busy}
+              disabled={!pick}
+              onClick={async () => {
+                setBusy(true);
+                setError(undefined);
+                try {
+                  await classroom.addMember(groupId, pick);
+                  setPick("");
+                  onDone();
+                  onClose();
+                } catch (e) {
+                  setError(errorText(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Добавить в класс
+            </Button>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }

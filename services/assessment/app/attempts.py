@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import checker
+from . import checker, class_access
 from .deps import db, outbox
 from .models import (
     CHECKING,
@@ -213,7 +213,8 @@ async def finalize(session: AsyncSession, attempt: Attempt, a: Assignment, auto:
     await outbox.event(
         session, "assessment.attempt.submitted",
         {"attempt_id": str(attempt.id), "assignment_id": str(a.id), "student_id": str(attempt.student_id),
-         "teacher_id": str(a.teacher_id), "title": a.title, "auto": auto, "by_teacher": by_teacher is not None},
+         "teacher_id": str(a.teacher_id), "title": a.title, "auto": auto, "by_teacher": by_teacher is not None,
+         "watcher_ids": await class_access.watchers(a)},
         actor_id=by_teacher or (None if auto else attempt.student_id),
     )
     await recompute(session, attempt, a)

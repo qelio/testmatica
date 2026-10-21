@@ -63,14 +63,28 @@ class Fakes:
                  {"number": 2, "status": "wrong_answer", "time_ms": 7, "output": "41", "error": ""}]
         return httpx.Response(200, json={"passed": False, "cases": cases[: max(1, min(2, n))]})
 
+    def _rights(self, group: dict, teacher: str) -> list[str] | None:
+        """Права педагога в классе: владелец — owner, коллега — group["shares"][id] (решение №61)."""
+        if group["teacher_id"] == teacher:
+            return ["owner", "add_students", "class_works", "journal_all", "manage"]
+        return group.get("shares", {}).get(teacher)
+
     def classroom(self, request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/colleagues/check"):
-            pair = frozenset((request.url.params["teacher_id"], request.url.params["other_id"]))
+        params, path = request.url.params, request.url.path
+        if path.endswith("/colleagues/check"):
+            pair = frozenset((params["teacher_id"], params["other_id"]))
             return httpx.Response(200, json={"colleagues": pair in self.colleagues})
-        group = self.groups.get(request.url.path.rsplit("/", 1)[-1])
-        if group is None or group["teacher_id"] != request.url.params["teacher_id"]:
+        if path.startswith("/internal/teachers/"):
+            teacher, need = path.split("/")[3], params.get("with_permission")
+            return httpx.Response(200, json=[g for g in self.groups.values()
+                                             if (r := self._rights(g, teacher)) is not None and (not need or need in r or "owner" in r)])
+        group = self.groups.get(path.rsplit("/", 1)[-1])
+        rights = self._rights(group, params["teacher_id"]) if group else None
+        if rights is None:
             return httpx.Response(404, json={"error": {"code": "group_not_found", "message": "Группа не найдена"}})
-        return httpx.Response(200, json=group)
+        teachers = [{"teacher_id": group["teacher_id"], "permissions": self._rights(group, group["teacher_id"])}]
+        teachers += [{"teacher_id": t, "permissions": p} for t, p in group.get("shares", {}).items()]
+        return httpx.Response(200, json=group | {"permissions": rights, "teachers": teachers})
 
     def schedule(self, request: httpx.Request) -> httpx.Response:
         lesson_id = request.url.path.rsplit("/", 1)[-1]

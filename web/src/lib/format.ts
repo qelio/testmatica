@@ -6,6 +6,7 @@ export const SOURCE_LABELS: Record<Student["source"], string> = {
   manual: "аккаунт создан вами",
   request: "по запросу",
   marketplace: "через поиск",
+  colleague: "через класс коллеги",
 };
 
 /** 1 ученик, 2 ученика, 5 учеников. */

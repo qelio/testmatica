@@ -36,6 +36,7 @@ class World:
         self.lessons: dict[str, dict] = {}
         self.basic: set[str] = set()  # педагоги на тарифе «Базовый»
         self.shares: set[tuple[str, str]] = set()  # (группа, коллега) — классом поделились (решение №57)
+        self.share_perms: dict[tuple[str, str], list[str]] = {}  # права коллеги (решение №61)
 
     def group(self, teacher: UUID, members: list[UUID], title="7А") -> UUID:
         gid = uuid4()
@@ -85,7 +86,9 @@ class World:
             group = self.groups.get(path.rsplit("/", 1)[1])
             if group is None or (group["teacher_id"] != params["teacher_id"] and (group["id"], params["teacher_id"]) not in self.shares):
                 return not_found("group_not_found")
-            return httpx.Response(200, json=group)
+            key = (group["id"], params["teacher_id"])
+            perms = ["owner", "journal_all"] if group["teacher_id"] == params["teacher_id"] else self.share_perms.get(key, [])
+            return httpx.Response(200, json=group | {"permissions": perms})
         key = (params["teacher_id"], params["student_id"])
         if key not in self.links:
             return not_found("student_not_found")

@@ -5,13 +5,13 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 from testmatica_common.plans import BASIC
 
-from .. import access, attempts, sharing, views
+from .. import access, attempts, class_access, sharing, views
 from ..deps import auth, classroom, db, media, outbox, plans, schedule
 from ..models import (
     CHECKING,
@@ -314,12 +314,17 @@ async def list_assignments(
     principal: Principal = Depends(auth.principal),
     session: AsyncSession = Depends(db.session),
 ) -> list[AssignmentOut]:
-    """Педагогу — выданные им работы; ученику — выданные ему. Новые — первыми, постранично."""
+    """Педагогу — выданные им работы и работы его классов (свои классы и общие с правом «Работы класса», решение №61);
+    ученику — выданные ему. Новые — первыми, постранично."""
     as_teacher = role == "teacher"
     if as_teacher:
         if not principal.has_any(ROLE_TEACHER, ROLE_MODERATOR):
             raise ApiError(403, "forbidden", "Недостаточно прав")
-        query = select(Assignment).where(Assignment.teacher_id == principal.user_id)
+        groups = await class_access.work_groups(principal.user_id) if principal.has_any(ROLE_TEACHER) else []
+        query = select(Assignment).where(or_(
+            Assignment.teacher_id == principal.user_id,
+            (Assignment.target_type == "group") & Assignment.target_id.in_(groups),
+        ))
     else:
         query = select(Assignment).join(AssignmentStudent).where(AssignmentStudent.student_id == principal.user_id)
     query = query.where(Assignment.kind != SELF)  # самостоятельные — под модулем курса и в карточке ученика
@@ -343,7 +348,9 @@ async def assignment_targets(principal: Principal = Depends(teacher), session: A
     """Кому педагог назначал работы — для фильтра списка (группы и ученики)."""
     rows = (await session.execute(
         select(Assignment.target_type, Assignment.target_id, func.max(Assignment.target_title))
-        .where(Assignment.teacher_id == principal.user_id, Assignment.kind != SELF)
+        .where(or_(Assignment.teacher_id == principal.user_id,
+                   (Assignment.target_type == "group") & Assignment.target_id.in_(await class_access.work_groups(principal.user_id))),
+               Assignment.kind != SELF)
         .group_by(Assignment.target_type, Assignment.target_id)
     )).all()
     names = await views.names(session, [r[1] for r in rows if r[0] == "student"])
@@ -363,7 +370,8 @@ async def _self_viewer(session: AsyncSession, a: Assignment, student_id: UUID, p
 
 
 async def _assignment(session: AsyncSession, assignment_id: UUID, p: Principal, write: bool = False) -> tuple[Assignment, bool]:
-    """Работа и роль смотрящего: педагог-автор или ученик, которому выдано. write — действие педагога."""
+    """Работа и роль смотрящего: педагог-автор, педагог класса с правом «Работы класса» (решение №61) или ученик,
+    которому выдано. write — действие педагога."""
     a = await session.get(Assignment, assignment_id)
     if a is not None and a.kind == SELF:
         role = await _self_viewer(session, a, a.target_id, p, write)
@@ -374,6 +382,8 @@ async def _assignment(session: AsyncSession, assignment_id: UUID, p: Principal, 
             return a, True
         if any(r.student_id == p.user_id for r in a.students):
             return a, False
+        if await class_access.can_run(a, p):
+            return a, True
     raise ApiError(404, "assignment_not_found", "Задание не найдено")
 
 
@@ -680,7 +690,7 @@ async def start(
         await outbox.event(
             session, "assessment.attempt.started",
             {"attempt_id": str(current.id), "assignment_id": str(a.id), "student_id": str(principal.user_id),
-             "teacher_id": str(a.teacher_id)},
+             "teacher_id": str(a.teacher_id), "watcher_ids": await class_access.watchers(a)},
             actor_id=principal.user_id,
         )
     await session.commit()
@@ -701,6 +711,8 @@ async def _attempt(
             return t, a, True
         if t.student_id == p.user_id:
             return t, a, False
+        if await class_access.can_run(a, p):
+            return t, a, True
     raise ApiError(404, "attempt_not_found", "Попытка не найдена")
 
 
@@ -1022,7 +1034,7 @@ async def review_attempt(
         session, "assessment.attempt.reviewed",
         {"attempt_id": str(t.id), "assignment_id": str(a.id), "student_id": str(t.student_id), "teacher_id": str(a.teacher_id),
          "tasks": {str(k): v for k, v in body.tasks.items()}, "points": {str(k): v for k, v in body.points.items()},
-         "grade": t.grade, "grade_override": body.grade},
+         "grade": t.grade, "grade_override": body.grade, "watcher_ids": await class_access.watchers(a)},
         actor_id=principal.user_id,
     )
     await session.commit()

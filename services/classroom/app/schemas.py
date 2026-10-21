@@ -46,13 +46,22 @@ class GroupOut(BaseModel):
     owner_name: str | None = Field(None, description="Чей класс — у класса коллеги")
 
 
+Permission = Literal["add_students", "class_works", "journal_all", "manage"]
+
+
 class ShareOut(BaseModel):
     user_id: UUID
     full_name: str
+    permissions: list[Permission] = Field(default_factory=list)
 
 
 class ShareIn(BaseModel):
     colleague_id: UUID
+    permissions: list[Permission] = Field(default_factory=list, description="Права коллеги (решение №61)")
+
+
+class SharePermissions(BaseModel):
+    permissions: list[Permission]
 
 
 class MemberOut(BaseModel):
@@ -60,9 +69,13 @@ class MemberOut(BaseModel):
     full_name: str
     login: str | None
     joined_at: datetime
+    added_by: UUID | None = Field(None, description="Коллега, который добавил ученика; пусто — владелец")
+    added_by_name: str | None = None
+    can_remove: bool = False
 
 
 class GroupDetail(GroupOut):
+    permissions: list[str] = Field(default_factory=list, description="Права смотрящего: owner — владелец, иначе права коллеги")
     members: list[MemberOut]
     shares: list[ShareOut] = Field(default_factory=list, description="Владельцу — с какими коллегами поделился")
 

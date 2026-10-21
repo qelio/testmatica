@@ -387,7 +387,8 @@ function CellEditor({
       {!lesson.own ? (
         <>
           <p className="rounded-xl bg-muted px-3 py-2 text-sm">
-            Занятие коллеги — {lesson.teacher_name}. Оценки и посещаемость на нём ставит коллега, вы их только видите.
+            Занятие коллеги — {lesson.teacher_name}. Оценки и посещаемость на нём ставит коллега
+            {grades.some((g) => g.can_edit) ? "; править и удалять его оценки вам разрешено." : ", вы их только видите."}
           </p>
           {mark && <p className="text-sm">Посещаемость: {ATTENDANCE_LABELS[mark].full}</p>}
           <section className="space-y-2">
@@ -400,6 +401,12 @@ function CellEditor({
                   <p className="font-medium">{g.grade_type}</p>
                   <p className="text-fg-soft">{g.comment}</p>
                 </div>
+                {/* Право «правка всех оценок» или владелец класса (решение №61). */}
+                {g.can_edit && (
+                  <button disabled={busy} onClick={() => act(() => academic.deleteGrade(g.id))} className="text-sm text-danger hover:underline">
+                    Удалить
+                  </button>
+                )}
               </div>
             ))}
           </section>
