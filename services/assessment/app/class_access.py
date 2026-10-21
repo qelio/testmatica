@@ -49,13 +49,16 @@ async def watchers(a: Assignment) -> list[str]:
     return [t["teacher_id"] for t in info.get("teachers", []) if t["teacher_id"] != str(a.teacher_id) and _runs_works(t["permissions"])]
 
 
-async def work_groups(teacher_id: UUID) -> list[UUID]:
+async def work_classes(teacher_id: UUID) -> list[dict]:
     """Классы, работы которых педагог ведёт: свои и общие с правом «Работы класса» (в том числе в архиве).
-    classroom недоступен — только свои работы (список не ломается)."""
+    classroom недоступен — пусто (списки не ломаются)."""
     try:
-        rows = await classroom.get(f"/internal/teachers/{teacher_id}/groups",
+        return await classroom.get(f"/internal/teachers/{teacher_id}/groups",
                                    params={"archived": "true", "with_permission": CLASS_WORKS})
     except ApiError:
         log.warning("class works groups unavailable", extra={"teacher_id": str(teacher_id)})
         return []
-    return [UUID(g["id"]) for g in rows]
+
+
+async def work_groups(teacher_id: UUID) -> list[UUID]:
+    return [UUID(g["id"]) for g in await work_classes(teacher_id)]

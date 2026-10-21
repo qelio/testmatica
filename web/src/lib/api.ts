@@ -1257,6 +1257,8 @@ export type Assignment = {
   target_title: string;
   teacher_id: string;
   teacher_name: string;
+  /** Смотрящий ведёт работу: автор или педагог класса с правом «Работы класса» (решение №61). */
+  teacher_view?: boolean;
   lesson_id: string | null;
   module: ModuleRef | null;
   opens_at: string | null;
@@ -1503,7 +1505,16 @@ export const assessment = {
   assign: (testId: string, data: AssignInput) => api<Assignment>(`${AS}/tests/${testId}/assign`, { method: "POST", body: data }),
   assignments: (
     role: "teacher" | "student",
-    params: { lesson_id?: string; target_id?: string; module_id?: string; grade_level?: string; offset?: number; limit?: number } = {},
+    params: {
+      lesson_id?: string;
+      target_id?: string;
+      module_id?: string;
+      grade_level?: string;
+      offset?: number;
+      limit?: number;
+      /** Педагогу: mine — выданные им; classes — работы его классов, выданные другими (решение №61). */
+      scope?: "mine" | "classes";
+    } = {},
   ) => {
     const qs = new URLSearchParams({
       role,
@@ -1513,6 +1524,8 @@ export const assessment = {
   },
   /** Кому педагог назначал работы — для фильтра. */
   assignmentTargets: () => api<{ target_type: "group" | "student"; target_id: string; target_title: string }[]>(`${AS}/assignments/targets`),
+  /** Классы, работы которых педагог ведёт: свои и общие с правом «Работы класса» (решение №61). */
+  assignmentClasses: () => api<{ target_type: "group"; target_id: string; target_title: string }[]>(`${AS}/assignments/classes`),
   assignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}`),
   /** Тесты «для всех» под модулем курса; ученику — с его самостоятельной работой (решение №44). */
   courseTests: (moduleId: string, authed: boolean) =>

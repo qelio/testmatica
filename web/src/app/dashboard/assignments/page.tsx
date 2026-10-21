@@ -28,6 +28,7 @@ function Assignments() {
 }
 
 function TeacherView() {
+  const [tab, setTab] = useState<"mine" | "classes">("mine");
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -41,7 +42,26 @@ function TeacherView() {
           </Link>
         </div>
       </div>
-      <Given />
+      {/* Работы классов, выданные другими педагогами (решение №61): своих классов и общих с правом «Работы класса». */}
+      <div className="flex flex-wrap gap-2" role="tablist">
+        {(
+          [
+            ["mine", "Мои работы"],
+            ["classes", "Работы классов"],
+          ] as const
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            role="tab"
+            aria-selected={tab === k}
+            onClick={() => setTab(k)}
+            className={`h-9 rounded-full border px-4 text-sm font-medium ${tab === k ? "border-brand bg-brand text-white" : "border-line hover:bg-muted"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "mine" ? <Given /> : <ClassWorks />}
     </div>
   );
 }
@@ -116,6 +136,64 @@ function Given() {
         ))}
       </ul>
       <Pager page={page} hasNext={list.data.length > PAGE} onPage={go} />
+    </div>
+  );
+}
+
+function ClassWorks() {
+  const [target, setTarget] = useState("");
+  const [page, setPage] = useState(0);
+  const classes = useLoad(() => assessment.assignmentClasses(), []);
+  const list = useLoad(
+    () => assessment.assignments("teacher", { scope: "classes", target_id: target, offset: page * PAGE, limit: PAGE + 1 }),
+    [target, page],
+  );
+  if (list.error) return <Alert>{list.error}</Alert>;
+  if (!list.data || !classes.data) return <Spinner />;
+  if (!classes.data.length)
+    return (
+      <EmptyState
+        title="Классов с работами коллег нет"
+        text="Здесь — работы ваших классов, которые назначили коллеги, и работы классов коллег, если вам дали право «Работы класса»."
+      />
+    );
+  const shown = list.data.slice(0, PAGE);
+  return (
+    <div className="space-y-3">
+      <select
+        value={target}
+        onChange={(e) => {
+          setTarget(e.target.value);
+          setPage(0);
+        }}
+        aria-label="Класс"
+        className="h-10 max-w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
+      >
+        <option value="">Все классы</option>
+        {classes.data.map((c) => (
+          <option key={c.target_id} value={c.target_id}>
+            {c.target_title}
+          </option>
+        ))}
+      </select>
+      {!shown.length && (
+        <p className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-fg-soft">Работ, назначенных другими педагогами, нет.</p>
+      )}
+      <ul className="space-y-2">
+        {shown.map((a) => (
+          <li key={a.id}>
+            <GivenCard a={a} />
+          </li>
+        ))}
+      </ul>
+      <Pager
+        page={page}
+        hasNext={list.data.length > PAGE}
+        onPage={(p) => {
+          setPage(p);
+          window.scrollTo({ top: 0 });
+        }}
+      />
     </div>
   );
 }
