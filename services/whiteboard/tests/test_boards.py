@@ -98,3 +98,11 @@ def test_websocket_rejects_bad_token():
         ws.send_json({"type": "auth", "token": "bad", "board_id": str(uuid4())})
         closed = ws.receive()
     assert closed["type"] == "websocket.close" and closed["code"] == 4401
+
+
+def test_cursor_coords():
+    """Курсор: только конечные числа; остальное — «курсора нет»."""
+    from app.realtime import _coord
+
+    assert _coord(12.345) == 12.3 and _coord(-5) == -5.0
+    assert [_coord(v) for v in (None, "1", True, float("nan"), float("inf"), 1e9)] == [None] * 6

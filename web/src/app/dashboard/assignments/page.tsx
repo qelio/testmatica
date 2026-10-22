@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { Suspense, useState } from "react";
 
+import { AssignmentCard } from "@/components/assignment-card";
 import { GradeFilter } from "@/components/grade-filter";
 import { Pager } from "@/components/pager";
 import { Badge, EmptyState, Spinner, Alert } from "@/components/ui";
-import { type Assignment, assessment } from "@/lib/api";
-import { attemptsText, fmtLimit, gradeLevelLabel, KIND_LABELS, studentStatus, summary } from "@/lib/assignments";
+import { assessment } from "@/lib/api";
+import { attemptsText, fmtLimit, KIND_LABELS, studentStatus } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 import { useLoad } from "@/lib/hooks";
@@ -28,7 +29,6 @@ function Assignments() {
 }
 
 function TeacherView() {
-  const [tab, setTab] = useState<"mine" | "classes">("mine");
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -42,26 +42,7 @@ function TeacherView() {
           </Link>
         </div>
       </div>
-      {/* Работы классов, выданные другими педагогами (решение №61): своих классов и общих с правом «Работы класса». */}
-      <div className="flex flex-wrap gap-2" role="tablist">
-        {(
-          [
-            ["mine", "Мои работы"],
-            ["classes", "Работы классов"],
-          ] as const
-        ).map(([k, label]) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={tab === k}
-            onClick={() => setTab(k)}
-            className={`h-9 rounded-full border px-4 text-sm font-medium ${tab === k ? "border-brand bg-brand text-white" : "border-line hover:bg-muted"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {tab === "mine" ? <Given /> : <ClassWorks />}
+      <Given />
     </div>
   );
 }
@@ -131,110 +112,12 @@ function Given() {
       <ul className="space-y-2">
         {shown.map((a) => (
           <li key={a.id}>
-            <GivenCard a={a} />
+            <AssignmentCard a={a} />
           </li>
         ))}
       </ul>
       <Pager page={page} hasNext={list.data.length > PAGE} onPage={go} />
     </div>
-  );
-}
-
-function ClassWorks() {
-  const [target, setTarget] = useState("");
-  const [page, setPage] = useState(0);
-  const classes = useLoad(() => assessment.assignmentClasses(), []);
-  const list = useLoad(
-    () => assessment.assignments("teacher", { scope: "classes", target_id: target, offset: page * PAGE, limit: PAGE + 1 }),
-    [target, page],
-  );
-  if (list.error) return <Alert>{list.error}</Alert>;
-  if (!list.data || !classes.data) return <Spinner />;
-  if (!classes.data.length)
-    return (
-      <EmptyState
-        title="Классов с работами коллег нет"
-        text="Здесь — работы ваших классов, которые назначили коллеги, и работы классов коллег, если вам дали право «Работы класса»."
-      />
-    );
-  const shown = list.data.slice(0, PAGE);
-  return (
-    <div className="space-y-3">
-      <select
-        value={target}
-        onChange={(e) => {
-          setTarget(e.target.value);
-          setPage(0);
-        }}
-        aria-label="Класс"
-        className="h-10 max-w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none focus:border-brand"
-      >
-        <option value="">Все классы</option>
-        {classes.data.map((c) => (
-          <option key={c.target_id} value={c.target_id}>
-            {c.target_title}
-          </option>
-        ))}
-      </select>
-      {!shown.length && (
-        <p className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-fg-soft">Работ, назначенных другими педагогами, нет.</p>
-      )}
-      <ul className="space-y-2">
-        {shown.map((a) => (
-          <li key={a.id}>
-            <GivenCard a={a} />
-          </li>
-        ))}
-      </ul>
-      <Pager
-        page={page}
-        hasNext={list.data.length > PAGE}
-        onPage={(p) => {
-          setPage(p);
-          window.scrollTo({ top: 0 });
-        }}
-      />
-    </div>
-  );
-}
-
-function GivenCard({ a }: { a: Assignment }) {
-  const s = summary(a);
-  const me = useAuth().user?.id;
-  const live = a.kind === "live" && !a.closed && !a.not_open_yet;
-  return (
-    <Link href={`/dashboard/assignments/${a.id}`} className="block rounded-2xl border border-line bg-surface px-5 py-4 hover:border-brand/50">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="min-w-0 flex-1">
-          <span className="font-medium">{a.title}</span>
-          {a.test_title !== a.title && <span className="ml-2 text-sm text-fg-soft">по тесту «{a.test_title}»</span>}
-        </span>
-        {live && <Badge tone="brand">идёт сейчас</Badge>}
-        <Badge tone={a.kind === "live" ? "brand" : "neutral"}>{KIND_LABELS[a.kind]}</Badge>
-      </div>
-      <p className="mt-1 text-sm text-fg-soft">
-        {[
-          a.target_title,
-          // Работа класса, которую назначил коллега или владелец класса (решение №61).
-          me && a.teacher_id !== me ? `назначил(а) ${a.teacher_name}` : null,
-          gradeLevelLabel(a.grade_level),
-          a.not_open_yet && a.opens_at ? `откроется ${fmtDateTime(a.opens_at)}` : null,
-          a.deadline ? `до ${fmtDateTime(a.deadline)}` : null,
-          attemptsText(a),
-          a.closed ? "завершён" : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-      <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-        <span>
-          Сдали: <b>{s.submitted}</b> из {s.total}
-        </span>
-        {s.inProgress > 0 && <span className="text-brand">решают: {s.inProgress}</span>}
-        {s.toReview > 0 && <span className="text-tutor">ждут проверки: {s.toReview}</span>}
-        {s.avg !== null && <span className="text-fg-soft">средний результат {s.avg}%</span>}
-      </p>
-    </Link>
   );
 }
 
