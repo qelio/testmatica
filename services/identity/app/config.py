@@ -21,9 +21,8 @@ class Settings(CommonSettings):
     otp_max_attempts: int = 5
     otp_resend_interval_seconds: int = 60
 
-    login_max_failures: int = 5
     login_lock_seconds: int = 900
-    ip_max_login_failures: int = 50
+    ip_max_login_failures: int = 200  # за login_lock_seconds; класс за одним школьным адресом
 
     web_base_url: str = "http://localhost:8080"
     # Письма с кодами (подтверждение email, вход с кодом, сброс пароля, смена email). false — почтового

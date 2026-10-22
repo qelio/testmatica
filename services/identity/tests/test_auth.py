@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from sqlalchemy import update
 from testmatica_common.auth import TokenVerifier
@@ -120,14 +121,19 @@ async def test_resend_is_rate_limited(client):
     assert resp.json()["error"]["code"] == "resend_too_early"
 
 
-async def test_brute_force_locks_account(client):
+async def test_wrong_passwords_do_not_lock_account(client):
+    """Ошибки в пароле аккаунт не запирают — верный пароль пускает сразу; перебор ограничен по IP."""
     await register(client, "b@example.com")
-    for _ in range(settings.login_max_failures):
+    for _ in range(10):
         resp = await client.post("/auth/login", json={"identifier": "b@example.com", "password": "wrong-pass-1"})
         assert resp.status_code == 401
-    locked = await client.post("/auth/login", json={"identifier": "b@example.com", "password": PASSWORD})
-    assert locked.status_code == 429
-    assert locked.json()["error"]["code"] == "account_locked"
+    assert (await client.post("/auth/login", json={"identifier": "b@example.com", "password": PASSWORD})).status_code == 200
+
+    with patch.object(settings, "ip_max_login_failures", 3):
+        for _ in range(3):
+            await client.post("/auth/login", json={"identifier": "b@example.com", "password": "wrong-pass-1"})
+        blocked = await client.post("/auth/login", json={"identifier": "b@example.com", "password": PASSWORD})
+    assert blocked.status_code == 429 and blocked.json()["error"]["code"] == "too_many_requests"
 
 
 async def test_unknown_user_gets_same_error(client):

@@ -121,7 +121,7 @@ flowchart LR
 - Личный кабинет (`/me`): имя и часовой пояс, фото (`avatar_file_id`, файл в media с целью avatar; оно же в анкете репетитора — marketplace меняет его через `POST /internal/users/{id}/avatar` и получает событием), смена email кодом на новый адрес (`otp` purpose email_change), смена пароля, `PUT /me/2fa` — вход с кодом (обязателен модераторам и администраторам)
 - `otp_challenges` — одноразовые коды (подтверждение email, вход, сброс пароля): хэш кода, срок, попытки
 - `refresh_tokens` — хэш токена, family_id (цепочка ротаций), revoked_at, revoke_reason
-- Счётчики неудачных входов — в Redis
+- Счётчики неудачных входов по IP — в Redis (аккаунт не блокируется, решение №62)
 - `consents` — user_id, type (pdn), version, accepted_at
 - `api_keys` — личные ключи доступа (решение №41): user_id, name, prefix, key_hash (sha256), last_used_at, revoked_at; `/me/api-keys` — выпуск и отзыв, `/internal/api-keys/exchange` — ключ → access-токен для сервиса mcp
 

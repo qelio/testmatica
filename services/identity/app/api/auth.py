@@ -108,11 +108,11 @@ async def login(
 ) -> TwoFactorRequired | Authenticated:
     identifier = normalize(body.identifier)
     ip = sessions.client_ip(request)
-    await ratelimit.check_login_allowed(identifier, ip)
+    await ratelimit.check_login_allowed(ip)
 
     user = await find_by_identifier(session, identifier)
     if not verify_password(user.password_hash if user else None, body.password) or user is None:
-        await ratelimit.register_login_failure(identifier, ip)
+        await ratelimit.register_login_failure(ip)
         await outbox.event(
             session,
             "identity.user.login_failed",
@@ -125,7 +125,6 @@ async def login(
         raise ApiError(403, "account_banned", "Аккаунт заблокирован. Обратитесь в поддержку.")
     if user.status not in (STATUS_ACTIVE, STATUS_PENDING):
         raise INVALID_CREDENTIALS
-    await ratelimit.reset_login_failures(identifier)
 
     if user.status == STATUS_PENDING and not settings.email_codes:
         user.status = STATUS_ACTIVE  # зарегистрировался, пока почта была, но код не ввёл
