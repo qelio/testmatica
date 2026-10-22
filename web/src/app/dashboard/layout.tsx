@@ -73,7 +73,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
 
       <div className="flex flex-1">
         <aside
-          className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4rem)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
+          className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4rem-1px)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
         >
           <nav>
             {(() => {

@@ -305,8 +305,9 @@ async def assignment_out(session: AsyncSession, a: Assignment, p: Principal, tea
 @router.get("/assignments", response_model=list[AssignmentOut])
 async def list_assignments(
     role: str = Query("student", pattern="^(teacher|student)$"),
-    scope: str = Query("mine", pattern="^(mine|classes)$",
-                       description="Педагогу: mine — выданные им; classes — работы его классов, выданные другими (решение №61)"),
+    scope: str = Query("mine", pattern="^(mine|class)$",
+                       description="Педагогу: mine — выданные им; class — все работы класса target_id от всех его педагогов "
+                                   "(владельцу и коллеге с правом «Работы класса», решение №61)"),
     lesson_id: UUID | None = None,
     target_id: UUID | None = None,
     module_id: UUID | None = Query(None, description="Работы по модулю курса — для страницы модуля"),
@@ -316,16 +317,16 @@ async def list_assignments(
     principal: Principal = Depends(auth.principal),
     session: AsyncSession = Depends(db.session),
 ) -> list[AssignmentOut]:
-    """Педагогу — выданные им работы (scope=mine) или работы его классов, выданные другими педагогами (scope=classes:
-    свои классы и общие с правом «Работы класса», решение №61); ученику — выданные ему. Новые — первыми, постранично."""
+    """Педагогу — выданные им работы (scope=mine) или все работы класса (scope=class — раздел «Работы класса» на странице
+    класса, решение №61); ученику — выданные ему. Новые — первыми, постранично."""
     as_teacher = role == "teacher"
     if as_teacher:
         if not principal.has_any(ROLE_TEACHER, ROLE_MODERATOR):
             raise ApiError(403, "forbidden", "Недостаточно прав")
-        if scope == "classes":
-            groups = await class_access.work_groups(principal.user_id) if principal.has_any(ROLE_TEACHER) else []
-            query = select(Assignment).where(Assignment.teacher_id != principal.user_id, Assignment.target_type == "group",
-                                             Assignment.target_id.in_(groups))
+        if scope == "class":
+            if not target_id or not principal.has_any(ROLE_TEACHER) or not await class_access.runs_class(target_id, principal.user_id):
+                raise ApiError(404, "not_found", "Класс не найден")
+            query = select(Assignment).where(Assignment.target_type == "group")
         else:
             query = select(Assignment).where(Assignment.teacher_id == principal.user_id)
     else:
@@ -344,15 +345,6 @@ async def list_assignments(
     out = [await assignment_out(session, a, principal, as_teacher) for a in found]
     await session.commit()  # просроченные попытки могли сдаться при просмотре
     return out
-
-
-@router.get("/assignments/classes", response_model=list[AssignmentTarget])
-async def work_classes(principal: Principal = Depends(teacher)) -> list[AssignmentTarget]:
-    """Классы, работы которых педагог ведёт (свои и общие с правом «Работы класса», решение №61) — для раздела
-    «Работы классов»."""
-    rows = await class_access.work_classes(principal.user_id)
-    return sorted((AssignmentTarget(target_type="group", target_id=g["id"], target_title=g["title"]) for g in rows),
-                  key=lambda x: x.target_title.lower())
 
 
 @router.get("/assignments/targets", response_model=list[AssignmentTarget])

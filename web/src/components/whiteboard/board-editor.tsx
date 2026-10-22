@@ -112,6 +112,8 @@ export function BoardEditor({ initial }: { initial: Board }) {
   const [items, setItems] = useState<Map<string, BoardItem>>(() => new Map(initial.items.map((i) => [i.id, i])));
   const [drafts, setDrafts] = useState<Map<string, { item: BoardItem; at: number }>>(() => new Map());
   const [view, setView] = useState<View>({ x: -40, y: -40, zoom: 1 });
+  // Курсоры других участников по подключениям: имя и положение на доске.
+  const [cursors, setCursors] = useState<Map<string, RemoteCursor>>(() => new Map());
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [tab, setTab] = useState<Tab>(initial.role === "read" ? "view" : "draw");
   const [tool, setTool] = useState<Tool>(initial.role === "read" ? "pan" : "pen");
@@ -204,6 +206,20 @@ export function BoardEditor({ initial }: { initial: Board }) {
       });
     } else if (e.type === "draft") {
       setDrafts((prev) => new Map(prev).set(e.item.id, { item: e.item, at: Date.now() }));
+    } else if (e.type === "cursor") {
+      setCursors((prev) => {
+        const next = new Map(prev);
+        if (e.x === null || e.y === null) next.delete(e.from);
+        else next.set(e.from, { userId: e.user_id, name: e.name, x: e.x, y: e.y, at: Date.now() });
+        return next;
+      });
+    } else if (e.type === "leave") {
+      setCursors((prev) => {
+        if (!prev.has(e.from)) return prev;
+        const next = new Map(prev);
+        next.delete(e.from);
+        return next;
+      });
     } else if (e.type === "board") {
       setMeta((m) => ({ ...m, ...e.board, role: e.role }));
       setRole(e.role);
@@ -219,7 +235,7 @@ export function BoardEditor({ initial }: { initial: Board }) {
       setMessage(e.message);
     }
   }, [initial.id]);
-  const { status, send, sendDraft } = useBoardSync(initial.id, onRemote);
+  const { status, send, sendDraft, sendCursor } = useBoardSync(initial.id, onRemote);
 
   // Черновики чужих штрихов, которые так и не дорисовали (обрыв связи), — убрать.
   useEffect(() => {
@@ -227,6 +243,15 @@ export function BoardEditor({ initial }: { initial: Board }) {
       setDrafts((prev) => {
         const now = Date.now();
         const stale = [...prev].filter(([, d]) => now - d.at > 5000);
+        if (!stale.length) return prev;
+        const next = new Map(prev);
+        for (const [id] of stale) next.delete(id);
+        return next;
+      });
+      // Курсор, о котором давно не слышно (ушёл без прощания — обрыв связи), — тоже.
+      setCursors((prev) => {
+        const now = Date.now();
+        const stale = [...prev].filter(([, c]) => now - c.at > 60000);
         if (!stale.length) return prev;
         const next = new Map(prev);
         for (const [id] of stale) next.delete(id);
@@ -442,6 +467,7 @@ export function BoardEditor({ initial }: { initial: Board }) {
   }
 
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (e.isPrimary) sendCursor(...toBoard(e.clientX, e.clientY));
     if (e.pointerType === "touch" && touches.current.has(e.pointerId)) {
       touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const p = pinch.current;
@@ -709,11 +735,16 @@ export function BoardEditor({ initial }: { initial: Board }) {
     </RibbonButton>
   );
 
+  // В обычном режиме — ровно по окну: минус шапка (4rem и рамка) и отступы main (p-4 / sm:p-6 / lg:p-8), без прокрутки страницы.
   return (
     <div
       ref={root}
       className={`flex flex-col overflow-hidden bg-surface ${
-        fullscreen ? "h-full w-full" : expanded ? "fixed inset-0 z-50" : "h-[calc(100dvh-4rem)] rounded-2xl border border-line"
+        fullscreen
+          ? "h-full w-full"
+          : expanded
+            ? "fixed inset-0 z-50"
+            : "h-[calc(100dvh-6rem-1px)] rounded-2xl border border-line sm:h-[calc(100dvh-7rem-1px)] lg:h-[calc(100dvh-8rem-1px)]"
       }`}
     >
       {/* Заголовок */}
@@ -982,6 +1013,7 @@ export function BoardEditor({ initial }: { initial: Board }) {
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            onPointerLeave={() => sendCursor(null, null)}
             onDoubleClick={onDoubleClick}
           >
             <defs>
@@ -1044,6 +1076,8 @@ export function BoardEditor({ initial }: { initial: Board }) {
             </g>
           </svg>
         )}
+        {!closed &&
+          [...cursors.entries()].map(([id, c]) => <CursorMark key={id} cursor={c} view={view} />)}
         {editingText && (
           <TextEditor key={editingText.id} item={editingText} view={view} onDone={(text, h) => saveText(editingText, text, h)} />
         )}
@@ -1052,6 +1086,38 @@ export function BoardEditor({ initial }: { initial: Board }) {
       <Modal open={!!formula} onClose={() => setFormula(null)} title="Формула">
         {formula && <FormulaForm initial={formula.latex} onSave={saveFormula} />}
       </Modal>
+    </div>
+  );
+}
+
+type RemoteCursor = { userId: string; name: string; x: number; y: number; at: number };
+
+const CURSOR_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#4d7c0f"];
+
+/** Цвет участника — постоянный по его id, чтобы курсор не менял цвет при переподключении. */
+function cursorColor(userId: string): string {
+  let h = 0;
+  for (const ch of userId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return CURSOR_COLORS[h % CURSOR_COLORS.length];
+}
+
+/** Чужой курсор: стрелка и подпись «Фамилия Имя». Цвета свои — подпись должна читаться на любой бумаге. */
+function CursorMark({ cursor, view }: { cursor: RemoteCursor; view: View }) {
+  const color = cursorColor(cursor.userId);
+  return (
+    <div
+      className="pointer-events-none absolute left-0 top-0 transition-transform duration-75 ease-linear"
+      style={{ transform: `translate(${(cursor.x - view.x) * view.zoom}px, ${(cursor.y - view.y) * view.zoom}px)` }}
+    >
+      <svg width="16" height="20" viewBox="0 0 16 20" className="block drop-shadow">
+        <path d="M1 1 L1 16 L5 12 L8 19 L11 17.5 L8 11 L14 11 Z" fill={color} stroke="#ffffff" strokeWidth="1.5" strokeLinejoin="round" />
+      </svg>
+      <span
+        className="ml-3 block max-w-48 truncate whitespace-nowrap rounded-md px-1.5 py-0.5 text-xs font-medium text-white shadow"
+        style={{ background: color }}
+      >
+        {cursor.name}
+      </span>
     </div>
   );
 }

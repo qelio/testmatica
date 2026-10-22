@@ -28,8 +28,13 @@ async def runs(a: Assignment, user_id: UUID) -> bool:
     """То же по id пользователя (прокторинг: video знает только его): доступ к классу есть только у педагогов."""
     if a.target_type != "group" or a.teacher_id == user_id:
         return False
+    return await runs_class(a.target_id, user_id)
+
+
+async def runs_class(group_id: UUID, user_id: UUID) -> bool:
+    """Педагог ведёт работы класса: владелец или коллега с правом «Работы класса»."""
     try:
-        info = await classroom.get(f"/internal/groups/{a.target_id}", params={"teacher_id": str(user_id)})
+        info = await classroom.get(f"/internal/groups/{group_id}", params={"teacher_id": str(user_id)})
     except ApiError as e:
         if e.status == 404:
             return False
@@ -47,18 +52,3 @@ async def watchers(a: Assignment) -> list[str]:
         log.warning("class teachers unavailable", extra={"assignment_id": str(a.id)})
         return []
     return [t["teacher_id"] for t in info.get("teachers", []) if t["teacher_id"] != str(a.teacher_id) and _runs_works(t["permissions"])]
-
-
-async def work_classes(teacher_id: UUID) -> list[dict]:
-    """Классы, работы которых педагог ведёт: свои и общие с правом «Работы класса» (в том числе в архиве).
-    classroom недоступен — пусто (списки не ломаются)."""
-    try:
-        return await classroom.get(f"/internal/teachers/{teacher_id}/groups",
-                                   params={"archived": "true", "with_permission": CLASS_WORKS})
-    except ApiError:
-        log.warning("class works groups unavailable", extra={"teacher_id": str(teacher_id)})
-        return []
-
-
-async def work_groups(teacher_id: UUID) -> list[UUID]:
-    return [UUID(g["id"]) for g in await work_classes(teacher_id)]

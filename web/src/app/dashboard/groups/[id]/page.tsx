@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { AddStudentModal } from "@/components/add-student";
 import { BillingSelect, PaidBadge } from "@/components/billing";
+import { ClassWorks } from "@/components/class-works";
 import { SubjectSelect } from "@/components/subject-select";
 import { ExamBoardView } from "@/components/exams";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
@@ -41,6 +42,8 @@ export default function GroupPage() {
   const perms = new Set(g.permissions ?? []);
   const canManage = own || perms.has("manage");
   const canAdd = canManage || perms.has("add_students");
+  // «Работы класса» — только у класса с коллегами (больше одного педагога) и с правом на работы.
+  const showWorks = (g.shared || g.shares.length > 0) && (own || perms.has("class_works"));
   const memberIds = new Set(g.members.map((m) => m.student_id));
   // Коллега добавляет только своих учеников — не тех, кто пришёл к нему через общий класс.
   const candidates = (students.data ?? []).filter(
@@ -176,6 +179,8 @@ export default function GroupPage() {
           ))}
         </ul>
       )}
+
+      {showWorks && <ClassWorks groupId={g.id} />}
 
       {g.members.length > 0 && (
         <section className="space-y-3">

@@ -11,6 +11,8 @@ export type Ops = { upsert?: BoardItem[]; delete?: string[] };
 export type Remote =
   | { type: "ops"; upsert: BoardItem[]; delete: string[] }
   | { type: "draft"; from: string; item: BoardItem }
+  | { type: "cursor"; from: string; user_id: string; name: string; x: number | null; y: number | null }
+  | { type: "leave"; from: string }
   | { type: "board"; board: BoardSummary; role: BoardRole }
   | { type: "reconnected" }
   | { type: "closed"; code: number }
@@ -23,6 +25,11 @@ export function useBoardSync(boardId: string, onRemote: (e: Remote) => void) {
   const ws = useRef<WebSocket | null>(null);
   const conn = useRef<string | null>(null);
   const queue = useRef<Ops[]>([]);
+  const cursor = useRef<{ x: number | null; y: number | null; sent: number; timer?: ReturnType<typeof setTimeout> }>({
+    x: null,
+    y: null,
+    sent: 0,
+  });
   const handler = useRef(onRemote);
   useEffect(() => {
     handler.current = onRemote;
@@ -48,13 +55,19 @@ export function useBoardSync(boardId: string, onRemote: (e: Remote) => void) {
           conn.current = data.conn;
           attempt = 0;
           setStatus("online");
-          ping = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send('{"type":"ping"}'), 25000);
+          ping = setInterval(() => {
+            if (socket.readyState !== WebSocket.OPEN) return;
+            socket.send('{"type":"ping"}');
+            // Курсор стоит на месте — напоминаем о нём, чтобы у других он не пропал как устаревший.
+            const c = cursor.current;
+            if (c.x !== null) socket.send(JSON.stringify({ type: "cursor", x: c.x, y: c.y }));
+          }, 25000);
           for (const ops of queue.current.splice(0)) socket.send(JSON.stringify({ type: "ops", ...ops }));
           if (wasOnline) handler.current({ type: "reconnected" });
           wasOnline = true;
         } else if (data.from && data.from === conn.current) {
           // своё эхо
-        } else if (data.type === "ops" || data.type === "draft" || data.type === "board") {
+        } else if (["ops", "draft", "board", "cursor", "leave"].includes(data.type)) {
           handler.current(data);
         } else if (data.type === "error") {
           handler.current({ type: "error", message: data.message });
@@ -95,5 +108,22 @@ export function useBoardSync(boardId: string, onRemote: (e: Remote) => void) {
     if (socket && socket.readyState === WebSocket.OPEN && conn.current) socket.send(JSON.stringify({ type: "draft", item }));
   }, []);
 
-  return { status, send, sendDraft };
+  /** Свой курсор (координаты доски; null — ушёл с листа): не чаще раза в 40 мс, последнее положение — всегда. */
+  const sendCursor = useCallback((x: number | null, y: number | null) => {
+    const c = cursor.current;
+    c.x = x;
+    c.y = y;
+    const flush = () => {
+      c.timer = undefined;
+      c.sent = Date.now();
+      const socket = ws.current;
+      if (socket && socket.readyState === WebSocket.OPEN && conn.current) socket.send(JSON.stringify({ type: "cursor", x: c.x, y: c.y }));
+    };
+    if (c.timer) return;
+    const wait = 40 - (Date.now() - c.sent);
+    if (wait <= 0) flush();
+    else c.timer = setTimeout(flush, wait);
+  }, []);
+
+  return { status, send, sendDraft, sendCursor };
 }

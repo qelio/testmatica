@@ -1512,8 +1512,8 @@ export const assessment = {
       grade_level?: string;
       offset?: number;
       limit?: number;
-      /** Педагогу: mine — выданные им; classes — работы его классов, выданные другими (решение №61). */
-      scope?: "mine" | "classes";
+      /** Педагогу: mine — выданные им; class — все работы класса target_id от всех его педагогов (решение №61). */
+      scope?: "mine" | "class";
     } = {},
   ) => {
     const qs = new URLSearchParams({
@@ -1524,8 +1524,6 @@ export const assessment = {
   },
   /** Кому педагог назначал работы — для фильтра. */
   assignmentTargets: () => api<{ target_type: "group" | "student"; target_id: string; target_title: string }[]>(`${AS}/assignments/targets`),
-  /** Классы, работы которых педагог ведёт: свои и общие с правом «Работы класса» (решение №61). */
-  assignmentClasses: () => api<{ target_type: "group"; target_id: string; target_title: string }[]>(`${AS}/assignments/classes`),
   assignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}`),
   /** Тесты «для всех» под модулем курса; ученику — с его самостоятельной работой (решение №44). */
   courseTests: (moduleId: string, authed: boolean) =>

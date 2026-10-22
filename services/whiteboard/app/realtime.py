@@ -4,7 +4,9 @@
 {"type": "ready", "role": …, "conn": "<id подключения>"}. Дальше клиент шлёт правки {"type": "ops", "upsert": [...],
 "delete": [...]} и черновики {"type": "draft", "item": {...}} — штрих, пока его рисуют (не сохраняется), а сервер
 пересылает правки и черновики остальных (с "from" — своё клиент пропускает), смену настроек {"type": "board"} и
-{"type": "deleted"}. Доступ ученика пересчитывается при каждой смене настроек: закрыли — соединение закрывается."""
+{"type": "deleted"}. Курсоры участников: клиент шлёт {"type": "cursor", "x": …, "y": …} (координаты доски; x = null —
+курсор ушёл с листа), сервер рассылает их с именем ({"type": "cursor", "from", "user_id", "name", "x", "y"}), а при
+отключении — {"type": "leave", "from"}. Доступ ученика пересчитывается при каждой смене настроек: закрыли — соединение закрывается."""
 
 import asyncio
 import contextlib
@@ -17,7 +19,7 @@ from fastapi import APIRouter, WebSocket
 from pydantic import ValidationError
 from testmatica_common.errors import ApiError
 
-from . import access, ops
+from . import access, ops, people
 from .config import settings
 from .deps import db, redis, verifier
 from .models import Board
@@ -33,6 +35,18 @@ async def _role(board_id: UUID, user_id: UUID) -> str | None:
     async with db.sessionmaker() as session:
         board = await session.get(Board, board_id)
         return access.role_of(board, user_id) if board else None
+
+
+async def _name(user_id: UUID) -> str:
+    async with db.sessionmaker() as session:
+        return await people.name_of(session, user_id)
+
+
+def _coord(value: object) -> float | None:
+    """Координата курсора: число в разумных пределах, иначе нет курсора."""
+    if isinstance(value, bool) or not isinstance(value, int | float) or not abs(value) < 1e7:
+        return None
+    return round(float(value), 1)
 
 
 @router.websocket("/ws")
@@ -58,6 +72,7 @@ async def websocket(ws: WebSocket) -> None:
 
     conn = uuid4().hex
     state = {"role": role}
+    name = await _name(user_id)
     pubsub = redis.pubsub()
     await pubsub.subscribe(ops.channel(board_id))
     await ws.send_json({"type": "ready", "role": role, "conn": conn})
@@ -85,6 +100,10 @@ async def websocket(ws: WebSocket) -> None:
             kind = msg.get("type")
             if kind == "ping":
                 await ws.send_json({"type": "pong"})
+            elif kind == "cursor":  # курсор видно у всех, кто на доске, в том числе только смотрящих
+                x, y = _coord(msg.get("x")), _coord(msg.get("y"))
+                await ops.publish(board_id, {"type": "cursor", "from": conn, "user_id": str(user_id), "name": name,
+                                             "x": x if y is not None else None, "y": y if x is not None else None})
             elif kind in ("ops", "draft") and state["role"] == "read":
                 await ws.send_json({"type": "error", "code": "read_only", "message": "Доска открыта только для просмотра"})
             elif kind == "draft":
@@ -120,3 +139,5 @@ async def websocket(ws: WebSocket) -> None:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe()
             await pubsub.aclose()
+        with contextlib.suppress(Exception):
+            await ops.publish(board_id, {"type": "leave", "from": conn})
