@@ -9,6 +9,9 @@ RUN npm ci
 FROM node:24-alpine AS build
 WORKDIR /web
 ENV NEXT_TELEMETRY_DISABLED=1
+# Номер выкладки (решение №65): попадает в клиентский код при сборке.
+ARG APP_VERSION=""
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 COPY --from=deps /web/node_modules ./node_modules
 COPY . .
 RUN npm run build \

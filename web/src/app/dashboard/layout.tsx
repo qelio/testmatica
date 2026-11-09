@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ConsentGate } from "@/components/consent-gate";
 import { Logo } from "@/components/ui";
+import { APP_VERSION } from "@/lib/version";
 import { chat, support, type UserInfo } from "@/lib/api";
 import { ROLE_LABELS, useAuth } from "@/lib/auth";
 import { navFor } from "@/lib/navigation";
@@ -136,6 +137,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
               ));
             })()}
           </nav>
+          {APP_VERSION && <p className={`mt-4 px-3 text-xs text-fg-soft ${collapsed ? "lg:hidden" : ""}`}>Версия {APP_VERSION}</p>}
         </aside>
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
         <ConsentGate />
