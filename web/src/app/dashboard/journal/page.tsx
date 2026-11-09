@@ -113,7 +113,7 @@ function JournalScreen() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setSubject(x)}
-                className={`h-9 rounded-full border px-4 text-sm font-medium ${active ? "border-brand bg-brand text-white" : "border-line hover:bg-muted"}`}
+                className={`h-9 rounded-full border px-4 text-sm font-medium ${active ? "border-brand bg-brand text-on-brand" : "border-line hover:bg-muted"}`}
               >
                 {x ?? "Без предмета"}
               </button>
@@ -198,7 +198,7 @@ function JournalTable({
                     <button
                       onClick={() => onAllPresent(l.id)}
                       title="Отметить всех присутствующими"
-                      className="mt-0.5 rounded px-1 text-[11px] text-brand hover:bg-brand/10"
+                      className="mt-0.5 rounded px-1 text-[11px] text-brand-text hover:bg-brand/10"
                     >
                       все ✓
                     </button>
@@ -214,7 +214,7 @@ function JournalTable({
               >
                 <span className="block text-[11px] text-fg-soft">{fmtDate(w.at, { day: "2-digit", month: "2-digit" })}</span>
                 {w.own ? (
-                  <Link href={`/dashboard/assignments/${w.id}`} className="line-clamp-2 text-xs font-medium hover:text-brand">
+                  <Link href={`/dashboard/assignments/${w.id}`} className="line-clamp-2 text-xs font-medium hover:text-brand-text">
                     {w.title}
                   </Link>
                 ) : (
@@ -422,7 +422,7 @@ function CellEditor({
                 disabled={busy}
                 aria-pressed={mark === status}
                 onClick={() => act(() => academic.setAttendance(lessonId, studentId, mark === status ? null : status))}
-                className={`h-10 rounded-xl border text-sm font-medium ${mark === status ? "border-brand bg-brand text-white" : "border-line hover:bg-muted"}`}
+                className={`h-10 rounded-xl border text-sm font-medium ${mark === status ? "border-brand bg-brand text-on-brand" : "border-line hover:bg-muted"}`}
               >
                 {ATTENDANCE_LABELS[status].full}
               </button>
@@ -479,7 +479,7 @@ function CellEditor({
                 type="button"
                 aria-pressed={value === v}
                 onClick={() => setValue(v)}
-                className={`h-11 w-11 rounded-xl border text-lg font-bold ${value === v ? "border-brand bg-brand text-white" : `border-line hover:bg-muted ${gradeTone(v)}`}`}
+                className={`h-11 w-11 rounded-xl border text-lg font-bold ${value === v ? "border-brand bg-brand text-on-brand" : `border-line hover:bg-muted ${gradeTone(v)}`}`}
               >
                 {v}
               </button>

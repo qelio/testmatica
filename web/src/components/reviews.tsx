@@ -31,7 +31,7 @@ function RatingPicker({ value, onChange }: { value: number; onChange: (n: number
           aria-checked={value === n}
           onClick={() => onChange(n)}
           className={`h-9 w-9 rounded-lg border text-sm font-medium tabular-nums ${
-            value === n ? "border-brand bg-brand text-white" : n <= value ? "border-brand/40 bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"
+            value === n ? "border-brand bg-brand text-on-brand" : n <= value ? "border-brand/40 bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"
           }`}
         >
           {n}
@@ -101,7 +101,7 @@ export function MyReviewCard({ review, onEdit, onDeleted }: { review: MyReview; 
         <Badge tone={st.tone}>{st.text}</Badge>
         <span className="ml-auto flex gap-3 text-sm">
           {review.status !== "removed" && (
-            <button className="text-brand hover:underline" onClick={onEdit}>
+            <button className="text-brand-text hover:underline" onClick={onEdit}>
               Изменить
             </button>
           )}
@@ -127,7 +127,7 @@ export function ReviewItem({ review, children }: { review: ReviewPublic; childre
   return (
     <li className="space-y-2 py-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="rounded-lg bg-brand/10 px-2 py-0.5 text-sm font-semibold text-brand tabular-nums">{review.rating}/10</span>
+        <span className="rounded-lg bg-brand/10 px-2 py-0.5 text-sm font-semibold text-brand-text tabular-nums">{review.rating}/10</span>
         <span className="font-medium">{review.student_name}</span>
         <span className="text-sm text-fg-soft">{fmtDate(review.published_at, { day: "numeric", month: "long", year: "numeric" })}</span>
       </div>
@@ -350,13 +350,13 @@ export function ReviewsAboutMe() {
                 {r.dispute_status === "open" && <Badge tone="brand">спор открыт</Badge>}
                 {r.dispute_status === "dismissed" && <Badge>спор отклонён</Badge>}
                 {r.dispute_id && (
-                  <Link href={`/dashboard/chats?c=${r.dispute_id}`} className="text-brand hover:underline">
+                  <Link href={`/dashboard/chats?c=${r.dispute_id}`} className="text-brand-text hover:underline">
                     Чат с модератором
                   </Link>
                 )}
                 <span className="ml-auto flex gap-3">
                   <button
-                    className="text-brand hover:underline"
+                    className="text-brand-text hover:underline"
                     onClick={() => {
                       setReplying(r.id);
                       setReplyText(r.reply_text ?? "");

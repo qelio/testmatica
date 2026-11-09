@@ -30,7 +30,7 @@ function Planning() {
         </div>
         <Link
           href={tab === "plans" ? "/dashboard/planning/new" : "/dashboard/planning/templates/new"}
-          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-strong"
+          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-brand hover:bg-brand-strong"
         >
           {tab === "plans" ? "Новый КТП" : "Новый шаблон"}
         </Link>

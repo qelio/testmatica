@@ -239,7 +239,7 @@ function LessonRow({
                       target: plan.target_id,
                       ...(lesson.schedule_lesson_id ? { lesson: lesson.schedule_lesson_id } : {}),
                     })}`}
-                    className="mt-1 block text-sm font-medium text-brand hover:underline"
+                    className="mt-1 block text-sm font-medium text-brand-text hover:underline"
                   >
                     Назначить «{t.title}» как ДЗ
                   </Link>
@@ -253,7 +253,7 @@ function LessonRow({
             </div>
           )}
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
-            <button className="text-brand hover:underline" onClick={() => setEditing(true)}>
+            <button className="text-brand-text hover:underline" onClick={() => setEditing(true)}>
               Изменить
             </button>
             <button className="text-fg-soft hover:text-fg" onClick={onAddAfter}>

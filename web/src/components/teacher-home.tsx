@@ -45,7 +45,7 @@ export function TeacherHome() {
         <section className="rounded-2xl border border-line bg-surface">
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <h2 className="font-semibold">Ближайшие занятия</h2>
-            <Link href="/dashboard/schedule" className="text-sm text-brand hover:underline">
+            <Link href="/dashboard/schedule" className="text-sm text-brand-text hover:underline">
               Расписание
             </Link>
           </div>
@@ -65,7 +65,7 @@ export function TeacherHome() {
         <section className="rounded-2xl border border-line bg-surface">
           <div className="flex items-center justify-between border-b border-line px-5 py-4">
             <h2 className="font-semibold">Ждут вашей проверки</h2>
-            <Link href="/dashboard/assignments" className="text-sm text-brand hover:underline">
+            <Link href="/dashboard/assignments" className="text-sm text-brand-text hover:underline">
               Все тесты
             </Link>
           </div>
@@ -110,7 +110,7 @@ export function TeacherHome() {
 }
 
 const TONES = {
-  brand: "text-brand",
+  brand: "text-brand-text",
   tutor: "text-tutor",
   school: "text-school",
   ok: "text-ok",
@@ -143,7 +143,7 @@ function LessonRow({ lesson, today, now }: { lesson: Lesson; today: Date; now: n
         </span>
       </span>
       {live && (
-        <Link href={`/room/${lesson.id}`} className="shrink-0 rounded-xl bg-brand px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-strong">
+        <Link href={`/room/${lesson.id}`} className="shrink-0 rounded-xl bg-brand px-3 py-1.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
           Войти
         </Link>
       )}

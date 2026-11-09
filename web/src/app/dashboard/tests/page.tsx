@@ -30,7 +30,7 @@ export default function TestsPage() {
           <Link href="/dashboard/tasks" className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted">
             Банк задач
           </Link>
-          <Link href="/dashboard/tests/new" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-strong">
+          <Link href="/dashboard/tests/new" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
             Новый тест
           </Link>
         </div>
@@ -58,14 +58,14 @@ export default function TestsPage() {
             <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3 hover:bg-muted">
               <Link href={`/dashboard/tests/${t.id}`} className="min-w-0 flex-1">
                 <span className="font-medium">{t.title}</span>
-                {t.shared_with_me && <span className="ml-2 text-sm text-brand">тест коллеги · {t.owner_name}</span>}
+                {t.shared_with_me && <span className="ml-2 text-sm text-brand-text">тест коллеги · {t.owner_name}</span>}
                 <span className="block text-sm text-fg-soft">
                   {[t.subject_name, gradeLevelLabel(t.grade_level), `заданий: ${t.tasks_count}`, `баллов: ${t.max_score}`, fmtLimit(t), t.assignments_count ? `назначен ${t.assignments_count} раз` : null]
                     .filter(Boolean)
                     .join(" · ")}
                 </span>
                 {t.module && (
-                  <span className="block truncate text-sm text-brand">
+                  <span className="block truncate text-sm text-brand-text">
                     {t.module.course_title} → {t.module.title}
                     {t.visibility === "public" ? " · публичный" : t.visibility === "teachers" ? " · для педагогов" : " · личный"}
                     {t.pending ? " · изменения на проверке" : t.visibility !== "private" && t.visibility && !t.published ? " · ждёт проверки курса" : ""}
@@ -73,7 +73,7 @@ export default function TestsPage() {
                 )}
               </Link>
               {canAssign && t.tasks_count > 0 && (
-                <Link href={`/dashboard/assignments/new?test=${t.id}`} className="text-sm font-medium text-brand hover:underline">
+                <Link href={`/dashboard/assignments/new?test=${t.id}`} className="text-sm font-medium text-brand-text hover:underline">
                   Назначить
                 </Link>
               )}

@@ -42,7 +42,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
   return (
     <div className="flex flex-1 flex-col">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/90 backdrop-blur">
-        <div className="flex h-16 items-center gap-2 px-3 sm:gap-3 sm:px-6">
+        <div className="flex h-18 items-center gap-2 px-3 sm:gap-3 sm:px-6">
           <button
             className="rounded-lg p-2 text-fg-soft hover:bg-muted lg:hidden"
             aria-label="Меню"
@@ -64,7 +64,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           >
             {collapsed ? <PanelLeftOpen size={20} strokeWidth={1.8} /> : <PanelLeftClose size={20} strokeWidth={1.8} />}
           </button>
-          <Logo compact />
+          <Logo compact className="ml-1 sm:ml-4" />
           <div className="flex-1" />
           <ThemeToggle />
           <UserMenu />
@@ -73,7 +73,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
 
       <div className="flex flex-1">
         <aside
-          className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4rem-1px)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
+          className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-18 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4.5rem-1px)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
         >
           <nav>
             {(() => {
@@ -109,12 +109,12 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
                           href={item.href}
                           title={tip}
                           onClick={() => setMenuOpen(false)}
-                          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${collapsed ? "lg:justify-center lg:px-0" : ""} ${isActive(pathname, item.href) ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${collapsed ? "lg:justify-center lg:px-0" : ""} ${isActive(pathname, item.href) ? "bg-brand/10 text-brand-text" : "text-fg hover:bg-muted"}`}
                         >
                           {icon}
                           {label}
                           {count > 0 && (
-                            <span className={`grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-white ${collapsed ? "lg:hidden" : ""}`}>
+                            <span className={`grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-on-brand ${collapsed ? "lg:hidden" : ""}`}>
                               {count}
                             </span>
                           )}
@@ -148,7 +148,7 @@ const COLLAPSED_KEY = "tm:sidebar-collapsed";
 
 // Цветные плашки иконок меню — по кругу; классы целиком, чтобы Tailwind их нашёл.
 const ICON_TONES = [
-  "bg-brand/15 text-brand",
+  "bg-brand/15 text-brand-text",
   "bg-pink/15 text-pink",
   "bg-sky/15 text-sky",
   "bg-sun/20 text-sun",
@@ -231,7 +231,7 @@ function UserMenu() {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-sm font-semibold text-brand"
+        className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-sm font-semibold text-brand-text"
         aria-label="Профиль"
         aria-expanded={open}
       >

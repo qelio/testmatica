@@ -17,7 +17,7 @@ export function JoinLessonButton({ lesson, isTeacher }: { lesson: Lesson; isTeac
     return <p className="text-center text-sm text-fg-soft">Видеокомната откроется {fmtDateTime(new Date(opens))}</p>;
   }
   return (
-    <Link href={`/room/${lesson.id}`} className="flex h-11 items-center justify-center rounded-xl bg-brand font-medium text-white hover:bg-brand-strong">
+    <Link href={`/room/${lesson.id}`} className="flex h-11 items-center justify-center rounded-xl bg-brand font-medium text-on-brand hover:bg-brand-strong">
       Войти в занятие
     </Link>
   );
@@ -52,12 +52,12 @@ export function LessonRecordings({ lessonId }: { lessonId: string }) {
                 {r.expires_at && <span className="text-fg-soft"> · хранится до {fmtDateTime(r.expires_at)}</span>}
               </span>
               {r.url && (
-                <button className="text-brand hover:underline" onClick={() => setPlaying(playing === r.id ? null : r.id)}>
+                <button className="text-brand-text hover:underline" onClick={() => setPlaying(playing === r.id ? null : r.id)}>
                   {playing === r.id ? "Скрыть" : "Смотреть"}
                 </button>
               )}
               {r.download_url && (
-                <a href={r.download_url} className="text-brand hover:underline">
+                <a href={r.download_url} className="text-brand-text hover:underline">
                   Скачать
                 </a>
               )}

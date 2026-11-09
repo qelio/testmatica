@@ -47,7 +47,7 @@ export function AuditList({ records, names }: { records: AuditRecord[]; names?: 
               <span className="text-fg-soft tabular-nums">{fmtDateTime(r.occurred_at)}</span>
               <span className="font-medium">{eventLabel(r.type)}</span>
               {names && r.actor_id && (
-                <Link href={`/dashboard/users/${r.actor_id}`} className="text-brand hover:underline">
+                <Link href={`/dashboard/users/${r.actor_id}`} className="text-brand-text hover:underline">
                   {names[r.actor_id] ?? "пользователь"}
                 </Link>
               )}

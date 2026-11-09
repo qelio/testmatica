@@ -82,7 +82,7 @@ export function AddStudentModal({
                 role="tab"
                 aria-selected={method === m.value}
                 onClick={() => setMethod(m.value)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${method === m.value ? "bg-brand text-white" : "bg-muted text-fg-soft hover:text-fg"}`}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${method === m.value ? "bg-brand text-on-brand" : "bg-muted text-fg-soft hover:text-fg"}`}
               >
                 {m.label}
               </button>

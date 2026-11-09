@@ -141,7 +141,7 @@ function Schedule() {
                 Предлагают перенести занятие <b>{r.lesson.title}</b> с {fmtDateTime(r.lesson.starts_at)} на{" "}
                 <b>{fmtDateTime(r.new_starts_at)}</b>
               </span>
-              <span className="font-medium text-brand">Ответить →</span>
+              <span className="font-medium text-brand-text">Ответить →</span>
             </button>
           ))}
         </div>

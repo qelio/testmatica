@@ -63,7 +63,7 @@ export function GroupOfferPage() {
           <span className="block font-medium">{o.tutor.full_name}</span>
           <Rating rating={o.tutor.rating} count={o.tutor.reviews_count} />
         </span>
-        <span className="text-sm text-brand">Профиль →</span>
+        <span className="text-sm text-brand-text">Профиль →</span>
       </Link>
 
       <section className="grid gap-3 rounded-2xl border border-line bg-surface p-5 text-sm sm:grid-cols-2">
@@ -91,7 +91,7 @@ export function GroupOfferPage() {
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-wrap gap-2">
         {o.is_owner ? (
-          <Link href={`/dashboard/offers/${o.id}`} className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-strong">
+          <Link href={`/dashboard/offers/${o.id}`} className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
             Управлять набором
           </Link>
         ) : o.enrolled ? (
@@ -101,7 +101,7 @@ export function GroupOfferPage() {
             </Button>
           )
         ) : !authed ? (
-          <Link href="/login" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-strong">
+          <Link href="/login" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
             Войти и записаться
           </Link>
         ) : isStudent ? (

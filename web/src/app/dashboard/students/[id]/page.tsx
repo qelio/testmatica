@@ -84,7 +84,7 @@ function SelfWork({ studentId }: { studentId: string }) {
             </span>
             <Badge tone={st.tone}>{st.text}</Badge>
             {shown && (
-              <Link href={`/dashboard/attempts/${shown.id}`} className="text-sm text-brand hover:underline">
+              <Link href={`/dashboard/attempts/${shown.id}`} className="text-sm text-brand-text hover:underline">
                 Открыть
               </Link>
             )}
@@ -154,7 +154,7 @@ function Attempt({ sub, number, onChanged }: { sub: Submission; number: number; 
       ))}
       {sub.answer.code && (
         <details open={number === 1 || sub.status === "correct"}>
-          <summary className="cursor-pointer text-sm text-brand">Код</summary>
+          <summary className="cursor-pointer text-sm text-brand-text">Код</summary>
           <div className="mt-1.5">
             <CodeEditor value={sub.answer.code} readOnly minHeight="60px" />
           </div>
@@ -162,7 +162,7 @@ function Attempt({ sub, number, onChanged }: { sub: Submission; number: number; 
       )}
       {sub.run_log && sub.run_log.length > 0 && (
         <details>
-          <summary className="cursor-pointer text-sm text-brand">Протокол тестов</summary>
+          <summary className="cursor-pointer text-sm text-brand-text">Протокол тестов</summary>
           <table className="mt-1.5 w-full text-sm">
             <tbody>
               {sub.run_log.map((c) => (

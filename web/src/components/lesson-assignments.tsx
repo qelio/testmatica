@@ -21,7 +21,7 @@ export function LessonAssignments({ lesson, isTeacher }: { lesson: Lesson; isTea
           const s = isTeacher ? summary(a) : null;
           return (
             <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm">
-              <Link href={`/dashboard/assignments/${a.id}`} className="min-w-0 flex-1 truncate font-medium text-brand hover:underline">
+              <Link href={`/dashboard/assignments/${a.id}`} className="min-w-0 flex-1 truncate font-medium text-brand-text hover:underline">
                 {a.title}
               </Link>
               <Badge tone={a.kind === "live" ? "brand" : "neutral"}>{KIND_LABELS[a.kind]}</Badge>

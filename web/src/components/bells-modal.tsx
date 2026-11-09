@@ -57,7 +57,7 @@ export function BellsModal({ initial, onClose, onSaved }: { initial: BellSchedul
         {error && <Alert>{error}</Alert>}
         <p className="text-sm text-fg-soft">Уроки появятся в календаре светлыми полосами с номерами — видно только вам.</p>
         {!periods.length && (
-          <button type="button" onClick={() => setPeriods(SAMPLE)} className="text-sm font-medium text-brand hover:underline">
+          <button type="button" onClick={() => setPeriods(SAMPLE)} className="text-sm font-medium text-brand-text hover:underline">
             Заполнить типовым (8:30, уроки по 45 минут)
           </button>
         )}
@@ -94,7 +94,7 @@ export function BellsModal({ initial, onClose, onSaved }: { initial: BellSchedul
           </ol>
         )}
         {periods.length < 16 && (
-          <button type="button" onClick={addPeriod} className="text-sm font-medium text-brand hover:underline">
+          <button type="button" onClick={addPeriod} className="text-sm font-medium text-brand-text hover:underline">
             + Урок
           </button>
         )}
@@ -109,7 +109,7 @@ export function BellsModal({ initial, onClose, onSaved }: { initial: BellSchedul
                   type="button"
                   aria-pressed={on}
                   onClick={() => setWeekdays(on ? weekdays.filter((x) => x !== d) : [...weekdays, d].sort())}
-                  className={`h-9 min-w-10 rounded-lg border px-2 text-sm ${on ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+                  className={`h-9 min-w-10 rounded-lg border px-2 text-sm ${on ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
                 >
                   {label}
                 </button>

@@ -89,7 +89,7 @@ export function VariantTests({ value, onChange, groups }: { value: VariantsValue
         </div>
       ))}
       {value.testIds.length < MAX_VARIANTS && (
-        <button type="button" onClick={() => set({ testIds: [...value.testIds, ""] })} className="text-sm font-medium text-brand hover:underline">
+        <button type="button" onClick={() => set({ testIds: [...value.testIds, ""] })} className="text-sm font-medium text-brand-text hover:underline">
           + Ещё вариант
         </button>
       )}
@@ -170,7 +170,7 @@ export function VariantSplit({
                         else picks[m.id] = v;
                         set({ picks });
                       }}
-                      className={`h-8 min-w-8 rounded-lg border px-2 text-sm ${active ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+                      className={`h-8 min-w-8 rounded-lg border px-2 text-sm ${active ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
                     >
                       {v}
                     </button>

@@ -29,7 +29,7 @@ export function ReviewForm({
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="text-sm text-brand hover:underline">
+      <button onClick={() => setOpen(true)} className="text-sm text-brand-text hover:underline">
         {sub.reviewed_at ? "Изменить оценку" : openLabel}
       </button>
     );

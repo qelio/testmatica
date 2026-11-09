@@ -195,7 +195,7 @@ function Current({ s, onChanged }: { s: SubscriptionState; onChanged: () => void
           <input type="checkbox" checked={offer} onChange={(e) => setOffer(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
           <span className="text-fg-soft">
             Принимаю условия{" "}
-            <Link href="/legal/offer" target="_blank" className="text-brand underline">
+            <Link href="/legal/offer" target="_blank" className="text-brand-text underline">
               публичной оферты
             </Link>
             {autoRenew || (basic && s.auto_renew) ? ", в том числе автоматические списания раз в месяц — отключить можно здесь в любой момент" : ""}
@@ -214,8 +214,8 @@ function Compare({ s }: { s: SubscriptionState }) {
         <thead>
           <tr className="border-b border-line text-left">
             <th className="px-4 py-3 font-medium text-fg-soft">Возможность</th>
-            <th className={`px-4 py-3 font-semibold ${s.plan === "free" ? "text-brand" : ""}`}>Бесплатный</th>
-            <th className={`px-4 py-3 font-semibold ${s.plan === "basic" ? "text-brand" : ""}`}>Базовый · {fmtRub(s.price_rub)}/мес</th>
+            <th className={`px-4 py-3 font-semibold ${s.plan === "free" ? "text-brand-text" : ""}`}>Бесплатный</th>
+            <th className={`px-4 py-3 font-semibold ${s.plan === "basic" ? "text-brand-text" : ""}`}>Базовый · {fmtRub(s.price_rub)}/мес</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">

@@ -55,12 +55,12 @@ export default function DashboardPage() {
           <h2 className="font-semibold">
             Уведомления
             {unread > 0 && (
-              <span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">{unread}</span>
+              <span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-on-brand">{unread}</span>
             )}
           </h2>
           {unread > 0 && (
             <button
-              className="text-sm text-brand hover:underline"
+              className="text-sm text-brand-text hover:underline"
               onClick={async () => {
                 await notifications.markAllRead();
                 await load();
@@ -101,22 +101,22 @@ export default function DashboardPage() {
                 )}
                 {n.body && <p className="mt-1 text-sm text-fg-soft">{n.body}</p>}
                 {typeof n.payload.conversation_id === "string" && (
-                  <Link href={`/dashboard/chats?c=${n.payload.conversation_id}`} className="mt-1 mr-3 inline-block text-sm font-medium text-brand hover:underline">
+                  <Link href={`/dashboard/chats?c=${n.payload.conversation_id}`} className="mt-1 mr-3 inline-block text-sm font-medium text-brand-text hover:underline">
                     Открыть чат
                   </Link>
                 )}
                 {typeof n.payload.request_id === "string" && typeof n.payload.conversation_id !== "string" && (
-                  <Link href="/dashboard/requests" className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
+                  <Link href="/dashboard/requests" className="mt-1 inline-block text-sm font-medium text-brand-text hover:underline">
                     К заявкам
                   </Link>
                 )}
                 {typeof n.payload.href === "string" && n.payload.href.startsWith("/") && (
-                  <Link href={n.payload.href} className="mt-1 mr-3 inline-block text-sm font-medium text-brand hover:underline">
+                  <Link href={n.payload.href} className="mt-1 mr-3 inline-block text-sm font-medium text-brand-text hover:underline">
                     Открыть
                   </Link>
                 )}
                 {typeof n.payload.assignment_id === "string" && (
-                  <Link href={`/dashboard/assignments/${n.payload.assignment_id}`} className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
+                  <Link href={`/dashboard/assignments/${n.payload.assignment_id}`} className="mt-1 inline-block text-sm font-medium text-brand-text hover:underline">
                     Открыть тест
                   </Link>
                 )}

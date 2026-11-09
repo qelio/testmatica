@@ -744,7 +744,7 @@ export function BoardEditor({ initial }: { initial: Board }) {
           ? "h-full w-full"
           : expanded
             ? "fixed inset-0 z-50"
-            : "h-[calc(100dvh-6rem-1px)] rounded-2xl border border-line sm:h-[calc(100dvh-7rem-1px)] lg:h-[calc(100dvh-8rem-1px)]"
+            : "h-[calc(100dvh-6.5rem-1px)] rounded-2xl border border-line sm:h-[calc(100dvh-7.5rem-1px)] lg:h-[calc(100dvh-8.5rem-1px)]"
       }`}
     >
       {/* Заголовок */}
@@ -895,7 +895,7 @@ export function BoardEditor({ initial }: { initial: Board }) {
                         setShape(s.id);
                         setTool("shape");
                       }}
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-brand ${tool === "shape" && shape === s.id ? "bg-brand/15 ring-1 ring-brand" : "hover:bg-muted"}`}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-brand-text ${tool === "shape" && shape === s.id ? "bg-brand/15 ring-1 ring-brand" : "hover:bg-muted"}`}
                     >
                       {SHAPE_ICONS[s.id]}
                     </button>
@@ -997,7 +997,7 @@ export function BoardEditor({ initial }: { initial: Board }) {
           <div className="flex h-full items-center justify-center p-6 text-center">
             <div className="space-y-3 rounded-2xl bg-surface p-6 shadow">
               <p className="font-medium">{closed}</p>
-              <Link href="/dashboard/boards" className="text-sm text-brand hover:underline">
+              <Link href="/dashboard/boards" className="text-sm text-brand-text hover:underline">
                 К списку досок
               </Link>
             </div>

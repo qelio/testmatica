@@ -82,7 +82,7 @@ export default function MyTeachersPage() {
                       return (
                         <>
                           {mine && <Badge tone={REVIEW_STATUS[mine.status].tone}>отзыв {mine.rating}/10 · {REVIEW_STATUS[mine.status].text}</Badge>}
-                          <button className="text-sm font-medium text-brand hover:underline" onClick={() => setReviewing(t)}>
+                          <button className="text-sm font-medium text-brand-text hover:underline" onClick={() => setReviewing(t)}>
                             {mine ? "Изменить отзыв" : "Оставить отзыв"}
                           </button>
                         </>

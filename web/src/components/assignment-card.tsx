@@ -41,7 +41,7 @@ export function AssignmentCard({ a, inClass = false }: { a: Assignment; inClass?
         <span>
           Сдали: <b>{s.submitted}</b> из {s.total}
         </span>
-        {s.inProgress > 0 && <span className="text-brand">решают: {s.inProgress}</span>}
+        {s.inProgress > 0 && <span className="text-brand-text">решают: {s.inProgress}</span>}
         {s.toReview > 0 && <span className="text-tutor">ждут проверки: {s.toReview}</span>}
         {s.avg !== null && <span className="text-fg-soft">средний результат {s.avg}%</span>}
       </p>

@@ -34,7 +34,7 @@ export default function PlatformStatsPage() {
               key={d}
               aria-pressed={days === d}
               onClick={() => setDays(d)}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${days === d ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft"}`}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${days === d ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft"}`}
             >
               {d} дней
             </button>
@@ -84,7 +84,7 @@ export default function PlatformStatsPage() {
                   {activity.data.top_teachers.map((t, i) => (
                     <li key={t.actor_id} className="flex items-center gap-2">
                       <span className="w-5 text-fg-soft">{i + 1}.</span>
-                      <Link href={`/dashboard/users/${t.actor_id}`} className="min-w-0 flex-1 truncate hover:text-brand">
+                      <Link href={`/dashboard/users/${t.actor_id}`} className="min-w-0 flex-1 truncate hover:text-brand-text">
                         {name(t.actor_id)}
                       </Link>
                       <span className="tabular-nums text-fg-soft">{t.actions}</span>
@@ -125,7 +125,7 @@ export default function PlatformStatsPage() {
               <ul className="divide-y divide-line text-sm">
                 {payments.data?.map((p) => (
                   <li key={p.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5">
-                    <Link href={`/dashboard/users/${p.user_id}`} className="min-w-0 flex-1 truncate hover:text-brand">
+                    <Link href={`/dashboard/users/${p.user_id}`} className="min-w-0 flex-1 truncate hover:text-brand-text">
                       {name(p.user_id)}
                     </Link>
                     <span className="text-xs text-fg-soft">{fmtDateTime(p.created_at)}</span>

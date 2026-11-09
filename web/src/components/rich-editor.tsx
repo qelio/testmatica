@@ -351,7 +351,7 @@ function Tool({ icon: Icon, label, active, disabled, onClick }: { icon: LucideIc
       disabled={disabled}
       onMouseDown={(e) => e.preventDefault()} // не теряем выделение в тексте
       onClick={onClick}
-      className={`grid h-8 w-8 place-items-center rounded-lg transition-colors disabled:opacity-40 ${active ? "bg-brand/15 text-brand" : "text-fg-soft hover:bg-muted hover:text-fg"}`}
+      className={`grid h-8 w-8 place-items-center rounded-lg transition-colors disabled:opacity-40 ${active ? "bg-brand/15 text-brand-text" : "text-fg-soft hover:bg-muted hover:text-fg"}`}
     >
       <Icon size={17} aria-hidden />
     </button>

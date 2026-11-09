@@ -12,7 +12,7 @@ async function load(slug: string): Promise<NewsFull | null> {
 
 export async function generateMetadata({ params }: PageProps<"/news/[slug]">): Promise<Metadata> {
   const n = await load((await params).slug);
-  return n ? { title: `${n.title} — ТестМатика`, description: n.summary || undefined } : { title: "Новость не найдена" };
+  return n ? { description: n.summary || undefined } : {};
 }
 
 /** Новость — Markdown, как материалы библиотеки. */

@@ -1,9 +1,6 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 
 import { fmtVersion, LEGAL, LEGAL_ORDER, legalHref, OPERATOR } from "@/lib/legal";
-
-export const metadata: Metadata = { title: "Документы — ТестМатика" };
 
 export default function LegalIndexPage() {
   return (
@@ -21,7 +18,7 @@ export default function LegalIndexPage() {
       </ul>
       <p className="text-sm text-fg-soft">
         {OPERATOR.name}, {OPERATOR.status}, ИНН {OPERATOR.inn}. Вопросы — на{" "}
-        <a href={`mailto:${OPERATOR.email}`} className="text-brand hover:underline">
+        <a href={`mailto:${OPERATOR.email}`} className="text-brand-text hover:underline">
           {OPERATOR.email}
         </a>
         .

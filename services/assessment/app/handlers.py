@@ -72,8 +72,10 @@ async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
                 await _publish(session, task, True, None, envelope.actor_id)
         return
     live = UUID(d["revision_of"]) if d.get("revision_of") else course_id
+    # Тесты к новым модулям черновика изменений привязаны к самому черновику — они проверяются и публикуются с ним.
+    draft = UUID(d["revision_id"]) if d.get("revision_id") else (course_id if d.get("revision_of") else None)
     tests = (await session.execute(
-        select(Test).where(Test.course_id == live, Test.owner_id == author).with_for_update()
+        select(Test).where(Test.course_id.in_({live, draft} - {None}), Test.owner_id == author).with_for_update()
     )).scalars().all() if author else []
     from_tests = {tid for t in tests for tid in test_task_ids(t)}
     if envelope.type == "content.course.submitted":
@@ -95,6 +97,8 @@ async def on_content_event(envelope: Envelope, session: AsyncSession) -> None:
         for t in tests:
             apply_pending(t)
             t.published_at = t.published_at or now
+            if t.course_id != live:  # модуль черновика перенесён в курс с тем же id (название курса у копии то же)
+                t.course_id = live
     else:
         for tid in bundle:
             task = await session.get(Task, tid, with_for_update=True)

@@ -36,7 +36,7 @@ export function TestView({ test }: { test: Quiz }) {
         {test.module && (
           <p className="text-sm">
             Модуль курса:{" "}
-            <Link href={`/dashboard/library/module/${test.module.id}`} className="text-brand hover:underline">
+            <Link href={`/dashboard/library/module/${test.module.id}`} className="text-brand-text hover:underline">
               {test.module.course_title ? `${test.module.course_title} → ` : ""}
               {test.module.title}
             </Link>
@@ -44,15 +44,19 @@ export function TestView({ test }: { test: Quiz }) {
         )}
         {test.description && <p className="whitespace-pre-line text-sm">{test.description}</p>}
         <p className="text-sm text-fg-soft">
-          {test.shared_with_me
-            ? "Тестом поделился коллега — его можно посмотреть, назначить своим ученикам и классам и поделиться дальше, но не изменить."
-            : "Тест автора курса — его можно посмотреть и назначить своим ученикам, но не изменить."}
+          {test.review === "new"
+            ? "Новый тест автора курса — проверяется вместе с курсом; ученикам и педагогам появится, когда курс примут."
+            : test.review === "changed"
+              ? "Изменения теста автора курса — проверяются вместе с черновиком курса; до принятия все видят прежнюю версию."
+              : test.shared_with_me
+                ? "Тестом поделился коллега — его можно посмотреть, назначить своим ученикам и классам и поделиться дальше, но не изменить."
+                : "Тест автора курса — его можно посмотреть и назначить своим ученикам, но не изменить."}
           {limit && ` Время: ${limit}.`}
         </p>
-        {test.items.length > 0 && (
+        {test.items.length > 0 && !test.review && (
           <Link
             href={`/dashboard/assignments/new?test=${test.id}`}
-            className="inline-block rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"
+            className="inline-block rounded-xl bg-brand px-4 py-2 text-sm font-medium text-on-brand hover:bg-brand-strong"
           >
             Назначить
           </Link>

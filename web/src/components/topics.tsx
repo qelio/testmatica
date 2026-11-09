@@ -73,7 +73,7 @@ export function TopicTree({
       return next;
     });
   const row = (active: boolean) =>
-    `flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm ${active ? "bg-brand/10 font-medium text-brand" : "hover:bg-muted"}`;
+    `flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-sm ${active ? "bg-brand/10 font-medium text-brand-text" : "hover:bg-muted"}`;
 
   return (
     <nav aria-label="Рубрикатор" className="space-y-0.5">

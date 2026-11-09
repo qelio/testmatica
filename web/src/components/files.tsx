@@ -122,7 +122,7 @@ export function AttachmentView({ att, getFresh, dark }: { att: Attachment; getFr
       onClick={open}
       className={`flex max-w-72 items-center gap-2.5 rounded-lg border px-3 py-2 text-sm ${dark ? "border-white/30 hover:bg-white/10" : "border-line hover:bg-muted"}`}
     >
-      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-[10px] font-bold uppercase ${dark ? "bg-white/20" : "bg-brand/10 text-brand"}`}>
+      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-[10px] font-bold uppercase ${dark ? "bg-white/20" : "bg-brand/10 text-brand-text"}`}>
         {att.filename.split(".").pop()?.slice(0, 4)}
       </span>
       <span className="min-w-0">

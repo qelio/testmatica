@@ -16,7 +16,7 @@ export function LessonKtp({ lesson }: { lesson: Lesson }) {
       {ktp.data.map(({ plan_id, plan_title, lesson: l }) => (
         <div key={l.id} className="space-y-1 text-sm">
           <p>
-            <Link href={`/dashboard/planning/${plan_id}`} className="font-medium text-brand hover:underline">
+            <Link href={`/dashboard/planning/${plan_id}`} className="font-medium text-brand-text hover:underline">
               {l.topic}
             </Link>
             <span className="text-fg-soft"> · {plan_title}</span>

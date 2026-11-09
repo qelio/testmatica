@@ -234,7 +234,7 @@ function Solver({
                   ))}
                   {s.answer.code && (
                     <details className="mt-1">
-                      <summary className="cursor-pointer text-xs text-brand">Код этой попытки</summary>
+                      <summary className="cursor-pointer text-xs text-brand-text">Код этой попытки</summary>
                       <div className="mt-1">
                         <CodeEditor value={s.answer.code} readOnly minHeight="60px" />
                       </div>

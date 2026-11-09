@@ -288,7 +288,7 @@ export function CourseView({ id, base }: { id: string; base: string }) {
                     const viewed = m.materials.filter((x) => x.viewed).length;
                     return (
                       <li key={m.id} className="flex items-center gap-3 px-5 py-3">
-                        <Link href={`${base}/module/${m.id}`} className="min-w-0 flex-1 hover:text-brand">
+                        <Link href={`${base}/module/${m.id}`} className="min-w-0 flex-1 hover:text-brand-text">
                           <span className="font-medium">{m.title}</span>
                           <span className="ml-2 text-sm text-fg-soft">
                             {m.materials.length ? `${m.materials.length} мат.` : "пусто"}
@@ -348,7 +348,7 @@ function NodeTools({
   return (
     <div className="flex shrink-0 items-center">
       {onAdd && (
-        <button onClick={onAdd} className={`${btn} text-brand`}>
+        <button onClick={onAdd} className={`${btn} text-brand-text`}>
           {addLabel}
         </button>
       )}

@@ -34,7 +34,7 @@ export function PlanItems({ items }: { items: PlanItem[] }) {
           <li key={i} className="text-sm">
             <span className="text-fg-soft">{ITEM_LABELS[item.kind]}: </span>
             {href ? (
-              <Link href={href} target={item.kind === "link" ? "_blank" : undefined} className="text-brand hover:underline">
+              <Link href={href} target={item.kind === "link" ? "_blank" : undefined} className="text-brand-text hover:underline">
                 {item.title}
               </Link>
             ) : (
@@ -138,7 +138,7 @@ function ItemsEditor({ label, items, onChange }: { label: string; items: PlanIte
                 type="button"
                 aria-pressed={kind === k}
                 onClick={() => setKind(kind === k ? "" : k)}
-                className={`rounded-lg border px-2.5 py-1 text-sm ${kind === k ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+                className={`rounded-lg border px-2.5 py-1 text-sm ${kind === k ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
               >
                 + {ITEM_LABELS[k].toLowerCase()}
               </button>

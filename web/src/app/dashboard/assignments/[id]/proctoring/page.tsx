@@ -147,7 +147,7 @@ function Observer({ assignment, reload, onError }: { assignment: Assignment; rel
             ),
         )}
       </div>
-      <aside className="space-y-2 rounded-2xl border border-line bg-surface p-4 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
+      <aside className="space-y-2 rounded-2xl border border-line bg-surface p-4 lg:sticky lg:top-22 lg:max-h-[calc(100dvh-7.5rem)] lg:overflow-y-auto">
         <h2 className="font-semibold">Сигналы</h2>
         {signals.length === 0 && <p className="text-sm text-fg-soft">Пока всё спокойно. Здесь появится, если ученик уйдёт со вкладки или перестанет показывать экран.</p>}
         <ul className="space-y-1.5 text-sm">
@@ -259,7 +259,7 @@ function Recordings({ assignmentId, version }: { assignmentId: string; version: 
             {r.status === "recording" && <Badge tone="brand">идёт запись</Badge>}
             {r.status === "failed" && <Badge tone="warn">не записалось</Badge>}
             {r.url && (
-              <a href={r.url} target="_blank" rel="noreferrer" className="text-brand hover:underline">
+              <a href={r.url} target="_blank" rel="noreferrer" className="text-brand-text hover:underline">
                 Смотреть
               </a>
             )}

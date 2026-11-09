@@ -89,7 +89,7 @@ export default function TeacherTasksPage() {
     return (
       <section key={key} className="space-y-2">
         <h2 className="flex items-baseline gap-2 text-sm font-semibold">
-          <span className={key === today ? "text-brand" : ""}>{dayLabel(key, today)}</span>
+          <span className={key === today ? "text-brand-text" : ""}>{dayLabel(key, today)}</span>
           {tasks.length > 0 && (
             <span className="font-normal text-fg-soft">
               {left ? `осталось ${left} из ${tasks.length}` : "всё выполнено ✓"}
@@ -111,7 +111,7 @@ export default function TeacherTasksPage() {
                 />
                 <span className={`min-w-0 flex-1 ${t.done ? "text-fg-soft line-through" : key < today ? "text-danger" : ""}`}>{t.title}</span>
                 {!t.done && key < today && (
-                  <button type="button" onClick={() => change(t, { day: today })} className="shrink-0 text-xs text-brand hover:underline">
+                  <button type="button" onClick={() => change(t, { day: today })} className="shrink-0 text-xs text-brand-text hover:underline">
                     на сегодня
                   </button>
                 )}
@@ -167,7 +167,7 @@ export default function TeacherTasksPage() {
           {upcoming.map(section)}
           {past.length > 0 && (
             <div className="space-y-4 border-t border-line pt-4">
-              <button type="button" onClick={() => setShowPast(!showPast)} className="text-sm font-medium text-brand hover:underline">
+              <button type="button" onClick={() => setShowPast(!showPast)} className="text-sm font-medium text-brand-text hover:underline">
                 {showPast ? "Скрыть прошедшие дни" : "Прошедшие дни"}
                 {overdue > 0 && <span className="ml-1 text-danger">· не выполнено: {overdue}</span>}
               </button>

@@ -411,6 +411,8 @@ class QuizOut(BaseModel):
     can_edit: bool = Field(True, description="False — чужой тест автора курса: только просмотр и назначение")
     shared_with_me: bool = Field(False, description="Тестом поделился коллега (решение №58): смотреть, назначать, делиться")
     owner_name: str | None = Field(None, description="Автор чужого теста")
+    review: Literal["new", "changed"] | None = Field(
+        None, description="Модератору: тест ещё не принят с курсом (new) или показаны изменения на проверке (changed)")
     can_share: bool = Field(False, description="Можно поделиться с коллегой: свой тест или тест, которым поделились")
     items: list[QuizItemOut]
     max_score: int
@@ -792,3 +794,5 @@ class CourseTestOut(BaseModel):
     time_limit_s: int | None
     visibility: str = Field(description="public — ученикам и педагогам, teachers — только педагогам")
     self_assignment: AssignmentOut | None = None
+    review: Literal["new", "changed"] | None = Field(
+        None, description="Модератору (review=true): new — тест ещё не принят с курсом, changed — изменения ждут проверки")

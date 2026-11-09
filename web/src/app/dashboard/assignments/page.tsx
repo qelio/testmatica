@@ -37,7 +37,7 @@ function TeacherView() {
           <Link href="/dashboard/tests" className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted">
             Мои тесты
           </Link>
-          <Link href="/dashboard/assignments/new" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-strong">
+          <Link href="/dashboard/assignments/new" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
             Назначить тест
           </Link>
         </div>

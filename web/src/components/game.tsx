@@ -46,12 +46,12 @@ const BADGE_TONES = [
   "bg-sky/15 text-sky",
   "bg-mint/15 text-mint",
   "bg-grape/15 text-grape",
-  "bg-brand/15 text-brand",
+  "bg-brand/15 text-brand-text",
 ];
 
 const TILES: { href: string; title: string; icon: LucideIcon; tone: string }[] = [
-  { href: "/dashboard/assignments", title: "Назначенные тесты", icon: ClipboardCheck, tone: "from-brand to-grape" },
-  { href: "/dashboard/schedule", title: "Расписание", icon: CalendarDays, tone: "from-sky to-brand" },
+  { href: "/dashboard/assignments", title: "Назначенные тесты", icon: ClipboardCheck, tone: "from-brand-fill to-grape" },
+  { href: "/dashboard/schedule", title: "Расписание", icon: CalendarDays, tone: "from-sky to-brand-fill" },
   { href: "/dashboard/grades", title: "Оценки", icon: Star, tone: "from-sun to-pink" },
   { href: "/dashboard/exams", title: "ЕГЭ и ОГЭ", icon: Target, tone: "from-pink to-grape" },
   { href: "/dashboard/library", title: "Библиотека", icon: BookOpen, tone: "from-mint to-sky" },
@@ -103,7 +103,7 @@ function LevelCard({ game, name }: { game: Game; name: string }) {
   const pct = Math.min(100, ((xp - level.xp_from) / (level.xp_to - level.xp_from)) * 100);
   const left = level.xp_to - xp;
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand via-school to-sky p-6 text-white shadow-lg shadow-brand/20">
+    <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-fill via-school to-sky p-6 text-white shadow-lg shadow-brand/20">
       <div aria-hidden className="pointer-events-none absolute -top-12 -right-12 h-44 w-44 rounded-full bg-sun/40 blur-2xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-16 left-10 h-40 w-40 rounded-full bg-sky/40 blur-2xl" />
       <div className="relative flex items-center gap-5">

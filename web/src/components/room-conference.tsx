@@ -31,6 +31,8 @@ import {
 import { ConnectionState, RoomEvent, Track } from "livekit-client";
 import { useEffect, useRef, useState } from "react";
 
+import { useScreenQuality } from "@/components/screen-quality";
+
 type WidgetState = {
   showChat: boolean;
   unreadMessages: number;
@@ -54,6 +56,7 @@ export function RuConference() {
   });
   const layout = useCreateLayoutContext();
   const autoFocused = useRef<string | null>(null);
+  useScreenQuality();
 
   const tracks = useTracks(
     [
@@ -209,7 +212,7 @@ function RuControlBar({
       {can(3) && screenSupported && (
         <TrackToggle
           source={Track.Source.ScreenShare}
-          captureOptions={{ audio: true, selfBrowserSurface: "include" }}
+          captureOptions={{ audio: true, selfBrowserSurface: "include", contentHint: "text" }}
           showIcon
           onChange={setSharing}
           title={sharing ? "Остановить показ экрана" : "Показать экран"}
@@ -222,7 +225,7 @@ function RuControlBar({
           <ChatIcon />
           {text("Чат")}
           {unread > 0 && !chatOpen && (
-            <span className="ml-1 rounded-full bg-brand px-1.5 text-xs text-white">
+            <span className="ml-1 rounded-full bg-brand px-1.5 text-xs text-on-brand">
               {unread}
             </span>
           )}

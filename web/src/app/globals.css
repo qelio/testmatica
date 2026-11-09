@@ -2,17 +2,18 @@
 
 :root {
   color-scheme: light;
-  --bg: #f6f7fb;
+  --bg: #f5f7f0;
   --surface: #ffffff;
-  --muted: #eef0f6;
-  --line: #dfe3ec;
-  --fg: #151a2d;
-  --fg-soft: #5d6479;
-  /* Акцент — зелёный логотипа; чуть глубже, чем у названия, чтобы белый текст на кнопках читался (4,5:1). */
-  --brand: #00875f;
-  --brand-strong: #006f4e;
+  --muted: #eaf0e3;
+  --line: #dce4da;
+  --fg: #0e3b2a;
+  --fg-soft: #3d5a4b;
+  /* Акцент и кнопки — цвет «МАТИКА» в логотипе. Текст акцентным цветом — темнее, чтобы читался на белом (4,5:1). */
+  --brand: #1f9d63;
+  --brand-text: #157a4c;
+  --brand-strong: #0e3b2a;
   --danger: #d92d20;
-  --ok: #12805c;
+  --ok: #157a4c;
   --school: #0e9384;
   --tutor: #c4320a;
   /* Яркие акценты: лендинг, кабинет ученика, достижения. */
@@ -20,56 +21,70 @@
   --pink: #e8488a;
   --sky: #0ea5e9;
   --grape: #8b5cf6;
-  --mint: #10b981;
+  --mint: #1f9d63;
   /* Зелёный логотипа — название в шапке. */
-  --leaf: #00a074;
+  --leaf: #1f9d63;
+  --on-brand: #ffffff;
+  /* Заливки-градиенты с белым текстом: в тёмной теме акцент лаймовый, белый на нём не читается. */
+  --brand-fill: #1f9d63;
+  /* Логотип (решение №64): тело геккона и контуры. */
+  --logo-body: #1f9d63;
+  --logo-ink: #0e3b2a;
 }
 
 /* Тёмная тема: по настройке системы, если пользователь не выбрал светлую, или по выбору пользователя (lib/theme.ts). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #0e1117;
-    --surface: #161b25;
-    --muted: #1f2533;
-    --line: #2b3243;
-    --fg: #e8eaf0;
-    --fg-soft: #9aa2b6;
-    --brand: #1fae84;
-    --brand-strong: #34c795;
+    --bg: #121314;
+    --surface: #1b1c1f;
+    --muted: #26282c;
+    --line: #36383d;
+    --fg: #f2f3f1;
+    --fg-soft: #a6a9ad;
+    --brand: #b8f04a;
+    --brand-text: #b8f04a;
+    --brand-strong: #dff7a8;
     --danger: #f97066;
-    --ok: #32d583;
+    --ok: #9be7b4;
     --school: #2ed3b7;
     --tutor: #fb6514;
   --sun: #fbbf24;
   --pink: #f472b6;
   --sky: #38bdf8;
   --grape: #a78bfa;
-  --mint: #34d399;
-  --leaf: #2ecf9c;
+  --mint: #26b271;
+  --leaf: #b8f04a;
+    --on-brand: #0e2a1f;
+    --logo-body: #26b271;
+    --logo-ink: #0e2a1f;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0e1117;
-  --surface: #161b25;
-  --muted: #1f2533;
-  --line: #2b3243;
-  --fg: #e8eaf0;
-  --fg-soft: #9aa2b6;
-  --brand: #1fae84;
-  --brand-strong: #34c795;
+  --bg: #121314;
+  --surface: #1b1c1f;
+  --muted: #26282c;
+  --line: #36383d;
+  --fg: #f2f3f1;
+  --fg-soft: #a6a9ad;
+  --brand: #b8f04a;
+  --brand-text: #b8f04a;
+  --brand-strong: #dff7a8;
   --danger: #f97066;
-  --ok: #32d583;
+  --ok: #9be7b4;
   --school: #2ed3b7;
   --tutor: #fb6514;
   --sun: #fbbf24;
   --pink: #f472b6;
   --sky: #38bdf8;
   --grape: #a78bfa;
-  --mint: #34d399;
-  --leaf: #2ecf9c;
+  --mint: #26b271;
+  --leaf: #b8f04a;
+  --on-brand: #0e2a1f;
+  --logo-body: #26b271;
+  --logo-ink: #0e2a1f;
 }
 
 @theme inline {
@@ -80,7 +95,10 @@
   --color-fg: var(--fg);
   --color-fg-soft: var(--fg-soft);
   --color-brand: var(--brand);
+  --color-brand-text: var(--brand-text);
   --color-brand-strong: var(--brand-strong);
+  --color-on-brand: var(--on-brand);
+  --color-brand-fill: var(--brand-fill);
   --color-danger: var(--danger);
   --color-ok: var(--ok);
   --color-school: var(--school);
@@ -91,8 +109,9 @@
   --color-grape: var(--grape);
   --color-mint: var(--mint);
   --color-leaf: var(--leaf);
+  --color-logo-word: var(--fg);
   --font-sans: var(--font-inter), system-ui, sans-serif;
-  --font-rounded: var(--font-nunito), var(--font-inter), system-ui, sans-serif;
+  --font-logo: var(--font-unbounded), var(--font-inter), system-ui, sans-serif;
 }
 
 body {
@@ -113,7 +132,7 @@ body {
 .prose-tm h3 { font-size: 1.15em; font-weight: 600; margin-top: 1em; }
 .prose-tm ul { list-style: disc; padding-left: 1.4em; }
 .prose-tm ol { list-style: decimal; padding-left: 1.4em; }
-.prose-tm a { color: var(--brand); text-decoration: underline; }
+.prose-tm a { color: var(--brand-text); text-decoration: underline; }
 .prose-tm a.tm-file { color: var(--fg); text-decoration: none; }
 .prose-tm code { background: var(--muted); padding: 0.1em 0.35em; border-radius: 6px; font-size: 0.92em; }
 .prose-tm pre { background: var(--muted); padding: 0.9em 1em; border-radius: 12px; overflow-x: auto; }
@@ -195,6 +214,7 @@ body {
 .tm-only { display: none; }
 
 .tm-comics {
+  --brand-text: var(--brand);
   --bg: #e9f5ff;
   --surface: #ffffff;
   --muted: #dff1ff;
@@ -203,6 +223,7 @@ body {
   --fg-soft: #4a4d6b;
   --brand: #2f6be8;
   --brand-strong: #1f55c7;
+  --on-brand: #ffffff;
   --danger: #d63a25;
   --ok: #11806a;
   --tutor: #e0532f;
@@ -375,6 +396,7 @@ main:has(.tm-comics.tm-page) {
    с подсвеченной полосой, как активная строка в редакторе; подписи «> …» и номера моноширинным шрифтом, курсор
    после заголовка, метки-теги <…/>, кнопки-клавиши, окна кода. Тёмная тема — терминал. */
 .tm-code {
+  --brand-text: var(--brand);
   --bg: #f4f7fb;
   --surface: #ffffff;
   --muted: #ecf3f9;
@@ -383,6 +405,7 @@ main:has(.tm-comics.tm-page) {
   --fg-soft: #526077;
   --brand: #0e7490;
   --brand-strong: #155e75;
+  --on-brand: #ffffff;
   --danger: #dc2626;
   --ok: #15803d;
   --tutor: #7c3aed;

@@ -76,7 +76,7 @@ export function AssignmentEdit({ a, onClose, onSaved }: { a: Assignment; onClose
                 type="button"
                 aria-pressed={attempts === o.value}
                 onClick={() => setAttempts(o.value)}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${attempts === o.value ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${attempts === o.value ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
               >
                 {o.title}
               </button>
@@ -96,7 +96,7 @@ export function AssignmentEdit({ a, onClose, onSaved }: { a: Assignment; onClose
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-medium">Баллы за задания</h3>
             {differsFromTests && (
-              <button type="button" onClick={() => setPoints(fromTests!)} className="text-sm font-medium text-brand hover:underline">
+              <button type="button" onClick={() => setPoints(fromTests!)} className="text-sm font-medium text-brand-text hover:underline">
                 Взять баллы из теста
               </button>
             )}

@@ -4,6 +4,7 @@ import { LiveKitRoom, RoomAudioRenderer, StartAudio, useTracks, VideoTrack } fro
 import { Track } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useScreenQuality } from "@/components/screen-quality";
 import { board, type BoardCreated, type BoardStatus } from "@/lib/api";
 
 /** Интерактивная доска в кабинете (решение №53): без входа в аккаунт показывает код; педагог вводит его у себя
@@ -132,6 +133,7 @@ export default function BoardPage() {
 function Screen({ teacher }: { teacher: string | null }) {
   const tracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: true });
   const screen = tracks[0];
+  useScreenQuality();
   if (!screen) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-center">

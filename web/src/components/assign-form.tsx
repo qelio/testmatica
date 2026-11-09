@@ -87,7 +87,7 @@ export function GradeCriteria({ scale, onChange, maxScore }: { scale: GradeScale
               type="button"
               aria-pressed={active}
               onClick={() => onChange(p.scale)}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${active ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${active ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
             >
               {p.title}
             </button>
@@ -363,7 +363,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
                 type="button"
                 aria-pressed={attempts === o.value}
                 onClick={() => setAttempts(o.value)}
-                className={`rounded-lg border px-3 py-1.5 text-sm ${attempts === o.value ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${attempts === o.value ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
               >
                 {o.title}
               </button>
@@ -423,7 +423,7 @@ export function AssignForm({ preset, onAssigned }: { preset: AssignPreset; onAss
                 <>
                   {" "}
                   Доступно на тарифе{" "}
-                  <Link href="/dashboard/subscription" className="text-brand hover:underline">
+                  <Link href="/dashboard/subscription" className="text-brand-text hover:underline">
                     «Базовый»
                   </Link>
                   .

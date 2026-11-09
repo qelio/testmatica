@@ -23,7 +23,7 @@ export function PublicShell({ children, wide = false }: { children: React.ReactN
   return (
     <div className="flex flex-1 flex-col">
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex h-18 max-w-6xl items-center gap-4 px-4 sm:px-6">
           <Logo compact />
           {/* Разделы — по центру между логотипом и переключателем темы; на узком экране прокручиваются. */}
           <nav className="flex min-w-0 flex-1 justify-start gap-5 overflow-x-auto sm:justify-center sm:gap-8">
@@ -31,7 +31,7 @@ export function PublicShell({ children, wide = false }: { children: React.ReactN
               <Link
                 key={l.href}
                 href={l.href}
-                className={`shrink-0 font-medium hover:text-brand ${pathname.startsWith(l.href) ? "" : "text-fg-soft"}`}
+                className={`shrink-0 font-medium hover:text-brand-text ${pathname.startsWith(l.href) ? "" : "text-fg-soft"}`}
               >
                 {l.title}
               </Link>
@@ -39,7 +39,7 @@ export function PublicShell({ children, wide = false }: { children: React.ReactN
           </nav>
           <ThemeToggle />
           {status === "authenticated" ? (
-            <Link href="/dashboard" className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong">
+            <Link href="/dashboard" className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-on-brand hover:bg-brand-strong">
               В кабинет
             </Link>
           ) : (
@@ -49,7 +49,7 @@ export function PublicShell({ children, wide = false }: { children: React.ReactN
               </Link>
               <Link
                 href="/register"
-                className="hidden shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong sm:block"
+                className="hidden shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-medium text-on-brand hover:bg-brand-strong sm:block"
               >
                 Регистрация
               </Link>

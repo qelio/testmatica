@@ -28,7 +28,9 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
   // Тесты к модулю ведут педагоги и штатные редакторы библиотеки (модератор, администратор); назначают — педагоги.
   const teacher = !!user?.roles.some((r) => r === "teacher" || r === "moderator" || r === "admin");
   const canAssign = !!user?.roles.includes("teacher");
-  const shared = useLoad(() => assessment.courseTests(moduleId, signedIn), [moduleId, signedIn]);
+  // Модератор проверяет курс вместе с тестами автора — видит и ещё не принятые (новые и изменённые).
+  const moderator = !!user?.roles.some((r) => r === "moderator" || r === "admin");
+  const shared = useLoad(() => assessment.courseTests(moduleId, signedIn, moderator), [moduleId, signedIn, moderator]);
   const mine = useLoad(() => (signedIn && teacher ? assessment.tests(moduleId) : Promise.resolve([])), [moduleId, signedIn, teacher]);
   const works = useLoad(
     () => (signedIn && !teacher ? assessment.assignments("student", { module_id: moduleId }) : Promise.resolve([])),
@@ -57,7 +59,14 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
       })),
       ...(shared.data ?? [])
         .filter((t) => !ownIds.has(t.id))
-        .map((t) => ({ id: t.id, title: t.title, tasks: t.tasks_count, points: t.max_score, visibility: t.visibility as TestVisibility, note: null })),
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          tasks: t.tasks_count,
+          points: t.max_score,
+          visibility: t.visibility as TestVisibility,
+          note: t.review === "new" ? "новый тест — проверяется вместе с курсом" : t.review === "changed" ? "изменения автора — проверяются вместе с курсом" : null,
+        })),
     ].sort((a, b) => ORDER.indexOf(a.visibility) - ORDER.indexOf(b.visibility));
     return (
       <section className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
@@ -156,7 +165,7 @@ function TeacherRow({
     <li className="tm-opt flex flex-col gap-3 rounded-xl border border-line px-4 py-3">
       <div className="space-y-1.5">
         <Badge tone={v.tone}>{v.label}</Badge>
-        <Link href={`/dashboard/tests/${id}`} className="line-clamp-2 font-medium leading-snug hover:text-brand" title={title}>
+        <Link href={`/dashboard/tests/${id}`} className="line-clamp-2 font-medium leading-snug hover:text-brand-text" title={title}>
           {title}
         </Link>
         <p className="text-sm text-fg-soft">
@@ -169,7 +178,7 @@ function TeacherRow({
           Открыть
         </Link>
         {assign && tasks > 0 && (
-          <Link href={`/dashboard/assignments/new?test=${id}&module=${moduleId}`} className="text-sm font-medium text-brand hover:underline">
+          <Link href={`/dashboard/assignments/new?test=${id}&module=${moduleId}`} className="text-sm font-medium text-brand-text hover:underline">
             Назначить
           </Link>
         )}
@@ -223,7 +232,7 @@ function SelfRow({ test, signedIn, onChanged }: { test: CourseTest; signedIn: bo
           </span>
         ) : null}
         {a && row?.attempts.some((t) => t.status === "submitted") && (
-          <Link href={`/dashboard/assignments/${a.id}`} className="text-sm text-brand hover:underline">
+          <Link href={`/dashboard/assignments/${a.id}`} className="text-sm text-brand-text hover:underline">
             Мои попытки
           </Link>
         )}
@@ -232,7 +241,7 @@ function SelfRow({ test, signedIn, onChanged }: { test: CourseTest; signedIn: bo
             {inProgress ? "Продолжить" : row?.attempts.length ? "Пройти ещё раз" : "Пройти"}
           </Button>
         ) : (
-          <Link href="/login" className="text-sm font-medium text-brand hover:underline">
+          <Link href="/login" className="text-sm font-medium text-brand-text hover:underline">
             Войдите, чтобы пройти
           </Link>
         )}

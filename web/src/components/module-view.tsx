@@ -101,18 +101,18 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
 
       <div className="flex justify-between gap-3 border-t border-line pt-4">
         {m.prev_module_id ? (
-          <Link href={`${base}/module/${m.prev_module_id}`} className="font-medium text-brand hover:underline">
+          <Link href={`${base}/module/${m.prev_module_id}`} className="font-medium text-brand-text hover:underline">
             ← Предыдущий модуль
           </Link>
         ) : (
           <span />
         )}
         {m.next_module_id ? (
-          <Link href={`${base}/module/${m.next_module_id}`} className="font-medium text-brand hover:underline">
+          <Link href={`${base}/module/${m.next_module_id}`} className="font-medium text-brand-text hover:underline">
             Следующий модуль →
           </Link>
         ) : (
-          <Link href={`${base}/course/${m.course_id}`} className="font-medium text-brand hover:underline">
+          <Link href={`${base}/course/${m.course_id}`} className="font-medium text-brand-text hover:underline">
             К оглавлению курса
           </Link>
         )}

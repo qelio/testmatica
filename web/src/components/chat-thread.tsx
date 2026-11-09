@@ -25,7 +25,7 @@ export function Avatar({ name, group }: { name: string; group?: boolean }) {
     .toUpperCase();
   return (
     <span
-      className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold ${group ? "bg-school/20 text-school" : "bg-brand/15 text-brand"}`}
+      className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold ${group ? "bg-school/20 text-school" : "bg-brand/15 text-brand-text"}`}
     >
       {initials}
     </span>
@@ -199,7 +199,7 @@ export function Thread({
         {!messages && !error && <Spinner />}
         {hasMore && messages && messages.length > 0 && (
           <div className="mb-3 text-center">
-            <button onClick={loadOlder} className="text-sm text-brand hover:underline">
+            <button onClick={loadOlder} className="text-sm text-brand-text hover:underline">
               Показать более ранние
             </button>
           </div>
@@ -229,12 +229,12 @@ export function Thread({
                         : m.is_announcement
                           ? "border border-brand/40 bg-brand/10"
                           : mine
-                            ? "bg-brand text-white"
+                            ? "bg-brand text-on-brand"
                             : "bg-surface"
                     }`}
                   >
-                    {showAuthor && <p className="mb-0.5 text-xs font-semibold text-brand">{m.author_name}</p>}
-                    {m.is_announcement && !m.deleted && <p className="mb-0.5 text-xs font-semibold text-brand">Объявление</p>}
+                    {showAuthor && <p className="mb-0.5 text-xs font-semibold text-brand-text">{m.author_name}</p>}
+                    {m.is_announcement && !m.deleted && <p className="mb-0.5 text-xs font-semibold text-brand-text">Объявление</p>}
                     {m.text && (
                       <p className="whitespace-pre-wrap break-words">
                         <Linkified text={m.text} />

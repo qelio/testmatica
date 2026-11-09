@@ -128,7 +128,7 @@ function ProgressBar({ p }: { p: ExamProgress }) {
 }
 
 const STAGES: { key: ExamStage; label: string; hint: string; on: string }[] = [
-  { key: "theory", label: "Материал", hint: "Выдали теорию: рассказали, как решать", on: "border-brand/40 bg-brand/10 text-brand" },
+  { key: "theory", label: "Материал", hint: "Выдали теорию: рассказали, как решать", on: "border-brand/40 bg-brand/10 text-brand-text" },
   { key: "practice", label: "Практика", hint: "Решали самостоятельно, не на оценку", on: "border-tutor/40 bg-tutor/10 text-tutor" },
   { key: "control", label: "Контроль", hint: "Проверили знания", on: "border-ok/40 bg-ok/10 text-ok" },
 ];
