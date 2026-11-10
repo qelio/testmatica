@@ -3,7 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
-import { Avatar, shortTime, Thread } from "@/components/chat-thread";
+import { Avatar, conversationPreview, shortTime } from "@/components/chat-preview";
+import { Thread } from "@/components/chat-thread";
 import { Alert, Button, EmptyState, Modal, Spinner } from "@/components/ui";
 import { chat, type Conversation } from "@/lib/api";
 import { errorText, useLoad } from "@/lib/hooks";
@@ -83,9 +84,7 @@ function Chats() {
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm text-fg-soft">
-                    {c.last_message
-                      ? `${c.kind === "group" ? `${c.last_message.author_name.split(" ")[0]}: ` : ""}${c.last_message.text || `📎 ${c.last_message.attachments.map((a) => a.filename).join(", ")}`}`
-                      : "Нет сообщений"}
+                    {conversationPreview(c)}
                   </p>
                   {c.unread > 0 && (
                     <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-brand px-1.5 text-xs font-medium text-on-brand">

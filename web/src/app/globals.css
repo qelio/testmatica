@@ -25,6 +25,7 @@
   /* Зелёный логотипа — название в шапке. */
   --leaf: #1f9d63;
   --on-brand: #ffffff;
+  --on-danger: #ffffff;
   /* Заливки-градиенты с белым текстом: в тёмной теме акцент лаймовый, белый на нём не читается. */
   --brand-fill: #1f9d63;
   /* Логотип (решение №64): тело геккона и контуры. */
@@ -56,6 +57,7 @@
   --mint: #26b271;
   --leaf: #b8f04a;
     --on-brand: #0e2a1f;
+    --on-danger: #2a0f0c;
     --logo-body: #26b271;
     --logo-ink: #0e2a1f;
   }
@@ -83,6 +85,7 @@
   --mint: #26b271;
   --leaf: #b8f04a;
   --on-brand: #0e2a1f;
+  --on-danger: #2a0f0c;
   --logo-body: #26b271;
   --logo-ink: #0e2a1f;
 }
@@ -98,6 +101,7 @@
   --color-brand-text: var(--brand-text);
   --color-brand-strong: var(--brand-strong);
   --color-on-brand: var(--on-brand);
+  --color-on-danger: var(--on-danger);
   --color-brand-fill: var(--brand-fill);
   --color-danger: var(--danger);
   --color-ok: var(--ok);
@@ -110,6 +114,8 @@
   --color-mint: var(--mint);
   --color-leaf: var(--leaf);
   --color-logo-word: var(--fg);
+  --color-lime: #b8f04a;
+  --color-logo-ink: var(--logo-ink);
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-logo: var(--font-unbounded), var(--font-inter), system-ui, sans-serif;
 }
@@ -143,12 +149,57 @@ body {
 .prose-tm img { max-width: 100%; border-radius: 10px; }
 .prose-tm .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.3em 0; }
 
-/* Мягкое «парение» декоративных карточек на главной; без анимации, если пользователь её отключил. */
-@keyframes tm-float {
-  0%, 100% { transform: translateY(0) rotate(var(--tilt, 0deg)); }
-  50% { transform: translateY(-10px) rotate(var(--tilt, 0deg)); }
+/* Анимации главной. Появление разделов привязано к прокрутке средствами CSS: без поддержки в браузере всё просто видно сразу. */
+@keyframes tm-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes tm-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes tm-twinkle { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes tm-marquee { to { transform: translateX(-50%); } }
+@keyframes tm-spin { to { transform: rotate(360deg); } }
+@keyframes tm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes tm-loop { 0% { opacity: 0; transform: scale(0.7); } 8%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+@keyframes tm-blink { 50% { opacity: 0.15; } }
+@keyframes tm-scan { 0% { transform: translateY(0); } 50% { transform: translateY(126px); } 100% { transform: translateY(0); } }
+@keyframes tm-grow { 0%, 100% { transform: scaleY(0.25); } 25%, 80% { transform: none; } }
+@keyframes tm-draw-loop { 0% { stroke-dashoffset: 1; } 35%, 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 1; } }
+@keyframes tm-type { 0% { max-width: 0; } 30%, 86% { max-width: 100%; } 100% { max-width: 0; } }
+.tm-loop { animation: tm-loop 6s ease-out infinite both; }
+.tm-blink { animation: tm-blink 1.4s ease-in-out infinite; }
+.tm-scan { animation: tm-scan 3.4s ease-in-out infinite; }
+.tm-grow { transform-box: fill-box; transform-origin: bottom; animation: tm-grow 6s ease-in-out infinite both; }
+.tm-draw-loop { stroke-dasharray: 1; animation: tm-draw-loop 6s ease-in-out infinite both; }
+.tm-type { animation: tm-type 6s steps(18) infinite both; }
+@keyframes tm-gecko-blink { 0%, 93%, 100% { transform: scaleY(0); } 96% { transform: scaleY(1); } }
+@keyframes tm-gecko-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-14px); } 70% { transform: translateY(2px); } }
+@keyframes tm-scroll-line { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.tm-gecko-blink { visibility: hidden; }
+.tm-live .tm-gecko-blink { visibility: visible; transform-box: fill-box; transform-origin: top; transform: scaleY(0); animation: tm-gecko-blink 4.5s infinite; }
+.tm-live .tm-gecko-eye { transform: translate(var(--gx, 0), var(--gy, 0)); transition: transform 0.12s ease-out; }
+.tm-live:hover .tm-gecko-hop { animation: tm-gecko-hop 0.5s ease-out; }
+.tm-scroll-line { display: none; }
+@supports (animation-timeline: scroll()) {
+  .tm-scroll-line {
+    display: block;
+    transform-origin: left;
+    background: linear-gradient(90deg, #0b8a4f, #b8f04a);
+    animation: tm-scroll-line linear both;
+    animation-timeline: scroll(root block);
+  }
 }
-.tm-float { animation: tm-float 6s ease-in-out infinite; }
+.tm-rise { animation: tm-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.tm-orbit { stroke-dasharray: 1; animation: tm-draw 1.6s 0.15s cubic-bezier(0.6, 0, 0.2, 1) both; }
+.tm-pixel { animation: tm-twinkle 2.8s ease-in-out infinite; }
+.tm-marquee { animation: tm-marquee 40s linear infinite; }
+.tm-marquee-mask { mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+.tm-spin { animation: tm-spin 14s linear infinite; transform-origin: center; }
+.tm-bob { animation: tm-bob 3.6s ease-in-out infinite; }
+@supports (animation-timeline: view()) {
+  .tm-reveal, .tm-reveal-list > * {
+    animation: tm-rise linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 38%;
+  }
+}
+
 @keyframes tm-pop {
   0% { transform: scale(0.6); opacity: 0; }
   70% { transform: scale(1.08); opacity: 1; }
@@ -156,7 +207,7 @@ body {
 }
 .tm-pop { animation: tm-pop 0.45s ease-out both; }
 @media (prefers-reduced-motion: reduce) {
-  .tm-float, .tm-pop { animation: none; }
+  .tm-pop, .tm-rise, .tm-orbit, .tm-pixel, .tm-marquee, .tm-spin, .tm-bob, .tm-gecko-blink, .tm-gecko-hop, .tm-loop, .tm-blink, .tm-scan, .tm-grow, .tm-draw-loop, .tm-type, .tm-reveal, .tm-reveal-list > * { animation: none; }
 }
 
 /* Редактор текста (components/rich-editor.tsx) — поверх оформления .prose-tm. */

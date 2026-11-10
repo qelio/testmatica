@@ -728,6 +728,8 @@ export type Conversation = {
 export type Contact = { id: string; full_name: string; relation: string };
 
 const CH = "/api/chat";
+/** Чат прочитан: значки непрочитанного в шапке и меню пересчитываются сразу. */
+export const CHAT_READ = "tm:chat-read";
 
 export const chat = {
   conversations: () => api<Conversation[]>(`${CH}/conversations`),
@@ -743,7 +745,10 @@ export const chat = {
     }),
   attachment: (conversationId: string, fileId: string) =>
     api<Attachment>(`${CH}/conversations/${conversationId}/attachments/${fileId}`),
-  read: (id: string) => api<void>(`${CH}/conversations/${id}/read`, { method: "POST", body: {} }),
+  read: async (id: string) => {
+    await api<void>(`${CH}/conversations/${id}/read`, { method: "POST", body: {} });
+    window.dispatchEvent(new Event(CHAT_READ));
+  },
   unpin: (id: string) => api<void>(`${CH}/conversations/${id}/pin`, { method: "DELETE" }),
   deleteMessage: (id: string) => api<void>(`${CH}/messages/${id}`, { method: "DELETE" }),
 };

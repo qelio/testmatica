@@ -6,10 +6,30 @@ import { createPortal } from "react-dom";
 
 import { LogoFull, LogoMark } from "@/components/logo-mark";
 
-/** Логотип (решение №64). compact: на узких экранах остаётся только значок. */
-export function Logo({ className = "", compact = false }: { className?: string; compact?: boolean }) {
+/** Логотип (решение №64). compact: на узких экранах остаётся только значок. live: геккон моргает и следит глазом за курсором. */
+export function Logo({ className = "", compact = false, live = false }: { className?: string; compact?: boolean; live?: boolean }) {
+  const link = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (!live || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const onMove = (e: PointerEvent) => {
+      const root = link.current;
+      // На узком экране виден только значок, поэтому берём тот глаз, у которого есть размер.
+      const eye = [...(root?.querySelectorAll(".tm-gecko-eye") ?? [])].find((el) => el.getBoundingClientRect().width > 0);
+      if (!root || !eye) return;
+      const box = eye.getBoundingClientRect();
+      const dx = e.clientX - (box.left + box.width / 2);
+      const dy = e.clientY - (box.top + box.height / 2);
+      const dist = Math.hypot(dx, dy) || 1;
+      const reach = Math.min(1, dist / 160) * 11; // зрачок не выходит за край глаза
+      // 9 и 6 — смещение зрачка от центра глаза в рисунке.
+      root.style.setProperty("--gx", `${(dx / dist) * reach - 9}px`);
+      root.style.setProperty("--gy", `${(dy / dist) * reach - 6}px`);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [live]);
   return (
-    <Link href="/" aria-label="ТестМатика" className={`inline-flex items-center ${className}`}>
+    <Link ref={link} href="/" aria-label="ТестМатика" className={`inline-flex items-center ${live ? "tm-live" : ""} ${className}`}>
       {compact && <LogoMark className="h-9 w-auto shrink-0 sm:hidden" />}
       <LogoFull className={`w-auto shrink-0 ${compact ? "hidden h-10 sm:block" : "h-[52px]"}`} />
     </Link>

@@ -83,7 +83,7 @@ export function useAuth(): AuthContextValue {
 
 export const ROLE_LABELS: Record<string, string> = {
   student: "Ученик",
-  teacher: "Педагог",
+  teacher: "Учитель",
   moderator: "Модератор",
   admin: "Администратор",
 };

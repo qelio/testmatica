@@ -6,13 +6,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ConsentGate } from "@/components/consent-gate";
+import { MessagesButton, NotificationBell, UserMenu } from "@/components/header-menus";
+import { HeaderSearch } from "@/components/header-search";
 import { Logo } from "@/components/ui";
 import { APP_VERSION } from "@/lib/version";
-import { chat, support, type UserInfo } from "@/lib/api";
-import { ROLE_LABELS, useAuth } from "@/lib/auth";
+import { chat, CHAT_READ, type Conversation, support, type UserInfo } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { navFor } from "@/lib/navigation";
 import { useRealtime } from "@/lib/realtime";
-import { ThemeToggle } from "@/lib/theme";
 
 export default function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const auth = useAuth();
@@ -21,7 +22,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
   const [menuOpen, setMenuOpen] = useState(false);
   // Свёрнутое меню (только иконки) — на широком экране; запоминается в браузере.
   const [collapsed, setCollapsed] = useState(readCollapsed);
-  const unreadChats = useUnreadChats(auth.status === "authenticated", pathname);
+  const chats = useConversations(auth.status === "authenticated", pathname);
   const supportBadge = useSupportBadge(auth.status === "authenticated" ? auth.user : null, pathname);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
 
   const { user } = auth;
   const nav = navFor(user.roles);
-  const badges = { chats: unreadChats, support: supportBadge };
+  const badges = { chats: chats.list?.filter((c) => c.unread > 0).length ?? 0, support: supportBadge };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -66,8 +67,11 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
             {collapsed ? <PanelLeftOpen size={20} strokeWidth={1.8} /> : <PanelLeftClose size={20} strokeWidth={1.8} />}
           </button>
           <Logo compact className="ml-1 sm:ml-4" />
-          <div className="flex-1" />
-          <ThemeToggle />
+          <HeaderSearch roles={user.roles} />
+          <div className="flex items-center">
+            <MessagesButton conversations={chats.list} failed={chats.failed} reload={chats.reload} />
+            <NotificationBell />
+          </div>
           <UserMenu />
         </div>
       </header>
@@ -174,24 +178,32 @@ function saveCollapsed(value: boolean): void {
   }
 }
 
-/** Сколько чатов с непрочитанными сообщениями — для значка в меню. */
-function useUnreadChats(enabled: boolean, pathname: string): number {
-  const [count, setCount] = useState(0);
-  const refresh = useCallback(() => {
+/** Чаты пользователя: для значка в меню и окна сообщений в шапке. */
+function useConversations(enabled: boolean, pathname: string) {
+  const [list, setList] = useState<Conversation[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const reload = useCallback(() => {
     if (!enabled) return;
     chat
       .conversations()
-      .then((list) => setCount(list.filter((c) => c.unread > 0).length))
-      .catch(() => {});
+      .then((data) => {
+        setList(data);
+        setFailed(false);
+      })
+      .catch(() => setFailed(true));
   }, [enabled]);
   useEffect(() => {
     // Обновляем при смене страницы (например, после чтения чата).
-    refresh();
-  }, [refresh, pathname]);
+    reload();
+  }, [reload, pathname]);
+  useEffect(() => {
+    window.addEventListener(CHAT_READ, reload);
+    return () => window.removeEventListener(CHAT_READ, reload);
+  }, [reload]);
   useRealtime((e) => {
-    if (e.type === "message" || e.type === "reconnected") refresh();
+    if (e.type === "message" || e.type === "deleted" || e.type === "refresh" || e.type === "reconnected") reload();
   });
-  return count;
+  return { list, failed, reload };
 }
 
 /** Значок «Поддержки»: у поддержки — сколько обращений ждут ответа, у пользователя — сколько с непрочитанным ответом. */
@@ -216,56 +228,4 @@ function useSupportBadge(user: UserInfo | null, pathname: string): number {
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
-}
-
-function UserMenu() {
-  const { user, signOut } = useAuth();
-  const [open, setOpen] = useState(false);
-  if (!user) return null;
-  const initials = user.full_name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-sm font-semibold text-brand-text"
-        aria-label="Профиль"
-        aria-expanded={open}
-      >
-        {user.avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
-        ) : (
-          initials
-        )}
-      </button>
-      {open && (
-        <div className="absolute right-0 mt-2 w-64 rounded-xl border border-line bg-surface p-2 shadow-lg">
-          <div className="px-3 py-2">
-            <p className="truncate font-medium">{user.full_name}</p>
-            <p className="truncate text-sm text-fg-soft">{user.email ?? user.login}</p>
-            <p className="mt-1 text-xs text-fg-soft">{user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ")}</p>
-          </div>
-          <Link
-            href="/dashboard/account"
-            onClick={() => setOpen(false)}
-            className="block rounded-lg px-3 py-2 text-sm hover:bg-muted"
-          >
-            Личный кабинет
-          </Link>
-          <button
-            onClick={signOut}
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-muted"
-          >
-            Выйти
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }

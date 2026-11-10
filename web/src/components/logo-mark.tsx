@@ -21,8 +21,12 @@ function Gecko() {
         <rect x="79" y="101" width="13" height="13" rx="3" />
       </g>
       <circle cx="118" cy="74" r="24" fill="#fff" />
-      <circle cx="127" cy="80" r="12" fill="var(--logo-ink)" />
-      <circle cx="132" cy="75" r="3.5" fill="#fff" />
+      {/* Зрачок и моргание оживают только внутри .tm-live (главная); в остальных местах логотип неподвижен. */}
+      <g className="tm-gecko-eye">
+        <circle cx="127" cy="80" r="12" fill="var(--logo-ink)" />
+        <circle cx="132" cy="75" r="3.5" fill="#fff" />
+      </g>
+      <circle className="tm-gecko-blink" cx="118" cy="74" r="25" fill="var(--logo-body)" />
       {/* веко: сегмент глаза над линией брови */}
       <path d="M104.11 54.42 A24 24 0 0 1 138.93 62.26 Z" fill="var(--logo-body)" />
       <path d="M90 53 L150 66" stroke="var(--logo-ink)" strokeWidth="7" strokeLinecap="round" fill="none" />
@@ -37,7 +41,9 @@ function Gecko() {
 export function LogoMark({ className = "h-9 w-auto" }: { className?: string }) {
   return (
     <svg viewBox="0 0 210 200" className={className} aria-hidden>
-      <Gecko />
+      <g className="tm-gecko-hop">
+        <Gecko />
+      </g>
     </svg>
   );
 }
@@ -49,7 +55,9 @@ export function LogoFull({ className = "h-[52px] w-auto" }: { className?: string
       <path d={LOGO_WORD_TEST} className="fill-logo-word" fillRule="evenodd" />
       <path d={LOGO_WORD_MATIKA} className="fill-leaf" fillRule="evenodd" />
       <g transform="translate(126 102.5) scale(1.5)">
-        <Gecko />
+        <g className="tm-gecko-hop">
+          <Gecko />
+        </g>
       </g>
     </svg>
   );

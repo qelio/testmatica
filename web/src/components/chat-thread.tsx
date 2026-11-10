@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { Avatar } from "@/components/chat-preview";
 import { DealBar } from "@/components/deal-bar";
 import { AttachButton, AttachmentView, UploadChips, useUploads } from "@/components/files";
 import { Alert, Badge, Button, Spinner } from "@/components/ui";
@@ -10,27 +11,6 @@ import { useAuth } from "@/lib/auth";
 import { fmtDate, fmtTime, sameDay } from "@/lib/dates";
 import { errorText } from "@/lib/hooks";
 import { useRealtime } from "@/lib/realtime";
-
-export function shortTime(iso: string): string {
-  const d = new Date(iso);
-  return sameDay(d, new Date()) ? fmtTime(d) : fmtDate(d, { day: "numeric", month: "short" });
-}
-
-export function Avatar({ name, group }: { name: string; group?: boolean }) {
-  const initials = name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  return (
-    <span
-      className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold ${group ? "bg-school/20 text-school" : "bg-brand/15 text-brand-text"}`}
-    >
-      {initials}
-    </span>
-  );
-}
 
 /** Ссылки в тексте сообщения делаем кликабельными. */
 function Linkified({ text }: { text: string }) {
