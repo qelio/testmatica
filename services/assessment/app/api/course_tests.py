@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from testmatica_common.auth import ROLE_TEACHER, Principal
+from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import access, views
@@ -15,7 +15,7 @@ from ..deps import auth, db
 from ..models import SELF, Assignment, AssignmentStudent, Test
 from ..schemas import AssignmentOut, AttemptOut, CourseTestOut, QuizSummary
 from .assignments import assignment_out, copy_of, start, test_theme
-from .quizzes import _assignments_count, module_ref
+from .quizzes import _assignments_count, module_ref, pending_view
 
 router = APIRouter(tags=["course-tests"])
 
@@ -35,27 +35,34 @@ async def _latest_self(session: AsyncSession, test: Test, student_id: UUID) -> A
 @router.get("/course-tests", response_model=list[CourseTestOut])
 async def course_tests(
     module_id: UUID = Query(description="Модуль курса"),
+    review: bool = Query(False, description="Модератору: и тесты, которые ждут проверки вместе с курсом или черновиком"),
     principal: Principal | None = Depends(auth.optional),
     session: AsyncSession = Depends(db.session),
 ) -> list[CourseTestOut]:
     """Тесты автора курса под модулем (решение №46), принятые вместе с курсом: публичные — всем, кто видит курс
-    (ученику — с его самостоятельной работой), «для педагогов» — ещё и педагогам."""
+    (ученику — с его самостоятельной работой), «для педагогов» — ещё и педагогам. Модератору с review=true — все тесты
+    автора к модулю в том виде, в каком они уйдут ученикам: новые и с изменениями (их он проверяет вместе с курсом)."""
     user_id = principal.user_id if principal else None
-    module = await _readable_module(session, module_id, user_id)
+    moderating = review and principal is not None and principal.has_any(ROLE_MODERATOR)
+    module = await module_info(module_id, user_id) if moderating else await _readable_module(session, module_id, user_id)
     if module is None:
         return []
-    query = select(Test).where(Test.module_id == module_id, Test.owner_id == UUID(module["owner_id"]), Test.published_at.is_not(None))
+    query = select(Test).where(Test.module_id == module_id, Test.owner_id == UUID(module["owner_id"]))
+    if not moderating:
+        query = query.where(Test.published_at.is_not(None))
     if not is_teacher(principal):
         query = query.where(Test.shared.is_(True))
     tests = (await session.execute(query.order_by(Test.shared.desc(), Test.created_at))).scalars().all()
     out = []
     for t in tests:
-        own = await _latest_self(session, t, user_id) if user_id else None
+        own = await _latest_self(session, t, user_id) if user_id and not moderating else None
+        v = pending_view(t) if moderating and t.pending else t
         out.append(CourseTestOut(
-            id=t.id, title=t.title, description=t.description, owner_id=t.owner_id, tasks_count=len(t.items),
-            max_score=sum(i.points for i in t.items), time_mode=t.time_mode, time_limit_s=t.time_limit_s,
-            visibility="public" if t.shared else "teachers",
+            id=t.id, title=v.title, description=v.description, owner_id=t.owner_id, tasks_count=len(v.items),
+            max_score=sum(i.points for i in v.items), time_mode=v.time_mode, time_limit_s=v.time_limit_s,
+            visibility="public" if v.shared else "teachers",
             self_assignment=await assignment_out(session, own, principal, teacher_view=False) if own else None,
+            review=None if not moderating else "new" if t.published_at is None else "changed" if t.pending else None,
         ))
     await session.commit()  # просроченные попытки могли сдаться при просмотре
     return out

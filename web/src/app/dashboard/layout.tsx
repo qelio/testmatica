@@ -6,12 +6,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ConsentGate } from "@/components/consent-gate";
+import { MessagesButton, NotificationBell, UserMenu } from "@/components/header-menus";
+import { HeaderSearch } from "@/components/header-search";
 import { Logo } from "@/components/ui";
-import { chat, support, type UserInfo } from "@/lib/api";
-import { ROLE_LABELS, useAuth } from "@/lib/auth";
+import { APP_VERSION } from "@/lib/version";
+import { chat, CHAT_READ, type Conversation, support, type UserInfo } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { navFor } from "@/lib/navigation";
 import { useRealtime } from "@/lib/realtime";
-import { ThemeToggle } from "@/lib/theme";
 
 export default function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const auth = useAuth();
@@ -20,7 +22,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
   const [menuOpen, setMenuOpen] = useState(false);
   // Свёрнутое меню (только иконки) — на широком экране; запоминается в браузере.
   const [collapsed, setCollapsed] = useState(readCollapsed);
-  const unreadChats = useUnreadChats(auth.status === "authenticated", pathname);
+  const chats = useConversations(auth.status === "authenticated", pathname);
   const supportBadge = useSupportBadge(auth.status === "authenticated" ? auth.user : null, pathname);
 
   useEffect(() => {
@@ -37,12 +39,12 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
 
   const { user } = auth;
   const nav = navFor(user.roles);
-  const badges = { chats: unreadChats, support: supportBadge };
+  const badges = { chats: chats.list?.filter((c) => c.unread > 0).length ?? 0, support: supportBadge };
 
   return (
     <div className="flex flex-1 flex-col">
       <header className="sticky top-0 z-20 border-b border-line bg-surface/90 backdrop-blur">
-        <div className="flex h-16 items-center gap-2 px-3 sm:gap-3 sm:px-6">
+        <div className="flex h-18 items-center gap-2 px-3 sm:gap-3 sm:px-6">
           <button
             className="rounded-lg p-2 text-fg-soft hover:bg-muted lg:hidden"
             aria-label="Меню"
@@ -64,16 +66,19 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
           >
             {collapsed ? <PanelLeftOpen size={20} strokeWidth={1.8} /> : <PanelLeftClose size={20} strokeWidth={1.8} />}
           </button>
-          <Logo compact />
-          <div className="flex-1" />
-          <ThemeToggle />
+          <Logo compact className="ml-1 sm:ml-4" />
+          <HeaderSearch roles={user.roles} />
+          <div className="flex items-center">
+            <MessagesButton conversations={chats.list} failed={chats.failed} reload={chats.reload} />
+            <NotificationBell />
+          </div>
           <UserMenu />
         </div>
       </header>
 
       <div className="flex flex-1">
         <aside
-          className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-16 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4rem-1px)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
+          className={`${menuOpen ? "block" : "hidden"} fixed inset-x-0 top-18 bottom-0 z-10 overflow-y-auto border-r border-line bg-surface p-3 lg:sticky lg:block lg:h-[calc(100dvh-4.5rem-1px)] lg:shrink-0 lg:transition-[width] ${collapsed ? "lg:w-[4.25rem] lg:px-2.5" : "lg:w-64"}`}
         >
           <nav>
             {(() => {
@@ -109,12 +114,12 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
                           href={item.href}
                           title={tip}
                           onClick={() => setMenuOpen(false)}
-                          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${collapsed ? "lg:justify-center lg:px-0" : ""} ${isActive(pathname, item.href) ? "bg-brand/10 text-brand" : "text-fg hover:bg-muted"}`}
+                          className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${collapsed ? "lg:justify-center lg:px-0" : ""} ${isActive(pathname, item.href) ? "bg-brand/10 text-brand-text" : "text-fg hover:bg-muted"}`}
                         >
                           {icon}
                           {label}
                           {count > 0 && (
-                            <span className={`grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-white ${collapsed ? "lg:hidden" : ""}`}>
+                            <span className={`grid h-5 min-w-5 place-items-center rounded-full bg-brand px-1.5 text-xs text-on-brand ${collapsed ? "lg:hidden" : ""}`}>
                               {count}
                             </span>
                           )}
@@ -136,6 +141,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
               ));
             })()}
           </nav>
+          {APP_VERSION && <p className={`mt-4 px-3 text-xs text-fg-soft ${collapsed ? "lg:hidden" : ""}`}>Версия {APP_VERSION}</p>}
         </aside>
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
         <ConsentGate />
@@ -148,7 +154,7 @@ const COLLAPSED_KEY = "tm:sidebar-collapsed";
 
 // Цветные плашки иконок меню — по кругу; классы целиком, чтобы Tailwind их нашёл.
 const ICON_TONES = [
-  "bg-brand/15 text-brand",
+  "bg-brand/15 text-brand-text",
   "bg-pink/15 text-pink",
   "bg-sky/15 text-sky",
   "bg-sun/20 text-sun",
@@ -172,24 +178,32 @@ function saveCollapsed(value: boolean): void {
   }
 }
 
-/** Сколько чатов с непрочитанными сообщениями — для значка в меню. */
-function useUnreadChats(enabled: boolean, pathname: string): number {
-  const [count, setCount] = useState(0);
-  const refresh = useCallback(() => {
+/** Чаты пользователя: для значка в меню и окна сообщений в шапке. */
+function useConversations(enabled: boolean, pathname: string) {
+  const [list, setList] = useState<Conversation[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const reload = useCallback(() => {
     if (!enabled) return;
     chat
       .conversations()
-      .then((list) => setCount(list.filter((c) => c.unread > 0).length))
-      .catch(() => {});
+      .then((data) => {
+        setList(data);
+        setFailed(false);
+      })
+      .catch(() => setFailed(true));
   }, [enabled]);
   useEffect(() => {
     // Обновляем при смене страницы (например, после чтения чата).
-    refresh();
-  }, [refresh, pathname]);
+    reload();
+  }, [reload, pathname]);
+  useEffect(() => {
+    window.addEventListener(CHAT_READ, reload);
+    return () => window.removeEventListener(CHAT_READ, reload);
+  }, [reload]);
   useRealtime((e) => {
-    if (e.type === "message" || e.type === "reconnected") refresh();
+    if (e.type === "message" || e.type === "deleted" || e.type === "refresh" || e.type === "reconnected") reload();
   });
-  return count;
+  return { list, failed, reload };
 }
 
 /** Значок «Поддержки»: у поддержки — сколько обращений ждут ответа, у пользователя — сколько с непрочитанным ответом. */
@@ -214,56 +228,4 @@ function useSupportBadge(user: UserInfo | null, pathname: string): number {
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || (href !== "/dashboard" && pathname.startsWith(`${href}/`));
-}
-
-function UserMenu() {
-  const { user, signOut } = useAuth();
-  const [open, setOpen] = useState(false);
-  if (!user) return null;
-  const initials = user.full_name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-sm font-semibold text-brand"
-        aria-label="Профиль"
-        aria-expanded={open}
-      >
-        {user.avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
-        ) : (
-          initials
-        )}
-      </button>
-      {open && (
-        <div className="absolute right-0 mt-2 w-64 rounded-xl border border-line bg-surface p-2 shadow-lg">
-          <div className="px-3 py-2">
-            <p className="truncate font-medium">{user.full_name}</p>
-            <p className="truncate text-sm text-fg-soft">{user.email ?? user.login}</p>
-            <p className="mt-1 text-xs text-fg-soft">{user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ")}</p>
-          </div>
-          <Link
-            href="/dashboard/account"
-            onClick={() => setOpen(false)}
-            className="block rounded-lg px-3 py-2 text-sm hover:bg-muted"
-          >
-            Личный кабинет
-          </Link>
-          <button
-            onClick={signOut}
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-muted"
-          >
-            Выйти
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }

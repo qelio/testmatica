@@ -44,7 +44,7 @@ export default function BoardsPage() {
               setKind(k);
               setPage(0);
             }}
-            className={`h-9 rounded-full border px-4 text-sm font-medium ${kind === k ? "border-brand bg-brand text-white" : "border-line hover:bg-muted"}`}
+            className={`h-9 rounded-full border px-4 text-sm font-medium ${kind === k ? "border-brand bg-brand text-on-brand" : "border-line hover:bg-muted"}`}
           >
             {label}
           </button>

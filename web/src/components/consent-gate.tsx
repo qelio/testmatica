@@ -34,7 +34,7 @@ export function ConsentGate() {
   }
 
   const doc = (href: string, text: string) => (
-    <Link href={href} target="_blank" className="text-brand underline">
+    <Link href={href} target="_blank" className="text-brand-text underline">
       {text}
     </Link>
   );
@@ -48,7 +48,7 @@ export function ConsentGate() {
     >
       <div className="w-full max-w-lg space-y-4 rounded-2xl border border-line bg-surface p-6 shadow-xl">
         <div className="flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand/15 text-brand">
+          <span className="grid h-11 w-11 place-items-center rounded-xl bg-brand/15 text-brand-text">
             <ShieldCheck size={24} aria-hidden />
           </span>
           <h2 id="consent-title" className="text-lg font-semibold">

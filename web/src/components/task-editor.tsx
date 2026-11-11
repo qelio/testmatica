@@ -118,7 +118,7 @@ export function TaskEditor({
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-sm font-medium">Условие</span>
-          <button type="button" onClick={() => setPreview((p) => !p)} className="text-sm text-brand hover:underline">
+          <button type="button" onClick={() => setPreview((p) => !p)} className="text-sm text-brand-text hover:underline">
             {preview ? "Редактировать" : "Предпросмотр"}
           </button>
         </div>
@@ -172,7 +172,7 @@ export function TaskEditor({
               </button>
             </div>
           ))}
-          <button type="button" onClick={() => set("options", [...form.options, { text: "", is_correct: false }])} className="text-sm text-brand hover:underline">
+          <button type="button" onClick={() => set("options", [...form.options, { text: "", is_correct: false }])} className="text-sm text-brand-text hover:underline">
             + вариант
           </button>
         </fieldset>
@@ -202,7 +202,7 @@ export function TaskEditor({
               </button>
             </div>
           ))}
-          <button type="button" onClick={() => set("answers", [...form.answers, { mode: "exact", value: "" }])} className="text-sm text-brand hover:underline">
+          <button type="button" onClick={() => set("answers", [...form.answers, { mode: "exact", value: "" }])} className="text-sm text-brand-text hover:underline">
             + ещё вариант ответа
           </button>
         </fieldset>
@@ -238,7 +238,7 @@ export function TaskEditor({
                 </button>
               </div>
             ))}
-            <button type="button" onClick={() => set("tests", [...form.tests, { input: "", expected: "" }])} className="text-sm text-brand hover:underline">
+            <button type="button" onClick={() => set("tests", [...form.tests, { input: "", expected: "" }])} className="text-sm text-brand-text hover:underline">
               + тест-кейс
             </button>
           </fieldset>

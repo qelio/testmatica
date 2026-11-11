@@ -15,7 +15,7 @@ export function Avatar({ url, name, size = 64 }: { url: string | null; name: str
     <img src={url} alt={name} width={size} height={size} className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
   ) : (
     <span
-      className="grid shrink-0 place-items-center rounded-full bg-brand/15 font-semibold text-brand"
+      className="grid shrink-0 place-items-center rounded-full bg-brand/15 font-semibold text-brand-text"
       style={{ width: size, height: size, fontSize: size / 2.6 }}
       aria-hidden
     >

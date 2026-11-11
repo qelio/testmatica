@@ -353,7 +353,7 @@ function RunLog({ sub }: { sub: Submission }) {
   if (!sub.run_log?.length) return null;
   return (
     <details>
-      <summary className="cursor-pointer text-sm text-brand">Протокол тестов</summary>
+      <summary className="cursor-pointer text-sm text-brand-text">Протокол тестов</summary>
       <table className="mt-1.5 w-full text-sm">
         <tbody>
           {sub.run_log.map((c) => (
@@ -526,7 +526,7 @@ function CountToggle({
       <button type="button" aria-pressed={value === 0} onClick={() => onChange(0)} className={btn(value === 0, "border-danger bg-danger/10 text-danger")}>
         ✗ Неверно
       </button>
-      {changed && <span className="text-xs text-brand">изменено — сохраните проверку</span>}
+      {changed && <span className="text-xs text-brand-text">изменено — сохраните проверку</span>}
     </div>
   );
 }
@@ -707,7 +707,7 @@ function Solving({ attempt, offset, reload }: { attempt: Attempt; offset: number
 
   return (
     <div className="space-y-5">
-      <div className="tm-bar sticky top-16 z-10 -mx-4 flex flex-wrap items-center gap-3 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border">
+      <div className="tm-bar sticky top-18 z-10 -mx-4 flex flex-wrap items-center gap-3 border-b border-line bg-bg/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border">
         <span className="text-sm text-fg-soft">
           {perTask ? `Задание ${attempt.current_index + 1} из ${total}` : `Отвечено: ${answered.size} из ${total}`}
         </span>

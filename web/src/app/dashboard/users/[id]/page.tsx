@@ -83,7 +83,7 @@ function UserCard({ initial }: { initial: AdminUser }) {
               <>
                 <dt className="text-fg-soft">Аккаунт создал</dt>
                 <dd>
-                  <Link href={`/dashboard/users/${u.managed_by_teacher_id}`} className="text-brand hover:underline">
+                  <Link href={`/dashboard/users/${u.managed_by_teacher_id}`} className="text-brand-text hover:underline">
                     педагог
                   </Link>
                 </dd>

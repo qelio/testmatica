@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { RuConference } from "@/components/room-conference";
+import { ScreenQualityToggle } from "@/components/screen-quality";
 import { Alert, Button, Spinner } from "@/components/ui";
 import { assessment, video, type VideoJoin, type VideoRoom } from "@/lib/api";
 import { summary } from "@/lib/assignments";
@@ -82,7 +83,8 @@ export function VideoRoomScreen({ lessonId }: { lessonId: string }) {
           audio={mic}
           // Автоподстройка качества: слабое соединение — ниже разрешение, связь не рвётся (ТЗ, раздел 7).
           options={{
-            adaptiveStream: true,
+            // pixelDensity: Retina-экранам нужен вариант чётче, чем размер окошка в точках CSS.
+            adaptiveStream: { pixelDensity: "screen" },
             dynacast: true,
             publishDefaults: { simulcast: true },
           }}
@@ -158,7 +160,7 @@ export function VideoRoomScreen({ lessonId }: { lessonId: string }) {
               href={room.external_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-brand hover:underline"
+              className="text-brand-text hover:underline"
             >
               открыть
             </a>
@@ -396,7 +398,7 @@ function SidePanel({
                   onClick={() =>
                     act(() => video.screenShare(lessonId, p.identity, !allowed))
                   }
-                  className={`rounded-md border px-2 py-0.5 text-xs ${allowed ? "border-brand text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+                  className={`rounded-md border px-2 py-0.5 text-xs ${allowed ? "border-brand text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
                   title="Разрешить ученику показывать экран"
                 >
                   {allowed ? "Экран: можно" : "Экран"}
@@ -410,6 +412,7 @@ function SidePanel({
       {room.is_teacher && (
         <div className="space-y-2 border-t border-line pt-4">
           <h3 className="text-sm font-medium">Занятие</h3>
+          <ScreenQualityToggle />
           <Button
             variant="secondary"
             className="w-full"
@@ -506,7 +509,7 @@ function LiveTests({
                 <Link
                   href={`/dashboard/assignments/${a.id}`}
                   target="_blank"
-                  className="font-medium text-brand hover:underline"
+                  className="font-medium text-brand-text hover:underline"
                 >
                   {a.title}
                 </Link>

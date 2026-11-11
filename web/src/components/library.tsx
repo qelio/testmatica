@@ -67,7 +67,7 @@ export function Catalog({ base }: { base: string }) {
             key={s.id}
             onClick={() => setSubject(s.id)}
             aria-pressed={subject === s.id}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${subject === s.id ? "bg-brand text-white" : "bg-muted text-fg-soft hover:text-fg"}`}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${subject === s.id ? "bg-brand text-on-brand" : "bg-muted text-fg-soft hover:text-fg"}`}
           >
             {s.name}
           </button>

@@ -52,11 +52,11 @@ export function NewsTab() {
                 </span>
               </span>
               <Badge tone={n.status === "published" ? "ok" : "neutral"}>{n.status === "published" ? "опубликована" : "черновик"}</Badge>
-              <Link href={`/news/${n.slug}`} target="_blank" className="text-sm text-brand hover:underline">
+              <Link href={`/news/${n.slug}`} target="_blank" className="text-sm text-brand-text hover:underline">
                 Смотреть
               </Link>
               <button
-                className="text-sm text-brand hover:underline"
+                className="text-sm text-brand-text hover:underline"
                 onClick={async () => {
                   try {
                     setEditing(await site.newsItem(n.id));

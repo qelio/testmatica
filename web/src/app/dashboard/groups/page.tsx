@@ -141,7 +141,7 @@ function GroupsTab({
               </span>
             </div>
             {g.subject && <p className="mt-1 text-sm text-fg-soft">{g.subject}</p>}
-            {g.shared && <p className="mt-1 text-sm text-brand">класс коллеги · {g.owner_name}</p>}
+            {g.shared && <p className="mt-1 text-sm text-brand-text">класс коллеги · {g.owner_name}</p>}
             <p className="mt-4 text-sm text-fg-soft">{pluralStudents(g.student_count)}</p>
           </Link>
         ))}
@@ -196,10 +196,10 @@ function StudentsTab({
               <Badge tone="warn">ждёт подтверждения</Badge>
             ) : (
               <>
-                <Link href={`/dashboard/journal?student=${s.student_id}`} className="text-sm font-medium text-brand hover:underline">
+                <Link href={`/dashboard/journal?student=${s.student_id}`} className="text-sm font-medium text-brand-text hover:underline">
                   Журнал
                 </Link>
-                <Link href={`/dashboard/students/${s.student_id}`} className="text-sm font-medium text-brand hover:underline">
+                <Link href={`/dashboard/students/${s.student_id}`} className="text-sm font-medium text-brand-text hover:underline">
                   Прогресс
                 </Link>
               </>

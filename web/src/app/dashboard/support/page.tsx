@@ -73,7 +73,7 @@ function Queue() {
     <>
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <LifeBuoy className="text-brand" aria-hidden /> Обращения в поддержку
+          <LifeBuoy className="text-brand-text" aria-hidden /> Обращения в поддержку
         </h1>
         <p className="mt-1 text-sm text-fg-soft">
           Сначала — подписчики «Базового», дальше самые давние. Ответ в переписке сам переводит обращение в «Ответили».

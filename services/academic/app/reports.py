@@ -16,8 +16,8 @@ from testmatica_common.pdf import register_fonts
 
 from .schemas import GroupReport, Stats, StudentReport, Summary
 
-HEADER_FILL = PatternFill("solid", fgColor="EEF2FF")
-BRAND = colors.HexColor("#4F46E5")
+HEADER_FILL = PatternFill("solid", fgColor="EAF0E3")
+BRAND = colors.HexColor("#157A4C")
 
 
 def _avg(v: float | None) -> str:
@@ -121,8 +121,8 @@ def _table(header: list[str], rows: list[list[str]], widths: list[float], highli
     style = [
         ("FONT", (0, 0), (-1, 0), "Sans-Bold", 8.5),
         ("FONT", (0, 1), (-1, -1), "Sans", 8.5),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EEF2FF")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#3730A3")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF0E3")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0E3B2A")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F9FAFB")]),
         ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#E5E7EB")),
         ("ALIGN", (1, 0), (-1, -1), "CENTER"),

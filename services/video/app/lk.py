@@ -94,6 +94,7 @@ class LiveKit:
         grants = api.VideoGrants(
             room_join=True, room=room, can_publish=presenter, can_subscribe=not presenter, can_publish_data=False,
             can_publish_sources=["screen_share", "screen_share_audio"] if presenter else [], hidden=not presenter,
+            can_update_own_metadata=presenter,  # режим повышенного качества экрана — атрибут педагога
         )
         return (
             api.AccessToken(self.key, self.secret)

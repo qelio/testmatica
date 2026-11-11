@@ -131,7 +131,7 @@ export function MaterialView({ material, n, onFavorite }: { material: Material; 
             href={material.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl border border-line px-4 py-2.5 font-medium text-brand hover:bg-muted"
+            className="inline-flex items-center gap-2 rounded-xl border border-line px-4 py-2.5 font-medium text-brand-text hover:bg-muted"
           >
             Открыть ссылку ↗<span className="max-w-72 truncate text-sm font-normal text-fg-soft">{new URL(material.url).hostname}</span>
           </a>

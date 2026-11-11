@@ -118,7 +118,7 @@ export function TemplateEditor({ template, reload }: { template?: PlanTemplate; 
           <AdminContentActions kind="template" id={template.id} removed={template.status === "removed"} onChanged={() => reload?.()} />
           <Link
             href={`/dashboard/planning/new?template=${template.id}`}
-            className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-strong"
+            className="rounded-xl bg-brand px-4 py-2 text-sm font-medium text-on-brand hover:bg-brand-strong"
           >
             Создать КТП по шаблону
           </Link>
@@ -202,7 +202,7 @@ export function TemplateEditor({ template, reload }: { template?: PlanTemplate; 
                   <LessonView lesson={lesson} n={i + 1} />
                   {editable && (
                     <div className="mt-2 flex flex-wrap gap-x-3 text-sm">
-                      <button className="text-brand hover:underline" onClick={() => setEditing(i)}>
+                      <button className="text-brand-text hover:underline" onClick={() => setEditing(i)}>
                         Изменить
                       </button>
                       <button

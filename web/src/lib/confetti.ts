@@ -3,10 +3,10 @@
 
 const TOKENS = ["--brand", "--pink", "--sun", "--sky", "--mint", "--grape"];
 
-export function confetti({ count = 120, originY = 0.35 }: { count?: number; originY?: number } = {}): void {
+export function confetti({ count = 120, originY = 0.35, tokens = TOKENS }: { count?: number; originY?: number; tokens?: string[] } = {}): void {
   if (typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const style = getComputedStyle(document.documentElement);
-  const colors = TOKENS.map((t) => style.getPropertyValue(t).trim()).filter(Boolean);
+  const colors = tokens.map((t) => style.getPropertyValue(t).trim()).filter(Boolean);
 
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");

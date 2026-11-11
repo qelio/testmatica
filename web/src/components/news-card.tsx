@@ -18,7 +18,7 @@ export function NewsCard({ news }: { news: NewsSummary }) {
       )}
       <div className="space-y-1.5 p-4">
         <p className="text-xs text-fg-soft">{fmtNewsDate(news.published_at)}</p>
-        <h3 className="font-semibold group-hover:text-brand">{news.title}</h3>
+        <h3 className="font-semibold group-hover:text-brand-text">{news.title}</h3>
         {news.summary && <p className="text-sm text-fg-soft">{news.summary}</p>}
       </div>
     </Link>

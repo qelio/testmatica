@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -12,11 +11,6 @@ function doc(slug: string) {
 
 export function generateStaticParams() {
   return LEGAL_ORDER.map((slug) => ({ slug }));
-}
-
-export async function generateMetadata({ params }: PageProps<"/legal/[slug]">): Promise<Metadata> {
-  const d = doc((await params).slug);
-  return { title: d ? `${d.title} — ТестМатика` : "Документ не найден" };
 }
 
 export default async function LegalDocPage({ params }: PageProps<"/legal/[slug]">) {

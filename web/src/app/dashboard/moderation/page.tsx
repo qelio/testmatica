@@ -49,14 +49,14 @@ function ReviewDetails({ item }: { item: QueueItem }) {
           {quote(`Отзыв ученика ${str(d.student_name) ?? ""} (${d.rating}/10)`, str(d.review_text))}
           {quote("Почему педагог просит удалить", str(d.reason))}
           {str(d.dispute_id) && (
-            <Link href={`/dashboard/chats?c=${d.dispute_id}`} className="inline-block text-sm font-medium text-brand hover:underline">
+            <Link href={`/dashboard/chats?c=${d.dispute_id}`} className="inline-block text-sm font-medium text-brand-text hover:underline">
               Чат с педагогом →
             </Link>
           )}
         </>
       )}
       {str(d.tutor_id) && (
-        <Link href={`/tutors/${d.tutor_id}#reviews`} target="_blank" className="block text-sm text-brand hover:underline">
+        <Link href={`/tutors/${d.tutor_id}#reviews`} target="_blank" className="block text-sm text-brand-text hover:underline">
           Профиль педагога {str(d.tutor_name) ?? ""} ↗
         </Link>
       )}
@@ -125,7 +125,7 @@ export default function ModerationPage() {
                   {item.kind in ACTIONS && <ReviewDetails item={item} />}
                 </div>
                 {LINKS[item.kind] && (
-                  <Link href={LINKS[item.kind](item.ref_id)} target="_blank" className="text-sm font-medium text-brand hover:underline">
+                  <Link href={LINKS[item.kind](item.ref_id)} target="_blank" className="text-sm font-medium text-brand-text hover:underline">
                     Открыть ↗
                   </Link>
                 )}

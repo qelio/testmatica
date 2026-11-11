@@ -175,7 +175,7 @@ export function OfferForm({ offer, onSaved }: { offer?: GroupOffer; onSaved: (o:
                   type="button"
                   aria-pressed={on}
                   onClick={() => set("levels", on ? form.levels.filter((x) => x !== l) : [...form.levels, l])}
-                  className={`rounded-lg border px-2.5 py-1 text-sm ${on ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft"}`}
+                  className={`rounded-lg border px-2.5 py-1 text-sm ${on ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft"}`}
                 >
                   {LEVEL_LABELS[l]}
                 </button>
@@ -208,7 +208,7 @@ export function OfferForm({ offer, onSaved }: { offer?: GroupOffer; onSaved: (o:
                 type="button"
                 aria-pressed={on}
                 onClick={() => setSchedule("weekdays", on ? form.schedule.weekdays.filter((x) => x !== i) : [...form.schedule.weekdays, i].sort())}
-                className={`h-9 w-10 rounded-lg text-sm font-medium ${on ? "bg-brand text-white" : "bg-surface text-fg-soft"}`}
+                className={`h-9 w-10 rounded-lg text-sm font-medium ${on ? "bg-brand text-on-brand" : "bg-surface text-fg-soft"}`}
               >
                 {w}
               </button>

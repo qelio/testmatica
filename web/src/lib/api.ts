@@ -728,6 +728,8 @@ export type Conversation = {
 export type Contact = { id: string; full_name: string; relation: string };
 
 const CH = "/api/chat";
+/** Чат прочитан: значки непрочитанного в шапке и меню пересчитываются сразу. */
+export const CHAT_READ = "tm:chat-read";
 
 export const chat = {
   conversations: () => api<Conversation[]>(`${CH}/conversations`),
@@ -743,7 +745,10 @@ export const chat = {
     }),
   attachment: (conversationId: string, fileId: string) =>
     api<Attachment>(`${CH}/conversations/${conversationId}/attachments/${fileId}`),
-  read: (id: string) => api<void>(`${CH}/conversations/${id}/read`, { method: "POST", body: {} }),
+  read: async (id: string) => {
+    await api<void>(`${CH}/conversations/${id}/read`, { method: "POST", body: {} });
+    window.dispatchEvent(new Event(CHAT_READ));
+  },
   unpin: (id: string) => api<void>(`${CH}/conversations/${id}/pin`, { method: "DELETE" }),
   deleteMessage: (id: string) => api<void>(`${CH}/messages/${id}`, { method: "DELETE" }),
 };
@@ -1174,6 +1179,8 @@ export type Quiz = TestSettings & {
   shared_with_me: boolean;
   /** Автор чужого теста. */
   owner_name: string | null;
+  /** Модератору: new — тест ещё не принят с курсом, changed — показаны изменения на проверке (решение №46). */
+  review?: "new" | "changed" | null;
   /** Можно поделиться с коллегой: свой тест или тест, которым поделились. */
   can_share: boolean;
   /** Для какого класса (1–11); у старых тестов — null. */
@@ -1216,6 +1223,8 @@ export type CourseTest = {
   time_limit_s: number | null;
   visibility: "public" | "teachers";
   self_assignment: Assignment | null;
+  /** Модератору: new — ещё не принят с курсом, changed — изменения ждут проверки (решение №46). */
+  review?: "new" | "changed" | null;
 };
 
 export type AttemptBrief = {
@@ -1526,8 +1535,9 @@ export const assessment = {
   assignmentTargets: () => api<{ target_type: "group" | "student"; target_id: string; target_title: string }[]>(`${AS}/assignments/targets`),
   assignment: (id: string) => api<Assignment>(`${AS}/assignments/${id}`),
   /** Тесты «для всех» под модулем курса; ученику — с его самостоятельной работой (решение №44). */
-  courseTests: (moduleId: string, authed: boolean) =>
-    api<CourseTest[]>(`${AS}/course-tests?module_id=${moduleId}`, readOpts(authed)),
+  /** review — модератору: и тесты автора, которые проверяются вместе с курсом или черновиком. */
+  courseTests: (moduleId: string, authed: boolean, review = false) =>
+    api<CourseTest[]>(`${AS}/course-tests?module_id=${moduleId}${review ? "&review=true" : ""}`, readOpts(authed)),
   /** Публичный тест курса автора — для формы назначения (решение №44). */
   courseTest: (testId: string) => api<QuizSummary>(`${AS}/course-tests/${testId}`),
   startSelf: (testId: string) => api<Attempt>(`${AS}/course-tests/${testId}/start`, { method: "POST" }),

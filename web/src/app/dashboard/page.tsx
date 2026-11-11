@@ -1,37 +1,15 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-
 import { StudentHome } from "@/components/game";
+import { NotificationRow, useNotifications } from "@/components/notifications";
 import { TeacherHome } from "@/components/teacher-home";
 import { TrialFollowups } from "@/components/trial-followups";
 import { Alert } from "@/components/ui";
-import { ApiError, type NotificationItem, notifications } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { fmtDate, fmtDateTime, fmtTime } from "@/lib/dates";
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [items, setItems] = useState<NotificationItem[] | null>(null);
-  const [unread, setUnread] = useState(0);
-  const [error, setError] = useState<string>();
-
-  const load = useCallback(async () => {
-    try {
-      const res = await notifications.list();
-      setItems(res.items);
-      setUnread(res.unread);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Не удалось загрузить уведомления");
-    }
-  }, []);
-
-  useEffect(() => {
-    // Загрузка данных при открытии страницы.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
-  }, [load]);
+  const { items, unread, error, markAllRead, markRead } = useNotifications();
 
   if (!user) return null;
   const firstName = user.first_name || user.full_name;
@@ -55,16 +33,13 @@ export default function DashboardPage() {
           <h2 className="font-semibold">
             Уведомления
             {unread > 0 && (
-              <span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">{unread}</span>
+              <span className="ml-2 rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-on-brand">{unread}</span>
             )}
           </h2>
           {unread > 0 && (
             <button
-              className="text-sm text-brand hover:underline"
-              onClick={async () => {
-                await notifications.markAllRead();
-                await load();
-              }}
+              className="text-sm text-brand-text hover:underline"
+              onClick={() => void markAllRead()}
             >
               Прочитать все
             </button>
@@ -79,50 +54,7 @@ export default function DashboardPage() {
         {items?.length === 0 && <p className="px-5 py-6 text-sm text-fg-soft">Пока нет уведомлений</p>}
         <ul className="divide-y divide-line">
           {items?.map((n) => (
-            <li key={n.id} className="flex gap-3 px-5 py-4">
-              <span
-                className={`mt-2 h-2 w-2 shrink-0 rounded-full ${n.read_at ? "bg-transparent" : "bg-brand"}`}
-                aria-label={n.read_at ? undefined : "Не прочитано"}
-              />
-              <div className="min-w-0">
-                <p className="font-medium">{n.title}</p>
-                {(n.payload.new_starts_at || n.payload.starts_at) && (
-                  <p className="mt-1 text-sm">
-                    {n.payload.new_starts_at
-                      ? `Новое время: ${fmtDateTime(n.payload.new_starts_at)}`
-                      : fmtDateTime(n.payload.starts_at as string)}
-                  </p>
-                )}
-                {typeof n.payload.opens_at === "string" && new Date(n.payload.opens_at) > new Date() && (
-                  <p className="mt-1 text-sm">Откроется {fmtDateTime(n.payload.opens_at)}</p>
-                )}
-                {typeof n.payload.deadline === "string" && (
-                  <p className="mt-1 text-sm">Сдать до {fmtDateTime(n.payload.deadline)}</p>
-                )}
-                {n.body && <p className="mt-1 text-sm text-fg-soft">{n.body}</p>}
-                {typeof n.payload.conversation_id === "string" && (
-                  <Link href={`/dashboard/chats?c=${n.payload.conversation_id}`} className="mt-1 mr-3 inline-block text-sm font-medium text-brand hover:underline">
-                    Открыть чат
-                  </Link>
-                )}
-                {typeof n.payload.request_id === "string" && typeof n.payload.conversation_id !== "string" && (
-                  <Link href="/dashboard/requests" className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
-                    К заявкам
-                  </Link>
-                )}
-                {typeof n.payload.href === "string" && n.payload.href.startsWith("/") && (
-                  <Link href={n.payload.href} className="mt-1 mr-3 inline-block text-sm font-medium text-brand hover:underline">
-                    Открыть
-                  </Link>
-                )}
-                {typeof n.payload.assignment_id === "string" && (
-                  <Link href={`/dashboard/assignments/${n.payload.assignment_id}`} className="mt-1 inline-block text-sm font-medium text-brand hover:underline">
-                    Открыть тест
-                  </Link>
-                )}
-                <p className="mt-1 text-xs text-fg-soft">{fmtDate(n.created_at, { day: "numeric", month: "long" })}, {fmtTime(n.created_at)}</p>
-              </div>
-            </li>
+            <NotificationRow key={n.id} n={n} onOpen={() => void (n.read_at || markRead(n.id))} />
           ))}
         </ul>
       </section>

@@ -61,6 +61,25 @@ export function useDarkMode(): boolean {
   );
 }
 
+/** Строка с переключателем в окне профиля. */
+export function ThemeSwitch() {
+  const dark = useDarkMode();
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={dark}
+      onClick={() => setTheme(dark ? "light" : "dark")}
+      className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
+    >
+      Тёмная тема
+      <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${dark ? "bg-brand" : "bg-fg-soft/40"}`}>
+        <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-surface shadow transition-transform ${dark ? "translate-x-4" : ""}`} />
+      </span>
+    </button>
+  );
+}
+
 /** Кнопка в шапке: светлая ⇄ тёмная. Пока пользователь не выбирал — тема как в системе. */
 export function ThemeToggle() {
   const dark = useDarkMode();

@@ -55,7 +55,7 @@ async def _assignments_count(session: AsyncSession, ids, teacher_id: UUID | None
     return counts
 
 
-def _pending_view(test: Test) -> Test:
+def pending_view(test: Test) -> Test:
     """Тест с предложенными изменениями (не в базе) — так автор видит и правит то, что уйдёт на проверку."""
     body = QuizIn.model_validate(test.pending)
     view = Test(id=test.id, owner_id=test.owner_id, shared=test.shared, published_at=test.published_at, updated_at=test.updated_at)
@@ -63,11 +63,13 @@ def _pending_view(test: Test) -> Test:
     return view
 
 
-async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None = None, shared: bool = False) -> QuizOut:
+async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None = None, shared: bool = False,
+                   review: bool = False) -> QuizOut:
     """viewer — чужой педагог (тест автора курса, решение №46, или коллега, с которым поделились, — shared, №58):
-    принятая версия только для просмотра, назначения — его собственные."""
+    принятая версия только для просмотра, назначения — его собственные. review — модератор проверяет тест вместе
+    с курсом: видит предложенную версию, тоже только для просмотра."""
     await session.refresh(test)
-    view = _pending_view(test) if test.pending and viewer is None else test
+    view = pending_view(test) if test.pending and (viewer is None or review) else test
     tasks = {t.id: t for t in (await session.execute(select(Task).where(Task.id.in_([i.task_id for i in view.items])))).scalars()}
     summaries = {s.id: s for s in await views.summaries(session, list(tasks.values()))}
     module = (await modules_info([view.module_id], test.owner_id)).get(view.module_id) if view.module_id else None
@@ -84,6 +86,7 @@ async def quiz_out(session: AsyncSession, test: Test, viewer: Principal | None =
         assignments_count=(await _assignments_count(session, [test.id], viewer.user_id if viewer else None)).get(test.id, 0),
         updated_at=test.updated_at, can_edit=viewer is None, shared_with_me=shared, can_share=viewer is None or shared,
         owner_name=(await views.names(session, [test.owner_id])).get(test.owner_id, "Автор") if viewer else None,
+        review=None if not review else "new" if test.published_at is None else "changed" if test.pending else None,
     )
 
 
@@ -207,9 +210,14 @@ async def get(test_id: UUID, principal: Principal = Depends(author), session: As
         return await quiz_out(session, test)
     if await sharing.share_of(session, test, principal) is not None:
         return await quiz_out(session, test, viewer=principal, shared=True)
-    if await course_test_for(session, test, principal) is None:
-        raise ApiError(404, "test_not_found", "Тест не найден")
-    return await quiz_out(session, test, viewer=principal)
+    if await course_test_for(session, test, principal) is not None:
+        return await quiz_out(session, test, viewer=principal)
+    # Модератор проверяет тесты автора курса вместе с курсом или черновиком — в том числе ещё не принятые (№46).
+    if test is not None and test.module_id and principal.has_any(ROLE_MODERATOR):
+        module = await module_info(test.module_id, principal.user_id)
+        if module is not None and UUID(module["owner_id"]) == test.owner_id:
+            return await quiz_out(session, test, viewer=principal, review=True)
+    raise ApiError(404, "test_not_found", "Тест не найден")
 
 
 @router.put("/{test_id}", response_model=QuizOut)

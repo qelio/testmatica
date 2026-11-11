@@ -141,7 +141,7 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
             />
             <span className="text-fg-soft">
               Даю{" "}
-              <Link href="/legal/public-profile" target="_blank" className="text-brand underline">
+              <Link href="/legal/public-profile" target="_blank" className="text-brand-text underline">
                 согласие на распространение персональных данных
               </Link>{" "}
               из анкеты: имя, фото, предметы, опыт, цена, образование, отзывы. Без этого анкету нельзя показать в поиске.
@@ -170,7 +170,7 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
             <AvatarUploadButton onCropped={(f) => photo.add([f])} disabled={photo.busy} label={photoUrl ? "Заменить фото" : "Загрузить фото"} />
             <UploadChips items={photo.items.filter((u) => u.status !== "done")} onRemove={photo.remove} />
             <p className="text-xs text-fg-soft">JPG, PNG или WebP; кадр и масштаб выбираются после выбора файла. Фото сохранится вместе с профилем — это же фото в{" "}
-              <Link href="/dashboard/account" className="text-brand hover:underline">
+              <Link href="/dashboard/account" className="text-brand-text hover:underline">
                 личном кабинете
               </Link>
               .
@@ -200,7 +200,7 @@ function ProfileEditor({ initial }: { initial: MyTutorProfile }) {
                   type="button"
                   aria-pressed={on}
                   onClick={() => set("subject_ids", toggle(form.subject_ids, s.id))}
-                  className={`rounded-lg border px-2.5 py-1 text-sm ${on ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+                  className={`rounded-lg border px-2.5 py-1 text-sm ${on ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
                 >
                   {s.name}
                 </button>

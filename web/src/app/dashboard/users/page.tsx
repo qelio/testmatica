@@ -72,7 +72,7 @@ export default function UsersPage() {
                 {page.data.items.map((u) => (
                   <tr key={u.id} className="hover:bg-muted">
                     <td className="px-4 py-2">
-                      <Link href={`/dashboard/users/${u.id}`} className="font-medium hover:text-brand">
+                      <Link href={`/dashboard/users/${u.id}`} className="font-medium hover:text-brand-text">
                         {u.full_name}
                       </Link>
                       <span className="block text-xs text-fg-soft">{u.email ?? u.login}</span>

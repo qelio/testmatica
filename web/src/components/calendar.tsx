@@ -78,7 +78,7 @@ export function TimeGrid({
             <div key={d.toISOString()} className="border-l border-line px-2 py-2 text-center text-sm">
               <span className="text-fg-soft">{WEEKDAYS_SHORT[(d.getDay() + 6) % 7]}</span>{" "}
               <span
-                className={`inline-grid h-7 min-w-7 place-items-center rounded-full font-semibold ${sameDay(d, today) ? "bg-brand text-white" : ""}`}
+                className={`inline-grid h-7 min-w-7 place-items-center rounded-full font-semibold ${sameDay(d, today) ? "bg-brand text-on-brand" : ""}`}
               >
                 {d.getDate()}
               </span>
@@ -192,7 +192,7 @@ export function MonthGrid({
             <div key={day.toISOString()} className={`min-h-24 border-b border-r border-line p-1 ${inMonth ? "" : "bg-muted/40"}`}>
               <button
                 onClick={() => onDay(day)}
-                className={`mb-1 grid h-6 min-w-6 place-items-center rounded-full px-1 text-xs font-medium hover:bg-muted ${sameDay(day, today) ? "bg-brand text-white hover:bg-brand-strong" : inMonth ? "" : "text-fg-soft"}`}
+                className={`mb-1 grid h-6 min-w-6 place-items-center rounded-full px-1 text-xs font-medium hover:bg-muted ${sameDay(day, today) ? "bg-brand text-on-brand hover:bg-brand-strong" : inMonth ? "" : "text-fg-soft"}`}
               >
                 {day.getDate()}
               </button>

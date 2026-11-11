@@ -25,6 +25,19 @@ env:
   REGISTRY: ghcr.io/${{ github.repository }}
 
 jobs:
+  # Номер обновления (решение №65): следующий после последней метки vX.Y. Метка ставится только после успешной выкладки.
+  version:
+    name: Номер версии
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.next.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: next
+        run: sh infra/prod/next-version.sh >> "$GITHUB_OUTPUT"
+
   check:
     name: Проверка веба
     runs-on: ubuntu-latest
@@ -43,7 +56,7 @@ jobs:
 
   images:
     name: Образ ${{ matrix.name }}
-    needs: check
+    needs: [check, version]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -81,7 +94,9 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
-          build-args: SERVICE=${{ matrix.name }}
+          build-args: |
+            SERVICE=${{ matrix.name }}
+            APP_VERSION=${{ needs.version.outputs.value }}
           # PR — только проверяем, что образ собирается; в реестр — из main.
           push: ${{ github.event_name != 'pull_request' }}
           # Без аттестаций сборки — в списке пакетов не появляются лишние «unknown/unknown» манифесты.
@@ -95,11 +110,15 @@ jobs:
 
   deploy:
     name: Выкладка
-    needs: images
+    needs: [images, version]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 30
+    # contents: write — поставить метку версии.
+    permissions:
+      contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - name: SSH-ключ
@@ -121,3 +140,9 @@ jobs:
         run: |
           scp compose.prod.yaml infra/prod/deploy.sh infra/prod/postgres-init.sh infra/prod/postgres-backup.sh "$TARGET:/opt/testmatica/"
           printf '%s' "$TOKEN" | ssh "$TARGET" "sh /opt/testmatica/deploy.sh ${{ github.sha }} ${{ github.actor }}"
+      - name: Метка версии
+        env:
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          git tag "v$VERSION" "$GITHUB_SHA"
+          git push origin "v$VERSION"

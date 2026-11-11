@@ -51,7 +51,7 @@ function DurationField({ value, onChange }: { value: number; onChange: (v: numbe
             type="button"
             aria-pressed={value === d}
             onClick={() => onChange(d)}
-            className={`rounded-lg border px-2.5 py-1 text-xs ${value === d ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+            className={`rounded-lg border px-2.5 py-1 text-xs ${value === d ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
           >
             {d} мин
           </button>
@@ -273,7 +273,7 @@ function CreateLessonForm({ initial, preset, onCreated }: { initial: Date; prese
                 type="button"
                 aria-pressed={weekdays.includes(i)}
                 onClick={() => setWeekdays(weekdays.includes(i) ? weekdays.filter((x) => x !== i) : [...weekdays, i])}
-                className={`h-9 w-10 rounded-lg text-sm font-medium ${weekdays.includes(i) ? "bg-brand text-white" : "bg-surface text-fg-soft"}`}
+                className={`h-9 w-10 rounded-lg text-sm font-medium ${weekdays.includes(i) ? "bg-brand text-on-brand" : "bg-surface text-fg-soft"}`}
               >
                 {w}
               </button>

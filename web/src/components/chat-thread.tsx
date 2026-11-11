@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { Avatar } from "@/components/chat-preview";
 import { DealBar } from "@/components/deal-bar";
 import { AttachButton, AttachmentView, UploadChips, useUploads } from "@/components/files";
 import { Alert, Badge, Button, Spinner } from "@/components/ui";
@@ -10,27 +11,6 @@ import { useAuth } from "@/lib/auth";
 import { fmtDate, fmtTime, sameDay } from "@/lib/dates";
 import { errorText } from "@/lib/hooks";
 import { useRealtime } from "@/lib/realtime";
-
-export function shortTime(iso: string): string {
-  const d = new Date(iso);
-  return sameDay(d, new Date()) ? fmtTime(d) : fmtDate(d, { day: "numeric", month: "short" });
-}
-
-export function Avatar({ name, group }: { name: string; group?: boolean }) {
-  const initials = name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  return (
-    <span
-      className={`grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold ${group ? "bg-school/20 text-school" : "bg-brand/15 text-brand"}`}
-    >
-      {initials}
-    </span>
-  );
-}
 
 /** Ссылки в тексте сообщения делаем кликабельными. */
 function Linkified({ text }: { text: string }) {
@@ -199,7 +179,7 @@ export function Thread({
         {!messages && !error && <Spinner />}
         {hasMore && messages && messages.length > 0 && (
           <div className="mb-3 text-center">
-            <button onClick={loadOlder} className="text-sm text-brand hover:underline">
+            <button onClick={loadOlder} className="text-sm text-brand-text hover:underline">
               Показать более ранние
             </button>
           </div>
@@ -229,12 +209,12 @@ export function Thread({
                         : m.is_announcement
                           ? "border border-brand/40 bg-brand/10"
                           : mine
-                            ? "bg-brand text-white"
+                            ? "bg-brand text-on-brand"
                             : "bg-surface"
                     }`}
                   >
-                    {showAuthor && <p className="mb-0.5 text-xs font-semibold text-brand">{m.author_name}</p>}
-                    {m.is_announcement && !m.deleted && <p className="mb-0.5 text-xs font-semibold text-brand">Объявление</p>}
+                    {showAuthor && <p className="mb-0.5 text-xs font-semibold text-brand-text">{m.author_name}</p>}
+                    {m.is_announcement && !m.deleted && <p className="mb-0.5 text-xs font-semibold text-brand-text">Объявление</p>}
                     {m.text && (
                       <p className="whitespace-pre-wrap break-words">
                         <Linkified text={m.text} />

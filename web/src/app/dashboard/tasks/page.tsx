@@ -67,7 +67,7 @@ export default function TaskBankPage() {
               Рубрикатор
             </Link>
           )}
-          <Link href="/dashboard/tasks/new" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-strong">
+          <Link href="/dashboard/tasks/new" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
             Новая задача
           </Link>
         </div>

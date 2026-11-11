@@ -8,7 +8,9 @@ MB = 1024 * 1024
 IMAGES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic"}
 DOCUMENTS = {".pdf", ".doc", ".docx", ".odt", ".rtf", ".txt", ".xls", ".xlsx", ".ods", ".csv", ".ppt", ".pptx", ".odp"}
 ARCHIVES = {".zip", ".7z", ".rar"}
-CODE = {".py", ".ipynb", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".html", ".css", ".json", ".sql", ".md"}
+CODE = {".py", ".ipynb", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go", ".html", ".css", ".json", ".sql", ".md",
+        # Школьная информатика: КуМир, Паскаль (Free/PascalABC.NET, Lazarus, Delphi), Бейсик, C++.
+        ".kum", ".pas", ".pp", ".lpr", ".dpr", ".bas", ".cc", ".cxx", ".hpp"}
 VIDEO = {".mp4", ".webm", ".mov"}
 AUDIO = {".mp3", ".ogg", ".wav", ".m4a"}
 

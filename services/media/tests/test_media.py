@@ -51,6 +51,10 @@ async def test_policy(client):
     assert empty.json()["error"]["code"] == "empty_file"
     unknown = await upload(client, user, "a.pdf", b"x", purpose="whatever")
     assert unknown.json()["error"]["code"] == "invalid_purpose"
+    # Программы школьной информатики — в ответах (КуМир, Паскаль); отдаются скачиванием.
+    for name in ("Робот.kum", "задача.pas"):
+        ok = await upload(client, user, name, b"alg\nnach\nkon")
+        assert ok.status_code == 201, ok.json()
     # Путь в имени файла отрезается.
     safe = await upload(client, user, "../../etc/passwd.txt", b"root")
     assert safe.json()["filename"] == "passwd.txt"

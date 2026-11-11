@@ -115,7 +115,7 @@ function StudentView() {
                       </span>
                       {x.status === "agreed" && <Badge tone="ok">договорились</Badge>}
                       {x.status === "closed" && <Badge>завершены</Badge>}
-                      <Link href={`/dashboard/chats?c=${x.id}`} className="font-medium text-brand hover:underline">
+                      <Link href={`/dashboard/chats?c=${x.id}`} className="font-medium text-brand-text hover:underline">
                         Чат
                       </Link>
                     </li>
@@ -216,7 +216,7 @@ function OpenRequests() {
                 </div>
                 <RequestSummary r={r} />
                 {mine ? (
-                  <Link href={`/dashboard/chats?c=${mine.id}`} className="inline-block text-sm font-medium text-brand hover:underline">
+                  <Link href={`/dashboard/chats?c=${mine.id}`} className="inline-block text-sm font-medium text-brand-text hover:underline">
                     Вы откликнулись — открыть чат
                   </Link>
                 ) : (
@@ -314,7 +314,7 @@ function MyNegotiations() {
             {x && (
               <p className="text-sm">
                 Сейчас: <b>{fmtRub(x.price)}</b> · {x.proposed_by === "tutor" ? "ваше предложение" : "цена ученика"} ·{" "}
-                <Link href={`/dashboard/chats?c=${x.id}`} className="font-medium text-brand hover:underline">
+                <Link href={`/dashboard/chats?c=${x.id}`} className="font-medium text-brand-text hover:underline">
                   чат
                 </Link>
               </p>

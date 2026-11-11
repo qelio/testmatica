@@ -1,19 +1,32 @@
-<svg viewBox="0 0 100 124" xmlns="http://www.w3.org/2000/svg">
-      <rect x="24" y="0" width="11" height="14" rx="2.5" fill="#e6bf88" />
-      <rect x="65" y="0" width="11" height="14" rx="2.5" fill="#e6bf88" />
-      <rect x="20" y="94" width="60" height="3.4" rx="1.7" fill="#c8a07c" />
-      <path d="M16 74 H26 L21 120 H11 Z" fill="#e6bf88" />
-      <path d="M74 74 H84 L89 120 H79 Z" fill="#e6bf88" />
-      <rect x="2" y="9" width="96" height="66" rx="5" fill="#00a074" />
-      <path
-        d="M19.5 38 H27 L33.7 57.5 L40.2 26.5 H72.2 M51.6 34.6 L69.6 57.5 M69.6 34.6 L51.6 57.5"
-        fill="none"
-        stroke="#fff"
-        stroke-width="4.2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-      <rect x="0" y="77" width="100" height="3.6" rx="1.8" fill="#c8a07c" />
-      <rect x="7.5" y="119" width="17" height="4" rx="2" fill="#cda37b" />
-      <rect x="75.5" y="119" width="17" height="4" rx="2" fill="#cda37b" />
-    </svg>
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<clipPath id="favTile1"><rect x="0.5" y="0.5" width="63" height="63" rx="14"/></clipPath>
+<clipPath id="favEye1"><circle cx="118" cy="74" r="24"/></clipPath>
+</defs>
+<rect x="0.5" y="0.5" width="63" height="63" rx="14" fill="#FFFFFF" stroke="#DCE4DA" stroke-width="1"/>
+<g clip-path="url(#favTile1)">
+<g transform="translate(-2.2 -2.4) scale(0.32)">
+<g fill="#157A4C" stroke="#157A4C" stroke-width="6" stroke-linejoin="round">
+<polygon points="34,132 12,112 32,102"/>
+<polygon points="48,92 24,72 52,68"/>
+<polygon points="76,46 80,20 98,40"/>
+</g>
+<path d="M30 215 L30 192 C20 140 30 90 60 60 C85 35 125 30 150 50 C165 62 172 72 186 76 C202 81 206 100 196 112 C186 124 160 128 135 126 C115 125 106 140 110 192 L110 215 Z" fill="#1F9D63"/>
+<path d="M70 215 L72 192 C78 158 100 134 136 126 C116 134 108 158 110 192 L110 215 Z" fill="#9BE7B4"/>
+<g fill="#B8F04A">
+<rect x="34" y="116" width="13" height="13" rx="3"/>
+<rect x="49" y="131" width="13" height="13" rx="3"/>
+<rect x="64" y="116" width="13" height="13" rx="3"/>
+<rect x="79" y="101" width="13" height="13" rx="3"/>
+</g>
+<circle cx="118" cy="74" r="24" fill="#FFFFFF" stroke="#0E3B2A" stroke-width="2"/>
+<circle cx="127" cy="80" r="12" fill="#0E3B2A"/>
+<circle cx="132" cy="75" r="3.5" fill="#FFFFFF"/>
+<g clip-path="url(#favEye1)"><path d="M80 20 L160 20 L160 67 L80 49 Z" fill="#1F9D63"/></g>
+<path d="M90 53 L150 66" stroke="#0E3B2A" stroke-width="7" stroke-linecap="round" fill="none"/>
+<ellipse cx="182" cy="88" rx="5" ry="3.2" fill="#0E3B2A" transform="rotate(-15 182 88)"/>
+<path d="M140 108 Q166 116 192 103" stroke="#0E3B2A" stroke-width="5" stroke-linecap="round" fill="none"/>
+<path d="M140 108 Q133 106 132 99" stroke="#0E3B2A" stroke-width="5" stroke-linecap="round" fill="none"/>
+</g>
+</g>
+</svg>

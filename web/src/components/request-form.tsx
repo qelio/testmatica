@@ -36,7 +36,7 @@ function CompetencyPicker({
               type="button"
               aria-pressed={on}
               onClick={() => onChange(on ? value.filter((x) => x !== c.id) : [...value, c.id])}
-              className={`rounded-lg border px-2.5 py-1 text-sm ${on ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+              className={`rounded-lg border px-2.5 py-1 text-sm ${on ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
             >
               {c.title}
             </button>
@@ -136,7 +136,7 @@ export function RequestForm({
                       weekdays: on ? form.schedule.weekdays.filter((x) => x !== i) : [...form.schedule.weekdays, i].sort(),
                     })
                   }
-                  className={`h-9 w-9 rounded-lg border text-sm ${on ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft"}`}
+                  className={`h-9 w-9 rounded-lg border text-sm ${on ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft"}`}
                 >
                   {d}
                 </button>

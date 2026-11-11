@@ -21,7 +21,7 @@ export function TaskBankCard({ task, scope }: { task: TaskFull; scope: "public" 
   return (
     <article className="space-y-3 rounded-2xl border border-line bg-surface p-5">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <Link href={`/dashboard/tasks/${task.id}`} className="min-w-0 basis-full font-medium hover:text-brand hover:underline">
+        <Link href={`/dashboard/tasks/${task.id}`} className="min-w-0 basis-full font-medium hover:text-brand-text hover:underline">
           <TaskNumber n={task.number} />
           {task.title}
         </Link>
@@ -59,7 +59,7 @@ export function TaskBankCard({ task, scope }: { task: TaskFull; scope: "public" 
 
       {hasSolution && (
         <div className="space-y-2">
-          <button type="button" onClick={() => setOpen(!open)} className="text-sm text-brand hover:underline" aria-expanded={open}>
+          <button type="button" onClick={() => setOpen(!open)} className="text-sm text-brand-text hover:underline" aria-expanded={open}>
             {open ? "Скрыть решение" : "Показать решение"}
           </button>
           {open && (

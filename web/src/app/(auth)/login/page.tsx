@@ -106,7 +106,7 @@ function LoginForm() {
         <h1 className="text-2xl font-semibold tracking-tight">Вход</h1>
         <p className="mt-2 text-fg-soft">
           Нет аккаунта?{" "}
-          <Link href="/register" className="font-medium text-brand hover:underline">
+          <Link href="/register" className="font-medium text-brand-text hover:underline">
             Зарегистрируйтесь
           </Link>
         </p>
@@ -131,7 +131,7 @@ function LoginForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <Link href="/forgot-password" className="mt-2 inline-block text-sm text-brand hover:underline">
+        <Link href="/forgot-password" className="mt-2 inline-block text-sm text-brand-text hover:underline">
           Забыли пароль?
         </Link>
       </div>

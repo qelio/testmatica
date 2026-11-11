@@ -89,7 +89,7 @@ function AvatarBlock({ user, onChanged }: { user: UserInfo; onChanged: (u: UserI
     >
       {feedback}
       <div className="flex flex-wrap items-center gap-4">
-        <span className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-2xl font-semibold text-brand">
+        <span className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-2xl font-semibold text-brand-text">
           {user.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />

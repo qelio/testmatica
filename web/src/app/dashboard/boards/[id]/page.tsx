@@ -15,7 +15,7 @@ export default function BoardPage() {
     return (
       <div className="mx-auto max-w-xl space-y-3">
         <Alert>{board.error}</Alert>
-        <Link href="/dashboard/boards" className="text-sm text-brand hover:underline">
+        <Link href="/dashboard/boards" className="text-sm text-brand-text hover:underline">
           ← Доски
         </Link>
       </div>

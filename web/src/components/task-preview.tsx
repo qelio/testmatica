@@ -14,7 +14,7 @@ export function PreviewToggle({ open, onToggle }: { open: boolean; onToggle: () 
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      className="shrink-0 rounded-lg px-2 py-1 text-xs text-brand hover:bg-brand/10"
+      className="shrink-0 rounded-lg px-2 py-1 text-xs text-brand-text hover:bg-brand/10"
     >
       {open ? "скрыть условие" : "условие"}
     </button>

@@ -687,6 +687,42 @@ async def test_course_test_read_only_for_teachers(client, fakes):
     assert (await client.get(f"/tests/{own['id']}", headers=bearer(uuid4()))).status_code == 404
 
 
+async def test_moderator_reviews_course_tests(client, fakes):
+    """Модератор проверяет тесты автора вместе с курсом или черновиком изменений: видит новые и изменённые (в той версии,
+    что уйдёт ученикам), только для просмотра; тесты к новому модулю черновика публикуются вместе с ним (решение №46)."""
+    author, moderator, teacher = uuid4(), uuid4(), uuid4()
+    mod_h = bearer(moderator, ("moderator",))
+    tasks = await make_tasks(client, author)
+    mod = fakes.module(author, status="published")
+    live = fakes.modules[mod]["course_id"]
+    body = {"title": "Новая проверочная", "grade_level": 7, "items": [{"task_id": tasks[0]["id"]}], "module_id": mod}
+    new = (await client.post("/tests", json=body, headers=bearer(author))).json()
+    listed = lambda who, review: client.get("/course-tests", params={"module_id": mod, "review": review}, headers=who)  # noqa: E731
+    assert (await listed(bearer(teacher), True)).json() == []  # педагогам — только принятые
+    assert [(t["title"], t["review"]) for t in (await listed(mod_h, True)).json()] == [("Новая проверочная", "new")]
+    assert (await listed(mod_h, False)).json() == []
+    seen = (await client.get(f"/tests/{new['id']}", headers=mod_h)).json()
+    assert (seen["title"], seen["can_edit"], seen["published"], seen["review"]) == ("Новая проверочная", False, False, "new")
+    assert (await client.get(f"/tests/{new['id']}", headers=bearer(teacher))).status_code == 404
+
+    # Тест к модулю, который появился только в черновике изменений, — проверяется и публикуется вместе с черновиком.
+    draft_mod = fakes.module(author, status="private")
+    draft = fakes.modules[draft_mod]["course_id"]
+    extra = (await client.post("/tests", json=body | {"title": "К новой теме", "module_id": draft_mod, "items": [{"task_id": tasks[1]["id"]}]},
+                               headers=bearer(author))).json()
+    await apply(handlers.on_content_event, "content.course.submitted", course_id=draft, author_id=author, task_ids=[], revision_of=live)
+    assert (await client.get(f"/tasks/{tasks[1]['id']}", headers=bearer(author))).json()["status"] == "pending"
+    await apply(handlers.on_content_event, "content.course.published", course_id=live, author_id=author, task_ids=[],
+                revision_id=draft, revision_of=live)
+    fakes.modules[draft_mod] |= {"course_id": live, "course_status": "published"}  # модуль перенесён в курс с тем же id
+    async with db.sessionmaker() as s:
+        moved = await s.get(Quiz, UUID(extra["id"]))
+        assert moved.published_at is not None and str(moved.course_id) == live
+    assert [t["title"] for t in (await client.get("/course-tests", params={"module_id": draft_mod}, headers=bearer(teacher))).json()] \
+        == ["К новой теме"]
+    assert (await client.get(f"/tasks/{tasks[1]['id']}", headers=bearer(teacher))).json()["status"] == "published"
+
+
 async def test_staff_course_tests_publish_at_once(client, fakes):
     """Курсы штатных редакторов публикуются без очереди — их тесты к опубликованному курсу видны сразу,
     задачи в них сразу публичные (решение №46)."""

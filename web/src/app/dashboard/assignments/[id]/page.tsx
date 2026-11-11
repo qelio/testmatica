@@ -65,7 +65,7 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
       {a.module && (
         <p className="mt-1 text-sm">
           Тема:{" "}
-          <Link href={`/dashboard/library/module/${a.module.id}`} className="text-brand hover:underline">
+          <Link href={`/dashboard/library/module/${a.module.id}`} className="text-brand-text hover:underline">
             {a.module.title}
           </Link>
         </p>
@@ -73,7 +73,7 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
       {isTeacher && !a.variants && (
         <p className="mt-1 text-sm">
           Тест:{" "}
-          <Link href={`/dashboard/tests/${a.test_id}`} className="text-brand hover:underline">
+          <Link href={`/dashboard/tests/${a.test_id}`} className="text-brand-text hover:underline">
             {a.test_title}
           </Link>
         </p>
@@ -83,7 +83,7 @@ function Header({ a, isTeacher }: { a: Assignment; isTeacher: boolean }) {
           {a.variants.map((v) => (
             <li key={v.number}>
               Вариант {v.number}:{" "}
-              <Link href={`/dashboard/tests/${v.test_id}`} className="text-brand hover:underline">
+              <Link href={`/dashboard/tests/${v.test_id}`} className="text-brand-text hover:underline">
                 {v.test_title}
               </Link>
               <span className="text-fg-soft">
@@ -146,13 +146,13 @@ function TeacherPanel({ a, reload }: { a: Assignment; reload: () => void }) {
         <span>
           Сдали: <b>{s.submitted}</b> из {s.total}
         </span>
-        {s.inProgress > 0 && <span className="text-brand">решают сейчас: {s.inProgress}</span>}
+        {s.inProgress > 0 && <span className="text-brand-text">решают сейчас: {s.inProgress}</span>}
         {s.toReview > 0 && <span className="text-tutor">ждут вашей проверки: {s.toReview}</span>}
         {s.avg !== null && <span>средний результат: {s.avg}%</span>}
         {a.proctoring && (
           <Link
             href={`/dashboard/assignments/${a.id}/proctoring`}
-            className="rounded-xl bg-brand px-3 py-1.5 font-medium text-white hover:bg-brand-strong"
+            className="rounded-xl bg-brand px-3 py-1.5 font-medium text-on-brand hover:bg-brand-strong"
           >
             Наблюдение{s.inProgress ? ` · решают ${s.inProgress}` : ""}
           </Link>
@@ -371,7 +371,7 @@ function StudentRow({
         <td className={cell}>
           <span className="flex gap-x-2 whitespace-nowrap">
             {row.attempts.map((t) => (
-              <Link key={t.id} href={`/dashboard/attempts/${t.id}`} className="text-brand hover:underline">
+              <Link key={t.id} href={`/dashboard/attempts/${t.id}`} className="text-brand-text hover:underline">
                 {row.attempts.length > 1 ? `№${t.number}` : "открыть"}
               </Link>
             ))}
@@ -549,7 +549,7 @@ function StudentPanel({ a }: { a: Assignment }) {
                   ) : (
                     <Badge>проверяется</Badge>
                   )}
-                  <Link href={`/dashboard/attempts/${t.id}`} className="ml-auto text-brand hover:underline">
+                  <Link href={`/dashboard/attempts/${t.id}`} className="ml-auto text-brand-text hover:underline">
                     Посмотреть
                   </Link>
                 </li>

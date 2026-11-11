@@ -380,7 +380,7 @@ function SharesBlock({ g, onChanged, onError }: { g: GroupDetail; onChanged: () 
       {list.data && !list.data.colleagues.length ? (
         <p className="text-sm">
           Коллег пока нет —{" "}
-          <Link href="/dashboard/colleagues" className="text-brand hover:underline">
+          <Link href="/dashboard/colleagues" className="text-brand-text hover:underline">
             добавьте их в «Мои коллеги»
           </Link>
           .

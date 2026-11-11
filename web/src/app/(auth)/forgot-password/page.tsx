@@ -56,13 +56,13 @@ export default function ForgotPasswordPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Восстановление пароля — скоро</h1>
         <p className="text-fg-soft">
           Письма с кодами пока не отправляются. Напишите на{" "}
-          <a href="mailto:info@testmatica.ru" className="text-brand underline">
+          <a href="mailto:info@testmatica.ru" className="text-brand-text underline">
             info@testmatica.ru
           </a>{" "}
           с адреса, указанного при регистрации, — администратор выдаст временный пароль. Ученику, которого добавил педагог, новый пароль
           выдаёт педагог.
         </p>
-        <Link href="/login" className="text-brand hover:underline">
+        <Link href="/login" className="text-brand-text hover:underline">
           ← Ко входу
         </Link>
       </div>
@@ -76,7 +76,7 @@ export default function ForgotPasswordPage() {
         <Alert kind="success">Все сеансы на других устройствах завершены. Войдите с новым паролем.</Alert>
         <Link
           href="/login"
-          className="flex h-11 items-center justify-center rounded-xl bg-brand font-medium text-white hover:bg-brand-strong"
+          className="flex h-11 items-center justify-center rounded-xl bg-brand font-medium text-on-brand hover:bg-brand-strong"
         >
           Войти
         </Link>
@@ -131,7 +131,7 @@ export default function ForgotPasswordPage() {
         Получить код
       </Button>
       <p className="text-center text-sm">
-        <Link href="/login" className="text-brand hover:underline">
+        <Link href="/login" className="text-brand-text hover:underline">
           Вернуться ко входу
         </Link>
       </p>

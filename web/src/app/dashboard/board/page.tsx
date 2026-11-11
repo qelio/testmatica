@@ -4,6 +4,7 @@ import { LiveKitRoom, useLocalParticipant, useTracks, VideoTrack } from "@liveki
 import { Track } from "livekit-client";
 import { useState } from "react";
 
+import { ScreenQualityToggle, useScreenQuality } from "@/components/screen-quality";
 import { Alert, Button } from "@/components/ui";
 import { board } from "@/lib/api";
 import { errorText } from "@/lib/hooks";
@@ -79,13 +80,14 @@ function Presenter({ onStop }: { onStop: () => void }) {
   const mine = useTracks([Track.Source.ScreenShare]).filter((t) => t.participant.isLocal);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  useScreenQuality();
 
   async function share() {
     setBusy(true);
     setError(undefined);
     try {
       // Звук — если показывают вкладку с видео; окно и экран передаются без звука.
-      await localParticipant.setScreenShareEnabled(true, { audio: true, selfBrowserSurface: "exclude" });
+      await localParticipant.setScreenShareEnabled(true, { audio: true, selfBrowserSurface: "exclude", contentHint: "text" });
     } catch {
       setError("Показ не начался. Нажмите кнопку ещё раз и выберите экран, окно или вкладку.");
     } finally {
@@ -127,6 +129,7 @@ function Presenter({ onStop }: { onStop: () => void }) {
           Остановить показ
         </Button>
       </div>
+      <ScreenQualityToggle />
       <p className="text-xs text-fg-soft">Не закрывайте эту вкладку, пока идёт показ: закроете — доска снова покажет код.</p>
     </div>
   );

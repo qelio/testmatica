@@ -4,17 +4,34 @@ import Link from "next/link";
 import { forwardRef, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
-import { LogoMark } from "@/components/logo-mark";
+import { LogoFull, LogoMark } from "@/components/logo-mark";
 
-export function Logo({ className = "", compact = false }: { className?: string; compact?: boolean }) {
+/** Логотип (решение №64). compact: на узких экранах остаётся только значок. live: геккон моргает и следит глазом за курсором. */
+export function Logo({ className = "", compact = false, live = false }: { className?: string; compact?: boolean; live?: boolean }) {
+  const link = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (!live || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const onMove = (e: PointerEvent) => {
+      const root = link.current;
+      // На узком экране виден только значок, поэтому берём тот глаз, у которого есть размер.
+      const eye = [...(root?.querySelectorAll(".tm-gecko-eye") ?? [])].find((el) => el.getBoundingClientRect().width > 0);
+      if (!root || !eye) return;
+      const box = eye.getBoundingClientRect();
+      const dx = e.clientX - (box.left + box.width / 2);
+      const dy = e.clientY - (box.top + box.height / 2);
+      const dist = Math.hypot(dx, dy) || 1;
+      const reach = Math.min(1, dist / 160) * 11; // зрачок не выходит за край глаза
+      // 9 и 6 — смещение зрачка от центра глаза в рисунке.
+      root.style.setProperty("--gx", `${(dx / dist) * reach - 9}px`);
+      root.style.setProperty("--gy", `${(dy / dist) * reach - 6}px`);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [live]);
   return (
-    <Link
-      href="/"
-      className={`inline-flex items-center gap-2 ${className}`}
-    >
-      <LogoMark className="h-8 w-auto shrink-0" />
-      {/* compact: на узких экранах остаётся только значок */}
-      <span className={`pr-1 font-rounded text-xl font-black tracking-tight text-leaf ${compact ? "hidden sm:inline" : ""}`}>ТестМатика</span>
+    <Link ref={link} href="/" aria-label="ТестМатика" className={`inline-flex items-center ${live ? "tm-live" : ""} ${className}`}>
+      {compact && <LogoMark className="h-9 w-auto shrink-0 sm:hidden" />}
+      <LogoFull className={`w-auto shrink-0 ${compact ? "hidden h-10 sm:block" : "h-[52px]"}`} />
     </Link>
   );
 }
@@ -32,7 +49,7 @@ type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export function Button({ variant = "primary", loading, disabled, className = "", children, ...rest }: ButtonProps) {
   const styles = {
-    primary: "bg-brand text-white hover:bg-brand-strong disabled:bg-brand/50",
+    primary: "bg-brand text-on-brand hover:bg-brand-strong disabled:bg-brand/50",
     secondary: "border border-line bg-surface text-fg hover:bg-muted disabled:opacity-50",
     ghost: "text-fg-soft hover:bg-muted hover:text-fg disabled:opacity-50",
   }[variant];
@@ -168,7 +185,7 @@ export function CodeStep({
         {cooldown > 0 ? (
           <span>Отправить код повторно можно через {cooldown} с</span>
         ) : (
-          <button type="button" onClick={resend} className="font-medium text-brand hover:underline">
+          <button type="button" onClick={resend} className="font-medium text-brand-text hover:underline">
             Отправить код ещё раз
           </button>
         )}
@@ -187,7 +204,7 @@ export function Badge({
 }) {
   const styles = {
     neutral: "bg-muted text-fg-soft",
-    brand: "bg-brand/10 text-brand",
+    brand: "bg-brand/10 text-brand-text",
     warn: "bg-tutor/10 text-tutor",
     ok: "bg-ok/10 text-ok",
   }[tone];

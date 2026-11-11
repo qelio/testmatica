@@ -59,7 +59,7 @@ export function TicketRow({ t, staff }: { t: SupportTicket; staff: boolean }) {
           </p>
         </div>
         {t.unread > 0 && (
-          <span className="mt-1 grid h-6 min-w-6 place-items-center rounded-full bg-brand px-1.5 text-xs font-medium text-white" aria-label="Непрочитанных">
+          <span className="mt-1 grid h-6 min-w-6 place-items-center rounded-full bg-brand px-1.5 text-xs font-medium text-on-brand" aria-label="Непрочитанных">
             {t.unread}
           </span>
         )}

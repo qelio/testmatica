@@ -68,7 +68,7 @@ export function TutorPage() {
           (authed ? (
             <Button onClick={() => setRequesting(true)}>Хочу с вами заниматься</Button>
           ) : (
-            <Link href="/login" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-strong">
+            <Link href="/login" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
               Хочу с вами заниматься
             </Link>
           ))}
@@ -133,7 +133,7 @@ export function TutorPage() {
           ) : (
             <p className="text-sm text-fg-soft">
               Документы проверены модератором.{" "}
-              <Link href="/login" className="text-brand hover:underline">
+              <Link href="/login" className="text-brand-text hover:underline">
                 Войдите
               </Link>
               , чтобы увидеть список.

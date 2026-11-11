@@ -105,7 +105,7 @@ export default function RegisterPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Регистрация</h1>
         <p className="mt-2 text-fg-soft">
           Уже есть аккаунт?{" "}
-          <Link href="/login" className="font-medium text-brand hover:underline">
+          <Link href="/login" className="font-medium text-brand-text hover:underline">
             Войдите
           </Link>
         </p>
@@ -176,7 +176,7 @@ export default function RegisterPage() {
           />
           <span className={fieldErrors.accept_terms ? "text-danger" : "text-fg-soft"}>
             Принимаю{" "}
-            <Link href="/legal/terms" target="_blank" className="text-brand underline">
+            <Link href="/legal/terms" target="_blank" className="text-brand-text underline">
               пользовательское соглашение
             </Link>
           </span>
@@ -190,11 +190,11 @@ export default function RegisterPage() {
           />
           <span className={fieldErrors.consent_pdn ? "text-danger" : "text-fg-soft"}>
             Даю{" "}
-            <Link href="/legal/consent" target="_blank" className="text-brand underline">
+            <Link href="/legal/consent" target="_blank" className="text-brand-text underline">
               согласие на обработку персональных данных
             </Link>{" "}
             на условиях{" "}
-            <Link href="/legal/privacy" target="_blank" className="text-brand underline">
+            <Link href="/legal/privacy" target="_blank" className="text-brand-text underline">
               политики
             </Link>
           </span>

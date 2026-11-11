@@ -72,7 +72,7 @@ function PeriodPicker({ value, onChange }: { value: AnalyticsPeriod; onChange: (
               type="button"
               aria-pressed={on}
               onClick={() => onChange({ ...value, from, to: today })}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${on ? "border-brand bg-brand/10 text-brand" : "border-line text-fg-soft hover:text-fg"}`}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${on ? "border-brand bg-brand/10 text-brand-text" : "border-line text-fg-soft hover:text-fg"}`}
             >
               {p.title}
             </button>
@@ -113,7 +113,7 @@ function Locked() {
       <p className="font-medium">Динамика, сравнение с классом, тепловая карта пропусков, сводная ведомость и выгрузка в PDF/Excel</p>
       <p className="mt-1 text-fg-soft">
         Доступны на тарифе{" "}
-        <Link href="/dashboard/subscription" className="text-brand hover:underline">
+        <Link href="/dashboard/subscription" className="text-brand-text hover:underline">
           «Базовый»
         </Link>
         . Средний балл и посещаемость — на любом тарифе.

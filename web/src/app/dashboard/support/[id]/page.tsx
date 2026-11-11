@@ -41,7 +41,7 @@ export default function TicketPage() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-8rem)] max-w-4xl flex-col gap-4">
+    <div className="mx-auto flex h-[calc(100dvh-8.5rem)] max-w-4xl flex-col gap-4">
       <div className="space-y-2">
         <Link href="/dashboard/support" className="text-sm text-fg-soft hover:text-fg">
           ← {staff ? "Все обращения" : "Мои обращения"}

@@ -3,10 +3,10 @@ import Link from "next/link";
 import { LEGAL, LEGAL_ORDER, legalHref, OPERATOR } from "@/lib/legal";
 
 /** Нижняя строка сайта: документы и реквизиты (закон требует держать политику ПД в открытом доступе). */
-export function LegalBar() {
+export function LegalBar({ wide = false }: { wide?: boolean }) {
   return (
     <div className="border-t border-line bg-surface">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-4 text-xs text-fg-soft sm:px-6">
+      <div className={`mx-auto flex ${wide ? "max-w-[1446px] lg:px-[60px]" : "max-w-6xl"} flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-4 text-xs text-fg-soft sm:px-6`}>
         <p>
           © {new Date().getFullYear()} ТестМатика · {OPERATOR.name}, самозанятый, ИНН {OPERATOR.inn}
         </p>
