@@ -55,6 +55,12 @@ snapshot: ## Разослать пользователей, группы и пр
 admin: ## Создать администратора: make admin email=admin@example.com
 	$(DC) exec identity python -m app.cli create-user --email $(email) --last-name "$(or $(last),Администратор)" --first-name "$(or $(first),Платформы)" --role admin
 
+deploy: ## Выкладка на боевой сайт с этого компьютера (all=1 — все образы, dry=1 — только план)
+	@ALL=$(all) DRY=$(dry) bash infra/prod/deploy-local.sh
+
+rollback: ## Вернуть на боевом сайте предыдущую версию
+	@bash infra/prod/deploy-local.sh rollback
+
 db-init: ## Создать базы для новых сервисов (после добавления в SERVICE_DATABASES)
 	$(DC) up -d --wait postgres
 	$(DC) exec postgres sh /docker-entrypoint-initdb.d/init-databases.sh

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { LEGAL, LEGAL_ORDER, legalHref, OPERATOR } from "@/lib/legal";
+import { APP_VERSION } from "@/lib/version";
 
 /** Нижняя строка сайта: документы и реквизиты (закон требует держать политику ПД в открытом доступе). */
 export function LegalBar({ wide = false }: { wide?: boolean }) {
@@ -16,6 +17,8 @@ export function LegalBar({ wide = false }: { wide?: boolean }) {
               {LEGAL[slug].short}
             </Link>
           ))}
+          {/* Номер выкладки (решение №65); на локальном стенде его нет. */}
+          {APP_VERSION && <span>Версия {APP_VERSION}</span>}
         </nav>
       </div>
     </div>

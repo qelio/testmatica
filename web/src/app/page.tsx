@@ -32,7 +32,6 @@ import { LegalBar } from "@/components/legal-bar";
 import { NewsCard } from "@/components/news-card";
 import { PublicShell } from "@/components/public-shell";
 import { StartLink } from "@/components/start-link";
-import { APP_VERSION } from "@/lib/version";
 import { TutorCardView } from "@/components/tutor-card";
 import type { CourseSummary } from "@/lib/api";
 import { pluralWord } from "@/lib/format";
@@ -480,7 +479,6 @@ function Footer({ contacts }: { contacts?: LandingOut["contacts"] }) {
           <Link href="/board" className="font-medium text-brand-text hover:underline">
             Показать экран на доске
           </Link>
-          {APP_VERSION && <span>Версия {APP_VERSION}</span>}
         </nav>
       </div>
       <LegalBar wide />
