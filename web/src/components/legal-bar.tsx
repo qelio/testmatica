@@ -7,7 +7,7 @@ import { APP_VERSION } from "@/lib/version";
 export function LegalBar({ wide = false }: { wide?: boolean }) {
   return (
     <div className="border-t border-line bg-surface">
-      <div className={`mx-auto flex ${wide ? "max-w-[1446px] lg:px-[60px]" : "max-w-6xl"} flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-4 text-xs text-fg-soft sm:px-6`}>
+      <div className={`mx-auto flex ${wide ? "max-w-[1446px] lg:px-[60px]" : "max-w-6xl"} flex-col gap-2 px-4 py-4 text-xs text-fg-soft sm:px-6`}>
         <p>
           © {new Date().getFullYear()} ТестМатика · {OPERATOR.name}, самозанятый, ИНН {OPERATOR.inn}
         </p>
@@ -17,9 +17,9 @@ export function LegalBar({ wide = false }: { wide?: boolean }) {
               {LEGAL[slug].short}
             </Link>
           ))}
-          {/* Номер выкладки (решение №65); на локальном стенде его нет. */}
-          {APP_VERSION && <span>Версия {APP_VERSION}</span>}
         </nav>
+        {/* Номер выкладки (решение №65); на локальном стенде его нет. */}
+        {APP_VERSION && <p>Версия {APP_VERSION}</p>}
       </div>
     </div>
   );
