@@ -21,9 +21,19 @@ const PAGE = 20;
 
 /** Банк задач: рубрикатор «предмет → раздел → тема» слева, задачи выбранного узла справа — с условиями, по 20. */
 export default function TaskBankPage() {
+  return <Suspense fallback={<Spinner />}><TaskBank /></Suspense>;
+}
+
+function TaskBank() {
+  const params = useSearchParams();
+  const initialScope = params.get("imported") === "1" || params.get("scope") === "mine" ? "mine" : "public";
+  return <TaskBankContent key={initialScope} initialScope={initialScope} />;
+}
+
+function TaskBankContent({ initialScope }: { initialScope: Scope }) {
   const { user } = useAuth();
   const staff = !!user?.roles.some((r) => r === "moderator" || r === "admin");
-  const [scope, setScope] = useState<Scope>("mine");
+  const [scope, setScope] = useState<Scope>(initialScope);
   const [node, setNode] = useState("");
   const [treeOpen, setTreeOpen] = useState(false);
   const [filters, setFilters] = useState({ type: "", difficulty: "", exam_item_id: "" });
@@ -58,7 +68,7 @@ export default function TaskBankPage() {
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Банк задач</h1>
-        <Suspense><ImportSuccess /></Suspense>
+        <ImportSuccess />
         <div className="flex flex-wrap gap-2">
           {staff && (
             <Link href="/dashboard/tasks/exams" className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted">
@@ -80,7 +90,7 @@ export default function TaskBankPage() {
         </div>
       </div>
       <div className="flex rounded-xl border border-line bg-muted p-1 text-sm sm:w-fit" role="tablist">
-        {(["mine", "public"] as const).map((s) => (
+        {(["public", "mine"] as const).map((s) => (
           <button
             key={s}
             role="tab"
@@ -230,7 +240,7 @@ function ImportSuccess() {
 
   function close() {
     sessionStorage.removeItem(IMPORTED_TASKS_KEY);
-    router.replace("/dashboard/tasks", { scroll: false });
+    router.replace("/dashboard/tasks?scope=mine", { scroll: false });
   }
 
   return (

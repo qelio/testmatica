@@ -45,7 +45,7 @@ export function formulaHtml(latex: string): string {
   try {
     return katex.renderToString(latex, { throwOnError: false, displayMode: false, output: "html" });
   } catch {
-    return latex;
+    return latex.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   }
 }
 
