@@ -3,15 +3,17 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query, Request
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 
 from .. import access, sharing, views
 from ..courses import course_task_visible
 from ..deps import auth, db, outbox
+from ..ege_pdf import MAX_BYTES, InvalidVariant, parse_variant
 from ..models import AUTO_TYPES, CODE, PENDING, PRIVATE, PUBLISHED, REJECTED, REMOVED, ExamItem, Task, TaskOption, TaskTest, Topic
 from ..schemas import TaskIn, TaskOut, TaskPage, TopicMove
 
@@ -99,15 +101,57 @@ async def _apply(session: AsyncSession, task: Task, body: TaskIn) -> None:
         task.language = task.time_limit_s = task.memory_limit_mb = None
 
 
-@router.post("", response_model=TaskOut, status_code=201)
-async def create(body: TaskIn, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)) -> TaskOut:
+async def _create_task(session: AsyncSession, body: TaskIn, principal: Principal) -> Task:
     task = Task(owner_id=principal.user_id, status=PRIVATE)
     await _apply(session, task, body)
     session.add(task)
     await session.flush()
     await outbox.event(session, "assessment.task.created", {"task_id": str(task.id), "type": task.type}, actor_id=principal.user_id)
+    return task
+
+
+@router.post("", response_model=TaskOut, status_code=201)
+async def create(body: TaskIn, principal: Principal = Depends(author), session: AsyncSession = Depends(db.session)) -> TaskOut:
+    task = await _create_task(session, body, principal)
     await session.commit()
     return await views.full(session, task, principal)
+
+
+@router.post("/import-ege/save", response_model=list[TaskOut], status_code=201)
+async def save_ege(
+    bodies: list[TaskIn] = Body(min_length=1, max_length=100),
+    principal: Principal = Depends(author),
+    session: AsyncSession = Depends(db.session),
+) -> list[TaskOut]:
+    tasks = []
+    for number, body in enumerate(bodies, 1):
+        if body.topic_id is None:
+            raise ApiError(422, "topic_required", f"Задача {number}: выберите раздел или тему")
+        try:
+            tasks.append(await _create_task(session, body, principal))
+        except ApiError as exc:
+            raise ApiError(exc.status, exc.code, f"Задача {number}: {exc.message}", exc.details) from exc
+    result = [await views.full(session, task, principal) for task in tasks]
+    await session.commit()
+    return result
+
+
+@router.post("/import-ege", dependencies=[Depends(author)])
+async def import_ege(request: Request) -> dict:
+    """Разобрать PDF для предпросмотра без создания задач."""
+    if request.headers.get("content-type") != "application/pdf":
+        raise ApiError(415, "pdf_required", "Загрузите файл в формате PDF")
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > MAX_BYTES:
+            raise ApiError(413, "pdf_too_large", "PDF должен занимать не больше 10 МБ")
+        data.extend(chunk)
+    if not data.startswith(b"%PDF-"):
+        raise ApiError(422, "invalid_pdf", "Файл не похож на PDF")
+    try:
+        return await run_in_threadpool(parse_variant, bytes(data))
+    except InvalidVariant as exc:
+        raise ApiError(422, "invalid_ege_pdf", str(exc)) from exc
 
 
 @router.get("/{task_id}", response_model=TaskOut)

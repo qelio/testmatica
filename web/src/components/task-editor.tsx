@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useRef, useState, type Ref } from "react";
 
 import { CodeEditor } from "@/components/code-editor";
 import { ExamItemsPicker } from "@/components/exams";
@@ -8,7 +8,7 @@ import { Markdown } from "@/components/markdown";
 import { RichEditor } from "@/components/rich-editor";
 import { buildRubric, TopicSelect } from "@/components/topics";
 import { Alert, Button, Field, Select } from "@/components/ui";
-import { assessment, type TaskFull, type TaskInput, type TaskType } from "@/lib/api";
+import { assessment, type EgePdfDraft, type TaskFull, type TaskInput, type TaskType, type Topic } from "@/lib/api";
 import { TASK_TYPE_LABELS } from "@/lib/format";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -43,18 +43,38 @@ function fromTask(t?: TaskFull): TaskInput {
 /** Форма задачи. types — какие типы доступны (в курсы — только с автопроверкой). */
 export function TaskEditor({
   task,
+  imported,
+  importTopics,
+  batchRef,
   types = ["choice", "short", "long", "code"],
   onSaved,
   onCancel,
 }: {
   task?: TaskFull;
+  imported?: EgePdfDraft;
+  importTopics?: Topic[];
   types?: TaskType[];
-  onSaved: (t: TaskFull) => void;
+  batchRef?: Ref<{ collect: () => TaskInput | null }>;
+  onSaved?: (t: TaskFull) => void;
   onCancel?: () => void;
 }) {
-  const topics = useLoad(() => assessment.topics(), []);
+  const topics = useLoad(() => importTopics ? Promise.resolve(importTopics) : assessment.topics(), [importTopics]);
   const exams = useLoad(() => assessment.exams(), []);
-  const [form, setForm] = useState<TaskInput>(() => fromTask(task));
+  const [form, setForm] = useState<TaskInput>(() => {
+    const defaults = fromTask(task);
+    if (!imported) return defaults;
+    return {
+      ...defaults,
+      title: imported.title,
+      statement: imported.statement,
+      explanation: imported.explanation,
+      type: imported.answer && imported.answer.length <= 200 ? "short" : "long",
+      answers: [{ mode: "exact", value: imported.answer }],
+      options: [{ text: imported.answer, is_correct: true }, { text: "", is_correct: false }],
+      tests: [],
+    };
+  });
+  const [referenceAnswer, setReferenceAnswer] = useState(imported?.answer ?? "");
   const [tags, setTags] = useState((task?.tags ?? []).join(", "));
   const [preview, setPreview] = useState(false);
   const [error, setError] = useState<string>();
@@ -62,22 +82,53 @@ export function TaskEditor({
   // Пока в редакторе грузится картинка или файл — не сохраняем: их ещё нет в тексте.
   const [loadingIn, setLoadingIn] = useState<Record<string, boolean>>({});
   const uploading = Object.values(loadingIn).some(Boolean);
+  const formRef = useRef<HTMLFormElement>(null);
   const set = <K extends keyof TaskInput>(k: K, v: TaskInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const statement = imported && form.statement.trim()
+    ? `${form.statement.trimEnd()}\n\nИсточник: [${imported.source_name}](${imported.source_url})`
+    : form.statement;
+
+  function collect(): TaskInput | null {
+    setError(undefined);
+    if (uploading) {
+      setError("Дождитесь загрузки файлов");
+      return null;
+    }
+    if (!formRef.current?.reportValidity()) return null;
+    if (imported && !form.topic_id) {
+      setError("Выберите раздел или тему для задачи");
+      return null;
+    }
+    if (imported && !form.statement.trim()) {
+      setError("Введите условие задачи");
+      return null;
+    }
+    const explanation = [form.explanation];
+    if (imported && (form.type === "long" || form.type === "code") && referenceAnswer.trim()) {
+      explanation.push(`Ответ: ${referenceAnswer.trim()}`);
+    }
+    return {
+      ...form,
+      statement,
+      tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      options: imported && form.type !== "choice" ? [] : form.options.filter((o) => o.text.trim()),
+      answers: imported && form.type !== "short" ? [] : form.answers.filter((a) => a.value.trim()),
+      explanation: explanation.filter(Boolean).join("\n\n"),
+    };
+  }
+
+  useImperativeHandle(batchRef, () => ({ collect }));
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     // Форма может стоять в окне поверх другой формы: React-события всплывают и через портал.
     e.stopPropagation();
+    if (batchRef || busy) return;
+    const body = collect();
+    if (!body) return;
     setBusy(true);
-    setError(undefined);
-    const body: TaskInput = {
-      ...form,
-      tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-      options: form.options.filter((o) => o.text.trim()),
-      answers: form.answers.filter((a) => a.value.trim()),
-    };
     try {
-      onSaved(task ? await assessment.update(task.id, body) : await assessment.create(body));
+      onSaved?.(task ? await assessment.update(task.id, body) : await assessment.create(body));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -86,7 +137,7 @@ export function TaskEditor({
   }
 
   return (
-    <form className="space-y-5" onSubmit={save}>
+    <form ref={formRef} className="space-y-5" onSubmit={save}>
       {error && <Alert>{error}</Alert>}
       <div className="grid gap-3 sm:grid-cols-4">
         <Select label="Тип" value={form.type} onChange={(e) => set("type", e.target.value as TaskType)} disabled={!!task}>
@@ -124,7 +175,7 @@ export function TaskEditor({
         </div>
         {preview ? (
           <div className="min-h-32 rounded-xl border border-line p-4">
-            <Markdown text={form.statement || "_Пусто_"} />
+            <Markdown text={statement || "_Пусто_"} />
             {form.type === "choice" && (
               <ul className="mt-3 space-y-1.5">
                 {form.options.filter((o) => o.text.trim()).map((o, i) => (
@@ -215,6 +266,9 @@ export function TaskEditor({
           <option value="required">Обязательно прикрепить</option>
         </Select>
       )}
+      {imported && (form.type === "long" || form.type === "code") && (
+        <Field label="Ответ для разбора" value={referenceAnswer} onChange={(e) => setReferenceAnswer(e.target.value)} />
+      )}
 
       {form.type === "code" && (
         <div className="space-y-4">
@@ -255,7 +309,7 @@ export function TaskEditor({
       />
       <Field label="Теги через запятую" placeholder="уравнения, 7 класс" value={tags} onChange={(e) => setTags(e.target.value)} />
 
-      <div className="flex gap-2">
+      {!batchRef && <div className="flex gap-2">
         {onCancel && (
           <Button type="button" variant="secondary" onClick={onCancel}>
             Отмена
@@ -264,7 +318,7 @@ export function TaskEditor({
         <Button type="submit" loading={busy} disabled={uploading} className="flex-1" title={uploading ? "Дождитесь загрузки картинки или файла" : undefined}>
           {task ? "Сохранить" : "Создать задачу"}
         </Button>
-      </div>
+      </div>}
     </form>
   );
 }
