@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
+import { useLoad } from "@/lib/hooks";
+import { readImportedTasks } from "@/lib/imported-tasks";
 import { TestEditor } from "@/components/test-editor";
 
 export default function NewTestPage() {
@@ -25,5 +27,8 @@ function Editor() {
   const q = useSearchParams();
   const courseId = q.get("course");
   const moduleId = q.get("module");
-  return <TestEditor preset={courseId && moduleId ? { courseId, moduleId } : undefined} />;
+  const imported = q.get("imported") === "1";
+  const tasks = useLoad(async () => imported ? readImportedTasks() : [], [imported]);
+  if (imported && !tasks.data) return <p role="status">Загружаем задачи…</p>;
+  return <TestEditor initialTasks={imported ? tasks.data ?? [] : undefined} preset={courseId && moduleId ? { courseId, moduleId } : undefined} />;
 }

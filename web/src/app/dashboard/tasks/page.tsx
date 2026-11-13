@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 
 import { ExamItemSelect } from "@/components/exams";
 import { Pager } from "@/components/pager";
 import { TaskBankCard } from "@/components/task-bank-card";
 import { buildRubric, topicFilter, TopicTree } from "@/components/topics";
-import { Alert, EmptyState, Select, Spinner } from "@/components/ui";
+import { Alert, Button, EmptyState, Modal, Select, Spinner } from "@/components/ui";
 import { assessment, type TaskType } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { TASK_TYPE_LABELS } from "@/lib/format";
+import { IMPORTED_TASKS_KEY, readImportedTasks } from "@/lib/imported-tasks";
 import { useLoad } from "@/lib/hooks";
 
 type Scope = "mine" | "public";
@@ -19,9 +21,19 @@ const PAGE = 20;
 
 /** Банк задач: рубрикатор «предмет → раздел → тема» слева, задачи выбранного узла справа — с условиями, по 20. */
 export default function TaskBankPage() {
+  return <Suspense fallback={<Spinner />}><TaskBank /></Suspense>;
+}
+
+function TaskBank() {
+  const params = useSearchParams();
+  const initialScope = params.get("imported") === "1" || params.get("scope") === "mine" ? "mine" : "public";
+  return <TaskBankContent key={initialScope} initialScope={initialScope} />;
+}
+
+function TaskBankContent({ initialScope }: { initialScope: Scope }) {
   const { user } = useAuth();
   const staff = !!user?.roles.some((r) => r === "moderator" || r === "admin");
-  const [scope, setScope] = useState<Scope>("mine");
+  const [scope, setScope] = useState<Scope>(initialScope);
   const [node, setNode] = useState("");
   const [treeOpen, setTreeOpen] = useState(false);
   const [filters, setFilters] = useState({ type: "", difficulty: "", exam_item_id: "" });
@@ -56,7 +68,8 @@ export default function TaskBankPage() {
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Банк задач</h1>
-        <div className="flex gap-2">
+        <ImportSuccess />
+        <div className="flex flex-wrap gap-2">
           {staff && (
             <Link href="/dashboard/tasks/exams" className="rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted">
               ЕГЭ и ОГЭ
@@ -67,13 +80,17 @@ export default function TaskBankPage() {
               Рубрикатор
             </Link>
           )}
+          <Link href="/dashboard/tasks/import" className="inline-flex items-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-medium hover:bg-muted">
+            Импорт из «РЕШУ ОГЭ/ЕГЭ»
+            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-semibold text-brand-text">Бета</span>
+          </Link>
           <Link href="/dashboard/tasks/new" className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-brand hover:bg-brand-strong">
             Новая задача
           </Link>
         </div>
       </div>
       <div className="flex rounded-xl border border-line bg-muted p-1 text-sm sm:w-fit" role="tablist">
-        {(["mine", "public"] as const).map((s) => (
+        {(["public", "mine"] as const).map((s) => (
           <button
             key={s}
             role="tab"
@@ -213,4 +230,26 @@ function nodeName(rubric: ReturnType<typeof buildRubric>, key: string): string {
     }
   }
   return "Раздел";
+}
+
+function ImportSuccess() {
+  const router = useRouter();
+  const imported = useSearchParams().get("imported") === "1";
+  const { data } = useLoad(async () => imported ? readImportedTasks() : [], [imported]);
+  if (!imported || !data?.length) return null;
+
+  function close() {
+    sessionStorage.removeItem(IMPORTED_TASKS_KEY);
+    router.replace("/dashboard/tasks?scope=mine", { scroll: false });
+  }
+
+  return (
+    <Modal open onClose={close} title="Задачи успешно добавлены">
+      <p className="text-sm text-fg-soft">Добавлено задач в банк — {data.length}.</p>
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={close}>Закрыть</Button>
+        <Button type="button" onClick={() => router.replace("/dashboard/tests/new?imported=1")}>Составить тест из этих задач</Button>
+      </div>
+    </Modal>
+  );
 }

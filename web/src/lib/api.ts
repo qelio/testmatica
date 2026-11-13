@@ -91,7 +91,7 @@ async function parse<T>(resp: Response): Promise<T> {
 
 async function send(path: string, init: RequestInit, withToken: boolean): Promise<Response> {
   const headers = new Headers(init.headers);
-  if (init.body !== undefined) headers.set("Content-Type", "application/json");
+  if (init.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (withToken && accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   try {
     return await fetch(path, { ...init, headers, credentials: "same-origin" });
@@ -801,6 +801,10 @@ export function importImage(url: string): Promise<UploadedFile> {
   return api<UploadedFile>("/api/media/files/import", { method: "POST", body: { url } });
 }
 
+export function importEgeFile(url: string): Promise<UploadedFile> {
+  return api<UploadedFile>("/api/media/files/import-ege", { method: "POST", body: { url } });
+}
+
 export function isContentFileUrl(href: string | undefined): boolean {
   return !!href && /^\/api\/media\/files\/[0-9a-f-]+\/content$/.test(href);
 }
@@ -1049,6 +1053,16 @@ export type TaskInput = {
   time_limit_s: number;
   memory_limit_mb: number;
   tests: { input: string; expected: string }[];
+};
+
+export type EgePdfDraft = {
+  number: number;
+  title: string;
+  statement: string;
+  answer: string;
+  explanation: string;
+  source_url: string;
+  source_name: string;
 };
 
 export type Submission = {
@@ -1433,6 +1447,14 @@ export type SolveView = { task: TaskFull; submissions: Submission[]; solved: boo
 const AS = "/api/assessment";
 
 export const assessment = {
+  saveEgeTasks: (tasks: TaskInput[]) => api<TaskFull[]>(`${AS}/tasks/import-ege/save`, { method: "POST", body: tasks }),
+  parseEgePdf: async (file: File) => {
+    const path = `${AS}/tasks/import-ege`;
+    const init = { method: "POST", body: file, headers: { "Content-Type": "application/pdf" } };
+    let response = await send(path, init, true);
+    if (response.status === 401 && (await refreshSession())) response = await send(path, init, true);
+    return parse<{ tasks: EgePdfDraft[]; images: string[] }>(response);
+  },
   search: (params: Record<string, string | number | boolean | undefined>) => {
     const qs = new URLSearchParams(
       Object.entries(params)

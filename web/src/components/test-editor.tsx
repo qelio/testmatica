@@ -10,6 +10,7 @@ import { TaskPicker } from "@/components/task-picker";
 import { PreviewToggle, TaskPreview } from "@/components/task-preview";
 import { Alert, Badge, Button, Field, Select } from "@/components/ui";
 import { assessment, type CodeCheckMode, content, type CourseSummary, type CourseTree, type Quiz, type QuizInput, type TaskSummary, type TaskType, type TimeMode } from "@/lib/api";
+import type { ImportedTask } from "@/lib/imported-tasks";
 import { useAuth } from "@/lib/auth";
 import { themeLabel } from "@/lib/course-themes";
 import { GRADE_LEVELS } from "@/lib/assignments";
@@ -22,7 +23,7 @@ type Item = {
   solution_file: boolean;
   code_check: CodeCheckMode;
   title: string;
-  task?: TaskSummary;
+  task?: Pick<TaskSummary, "type" | "subject_id" | "subject_name"> & Partial<Pick<TaskSummary, "number" | "exam_items">>;
   type?: TaskType;
 };
 
@@ -50,7 +51,7 @@ function canAskFile(item: Item): boolean {
 
 /** Редактор теста: задачи из банка, баллы, порядок, перемешивание, таймер. Назначают тест в разделе «Назначение тестов».
  *  preset — новый тест со страницы модуля: сразу привязан к нему (решение №43). */
-export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId: string; moduleId: string } }) {
+export function TestEditor({ test, preset, initialTasks = [] }: { test?: Quiz; preset?: { courseId: string; moduleId: string }; initialTasks?: ImportedTask[] }) {
   const router = useRouter();
   const [title, setTitle] = useState(test?.title ?? "");
   const [description, setDescription] = useState(test?.description ?? "");
@@ -80,7 +81,9 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
         code_check: i.code_check ?? "after",
         title: i.task.title,
         task: i.task,
-      })) ?? [],
+      })) ?? initialTasks.map((task) => ({
+        task_id: task.id, points: 1, solution_file: false, code_check: "after", title: task.title, task,
+      })),
   );
   const [picking, setPicking] = useState(false);
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
@@ -290,13 +293,13 @@ export function TestEditor({ test, preset }: { test?: Quiz; preset?: { courseId:
                 <span className="w-6 text-right text-sm text-fg-soft tabular-nums">{i + 1}</span>
                 <span className="min-w-0 flex-1 basis-60">
                   <span className="block truncate font-medium">
-                    {item.task && <TaskNumber n={item.task.number} />}
+                    {item.task?.number != null && <TaskNumber n={item.task.number} />}
                     {item.title}
                   </span>
                   {item.task && (
                     <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                       <Badge>{TASK_TYPE_LABELS[item.task.type]}</Badge>
-                      <ExamChips labels={item.task.exam_items} />
+                      <ExamChips labels={item.task.exam_items ?? []} />
                     </span>
                   )}
                 </span>

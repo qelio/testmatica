@@ -9,14 +9,14 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from testmatica_common.auth import Principal
+from testmatica_common.auth import ROLE_MODERATOR, ROLE_TEACHER, Principal
 from testmatica_common.errors import ApiError
 from testmatica_common.ids import uuid7
 
 from .. import importer, storage
 from ..deps import auth, db, outbox
 from ..models import StoredFile
-from ..policy import MB, PURPOSES, extension, safe_filename
+from ..policy import DOCUMENTS, MB, PURPOSES, extension, safe_filename
 from ..schemas import FileOut
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -70,6 +70,22 @@ async def import_image(body: ImportIn, principal: Principal = Depends(auth.princ
     Иначе картинка ссылалась бы на чужой сайт — а он часто не отдаёт картинки другим сайтам или удаляет их."""
     data, ext, mime = await importer.fetch_image(body.url)
     name = safe_filename(PurePosixPath(urlsplit(body.url).path).stem or "картинка") + ext
+    return file_out(await _store(session, principal, "content", name, ext, mime, len(data), io.BytesIO(data)))
+
+
+@router.post("/import-ege", response_model=FileOut, status_code=201)
+async def import_ege_file(
+    body: ImportIn,
+    principal: Principal = Depends(auth.require(ROLE_TEACHER, ROLE_MODERATOR)),
+    session: AsyncSession = Depends(db.session),
+) -> FileOut:
+    """Скопировать исходные данные задачи в хранилище платформы."""
+    data, source_name = await importer.fetch_ege_file(body.url)
+    name = safe_filename(source_name)
+    ext = extension(name)
+    if ext not in DOCUMENTS:
+        raise ApiError(422, "file_type_not_allowed", "Формат файла из «РЕШУ ОГЭ/ЕГЭ» не поддерживается")
+    mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
     return file_out(await _store(session, principal, "content", name, ext, mime, len(data), io.BytesIO(data)))
 
 

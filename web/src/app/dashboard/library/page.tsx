@@ -21,13 +21,13 @@ export default function LibraryPage() {
   const router = useRouter();
   const isAuthor = !!user?.roles.some((r) => r === "teacher" || r === "moderator" || r === "admin");
   const isStudent = !!user?.roles.includes("student");
-  const [tab, setTab] = useState<Tab>(isAuthor ? "mine" : "public");
+  const [tab, setTab] = useState<Tab>("public");
   const [creating, setCreating] = useState(false);
 
   const tabs: { value: Tab; label: string; show: boolean }[] = [
+    { value: "public", label: "Публичная библиотека", show: true },
     { value: "mine", label: "Моя библиотека", show: isAuthor },
     { value: "shared", label: "От моих педагогов", show: isStudent },
-    { value: "public", label: "Публичная библиотека", show: true },
     { value: "favorites", label: "Избранное", show: true },
   ];
 

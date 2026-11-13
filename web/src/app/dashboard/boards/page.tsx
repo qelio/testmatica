@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { BoardThumbnail } from "@/components/whiteboard/board-thumbnail";
 import { Pager } from "@/components/pager";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
 import { classroom, type BoardAccess, whiteboard } from "@/lib/api";
@@ -66,18 +67,21 @@ export default function BoardsPage() {
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {shown.map((b) => (
             <li key={b.id}>
-              <Link href={`/dashboard/boards/${b.id}`} className="block h-full space-y-1.5 rounded-2xl border border-line bg-surface p-4 hover:border-brand">
-                <span className="line-clamp-2 font-medium">{b.title}</span>
-                <span className="block text-sm text-fg-soft">
-                  {[b.lesson_id ? "к занятию" : "свободная", b.target_title, b.role === "owner" ? ACCESS[b.access] : b.owner_name]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-                <span className="flex items-center gap-2 text-xs text-fg-soft">
-                  {b.role === "read" && <Badge>только просмотр</Badge>}
-                  {b.role === "edit" && <Badge tone="ok">можно рисовать</Badge>}
-                  изменена {fmtDate(b.updated_at, { day: "numeric", month: "short" })}
-                </span>
+              <Link href={`/dashboard/boards/${b.id}`} className="block h-full overflow-hidden rounded-2xl border border-line bg-surface hover:border-brand">
+                <BoardThumbnail board={b} />
+                <div className="space-y-1.5 p-4">
+                  <span className="line-clamp-2 font-medium">{b.title}</span>
+                  <span className="block text-sm text-fg-soft">
+                    {[b.lesson_id ? "к занятию" : "свободная", b.target_title, b.role === "owner" ? ACCESS[b.access] : b.owner_name]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                  <span className="flex items-center gap-2 text-xs text-fg-soft">
+                    {b.role === "read" && <Badge>только просмотр</Badge>}
+                    {b.role === "edit" && <Badge tone="ok">можно рисовать</Badge>}
+                    изменена {fmtDate(b.updated_at, { day: "numeric", month: "short" })}
+                  </span>
+                </div>
               </Link>
             </li>
           ))}
