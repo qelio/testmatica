@@ -7,7 +7,7 @@ import { CodeEditor } from "@/components/code-editor";
 import { AttachButton, AttachmentView, UploadChips, useUploads } from "@/components/files";
 import { Markdown } from "@/components/markdown";
 import { Alert, Badge, Button, Spinner } from "@/components/ui";
-import { assessment, type SolveView, type Submission } from "@/lib/api";
+import { assessment, type FailedTest, type SolveView, type Submission } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { celebrateOnce } from "@/lib/confetti";
 import { fmtDateTime } from "@/lib/dates";
@@ -19,6 +19,7 @@ export function resultText(s: Submission): { text: string; tone: "ok" | "warn" |
     case "correct":
       return { text: "Верно", tone: "ok" };
     case "incorrect":
+      if (s.forbidden_word) return { text: `Запрещённое слово: ${s.forbidden_word}`, tone: "warn" };
       return s.failed_case
         ? { text: `Тест №${s.failed_case}: ${s.failure ? FAILURE_LABELS[s.failure] : "ошибка"}`, tone: "warn" }
         : { text: "Неверно", tone: "warn" };
@@ -31,6 +32,26 @@ export function resultText(s: Submission): { text: string; tone: "ok" | "warn" |
     case "reviewed":
       return { text: `Проверено: ${Math.round((s.score ?? 0) * 100)}%`, tone: (s.score ?? 0) >= 0.5 ? "ok" : "warn" };
   }
+}
+
+export function FailedTestDetails({ test }: { test: FailedTest }) {
+  return (
+    <details className="mt-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
+      <summary className="cursor-pointer font-medium">Данные теста №{test.number}</summary>
+      <dl className="mt-2 grid min-w-0 gap-2 sm:grid-cols-3">
+        {[
+          ["Входные данные", test.input],
+          ["Ожидаемый вывод", test.expected],
+          ["Вывод программы", test.output],
+        ].map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-xs text-fg-soft">{label}</dt>
+            <dd><pre className="mt-1 max-h-48 overflow-auto rounded-md bg-muted p-2 text-xs">{value || "Пусто"}</pre></dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
 }
 
 /** Решение задачи прямо на странице (задача в модуле курса). */
@@ -231,6 +252,7 @@ function Solver({
                     <Badge tone={r.tone}>{r.text}</Badge>
                     <span className="text-xs text-fg-soft">{fmtDateTime(s.created_at)}</span>
                   </div>
+                  {s.failed_test && <FailedTestDetails test={s.failed_test} />}
                   {s.answer.text && <p className="mt-1 text-fg-soft">«{s.answer.text}»</p>}
                   {s.teacher_comment && <p className="mt-1">Комментарий педагога: {s.teacher_comment}</p>}
                   {s.files.map((f) => (

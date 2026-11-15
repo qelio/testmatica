@@ -84,6 +84,7 @@ async def test_code_history_is_kept_for_teacher(client, fakes):
     # Ученик видит только номер упавшего теста и вид ошибки, без протокола.
     mine = (await client.get(f"/submissions/{first['id']}", headers=student(pupil))).json()
     assert (mine["status"], mine["failed_case"], mine["failure"], mine["run_log"]) == ("incorrect", 2, "wrong_answer", None)
+    assert mine["failed_test"] is None
     assert (await client.get(f"/submissions/{second['id']}", headers=student(pupil))).json()["status"] == "correct"
     # В песочницу ушли тесты задачи и лимиты.
     assert fakes.runs[0]["tests"] == [{"input": "2 3", "expected": "5"}, {"input": "40 2", "expected": "42"}]
@@ -167,3 +168,31 @@ async def test_course_practice_progress_uses_correct_answers_per_material(client
     assert (await client.post(endpoint, json=body)).status_code == 403
     result = await client.post(endpoint, json=body, headers=INTERNAL)
     assert result.status_code == 200 and result.json() == [str(CTX)]
+
+
+async def test_python_task_rules_and_first_failed_test(client, fakes):
+    author, pupil = uuid4(), uuid4()
+    headers = bearer(author)
+    body = CODE | {"forbidden_words": ["sort", " sorted ", "sort"], "show_failed_test": True}
+    invalid = await client.post("/tasks", json=body | {"forbidden_words": ["items.sort"]}, headers=headers)
+    assert invalid.status_code == 422
+    created = await client.post("/tasks", json=body, headers=headers)
+    assert created.status_code == 201, created.text
+    task = created.json()
+    assert task["forbidden_words"] == ["sort", "sorted"] and task["show_failed_test"]
+    copied = (await client.post(f"/tasks/{task['id']}/copy", headers=headers)).json()
+    assert copied["forbidden_words"] == ["sort", "sorted"] and copied["show_failed_test"]
+    await link(author, pupil)
+    blocked = (await answer(client, task, pupil, code="items.sort()")).json()
+    wrong = (await answer(client, task, pupil, code='# sorted\nprint("sort")\nsort_items = []')).json()
+    correct = (await answer(client, task, pupil, code="# correct\nprint(5)")).json()
+    await run_code_checks()
+    assert len(fakes.runs) == 2
+    data = (await client.get(f"/tasks/{task['id']}/solve", params={"context_id": str(CTX)}, headers=student(pupil))).json()
+    assert data["task"]["tests"] is None
+    results = {submission["id"]: submission for submission in data["submissions"]}
+    assert results[blocked["id"]]["forbidden_word"] == "sort"
+    assert results[blocked["id"]]["status"] == "incorrect" and results[blocked["id"]]["failed_test"] is None
+    assert results[wrong["id"]]["failed_test"] == {"number": 2, "input": "40 2", "expected": "42", "output": "41"}
+    assert results[wrong["id"]]["run_log"] is None
+    assert results[correct["id"]]["status"] == "correct" and results[correct["id"]]["failed_test"] is None

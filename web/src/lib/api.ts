@@ -1036,6 +1036,8 @@ export type TaskFull = TaskSummary & {
   options: { id: string; text: string; is_correct: boolean | null }[];
   answers: { mode: "exact" | "regex"; value: string }[] | null;
   starter_code: string;
+  forbidden_words: string[];
+  show_failed_test: boolean;
   time_limit_s: number | null;
   memory_limit_mb: number | null;
   tests: { input: string; expected: string }[] | null;
@@ -1059,6 +1061,8 @@ export type TaskInput = {
   options: { text: string; is_correct: boolean }[];
   answers: { mode: "exact" | "regex"; value: string }[];
   starter_code: string;
+  forbidden_words: string[];
+  show_failed_test: boolean;
   time_limit_s: number;
   memory_limit_mb: number;
   tests: { input: string; expected: string }[];
@@ -1074,6 +1078,8 @@ export type EgePdfDraft = {
   source_name: string;
 };
 
+export type FailedTest = { number: number; input: string; expected: string; output: string };
+
 export type Submission = {
   id: string;
   task_id: string;
@@ -1085,6 +1091,8 @@ export type Submission = {
   status: "checking" | "correct" | "incorrect" | "error" | "pending_review" | "reviewed";
   score: number | null;
   failed_case: number | null;
+  failed_test: FailedTest | null;
+  forbidden_word: string | null;
   failure: "wrong_answer" | "runtime_error" | "time_limit" | "memory_limit" | null;
   teacher_comment: string | null;
   /** Когда проверил или изменил педагог. */
@@ -1396,6 +1404,8 @@ export type AttemptTask = {
   earned: number | null;
 };
 export type CodeCheck = {
+  failed_test: FailedTest | null;
+  forbidden_word: string | null;
   status: "checking" | "correct" | "incorrect" | "error";
   failed: number | null;
   total: number | null;

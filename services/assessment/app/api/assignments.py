@@ -917,6 +917,7 @@ def _check_out(checks: list[Submission], total: int) -> CodeCheckOut | None:
     done = last.status in (CORRECT, INCORRECT)
     passed = sum(1 for c in last.run_log or [] if c.get("status") == "passed")
     return CodeCheckOut(
+        forbidden_word=last.forbidden_word, failed_test=last.failed_test,
         status=last.status, failed=(0 if last.status == CORRECT else max(1, total - passed)) if done else None,
         total=total if done else None, count=len(checks), passed_once=any(c.status == CORRECT for c in checks),
     )

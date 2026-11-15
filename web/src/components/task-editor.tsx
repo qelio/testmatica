@@ -34,6 +34,8 @@ function fromTask(t?: TaskFull): TaskInput {
     ],
     answers: t?.answers ?? [{ mode: "exact", value: "" }],
     starter_code: t?.starter_code ?? "",
+    forbidden_words: t?.forbidden_words ?? [],
+    show_failed_test: t?.show_failed_test ?? false,
     time_limit_s: t?.time_limit_s ?? 2,
     memory_limit_mb: t?.memory_limit_mb ?? 128,
     tests: t?.tests ?? [{ input: "", expected: "" }],
@@ -75,6 +77,7 @@ export function TaskEditor({
     };
   });
   const [referenceAnswer, setReferenceAnswer] = useState(imported?.answer ?? "");
+  const [words, setWords] = useState((task?.forbidden_words ?? []).join(", "));
   const [tags, setTags] = useState((task?.tags ?? []).join(", "));
   const [preview, setPreview] = useState(false);
   const [error, setError] = useState<string>();
@@ -110,6 +113,7 @@ export function TaskEditor({
     return {
       ...form,
       statement,
+      forbidden_words: form.type === "code" ? words.split(/[,\s]+/).filter(Boolean) : [],
       tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
       options: imported && form.type !== "choice" ? [] : form.options.filter((o) => o.text.trim()),
       answers: imported && form.type !== "short" ? [] : form.answers.filter((a) => a.value.trim()),
@@ -280,8 +284,19 @@ export function TaskEditor({
             <Field label="Лимит времени, с" type="number" min={0.5} max={10} step={0.5} value={form.time_limit_s} onChange={(e) => set("time_limit_s", Number(e.target.value))} />
             <Field label="Лимит памяти, МБ" type="number" min={32} max={512} step={32} value={form.memory_limit_mb} onChange={(e) => set("memory_limit_mb", Number(e.target.value))} />
           </div>
+          <div className="space-y-1">
+            <Field label="Запрещённые слова в коде" value={words} onChange={(e) => setWords(e.target.value)} placeholder="Например: sort, sorted" />
+            <p className="text-xs text-fg-soft">Перечислите имена и ключевые слова Python через запятую. Регистр учитывается, строки и комментарии пропускаются.</p>
+          </div>
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-line p-3 text-sm">
+            <input type="checkbox" className="mt-0.5 size-4 accent-brand" checked={form.show_failed_test} onChange={(e) => set("show_failed_test", e.target.checked)} />
+            <span>
+              <span className="block font-medium">Показывать данные непройденного теста</span>
+              <span className="block text-fg-soft">После ошибки ученик увидит ввод, ожидаемый и фактический вывод первого непройденного теста.</span>
+            </span>
+          </label>
           <fieldset className="space-y-2">
-            <legend className="mb-1.5 text-sm font-medium">Тест-кейсы (ученик не видит входные данные)</legend>
+            <legend className="mb-1.5 text-sm font-medium">Тест-кейсы</legend>
             {form.tests.map((c, i) => (
               <div key={i} className="grid grid-cols-[auto_1fr_1fr_auto] items-start gap-2">
                 <span className="pt-2 text-sm text-fg-soft">{i + 1}</span>

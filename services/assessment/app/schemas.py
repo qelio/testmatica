@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -55,6 +55,8 @@ class TaskIn(BaseModel):
     options: list[OptionIn] = Field(default_factory=list, max_length=12)
     answers: list[ShortAnswerIn] = Field(default_factory=list, max_length=20)
     starter_code: str = Field("", max_length=20_000)
+    forbidden_words: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=50)
+    show_failed_test: bool = False
     time_limit_s: float = Field(2, gt=0, le=10)
     memory_limit_mb: int = Field(128, ge=32, le=512)
     tests: list[TestIn] = Field(default_factory=list, max_length=50)
@@ -65,6 +67,14 @@ class TaskIn(BaseModel):
     @classmethod
     def _tags(cls, value: list[str]) -> list[str]:
         return sorted({t.strip().lower()[:40] for t in value if t.strip()})
+
+    @field_validator("forbidden_words")
+    @classmethod
+    def _words(cls, value: list[str]) -> list[str]:
+        words = [word.strip() for word in value]
+        if any(not word.isidentifier() for word in words):
+            raise ValueError("Укажите имена или ключевые слова Python через запятую")
+        return list(dict.fromkeys(words))
 
     @model_validator(mode="after")
     def _by_type(self) -> "TaskIn":
@@ -154,6 +164,8 @@ class TaskOut(TaskSummary):
     starter_code: str
     time_limit_s: float | None
     memory_limit_mb: int | None
+    forbidden_words: list[str]
+    show_failed_test: bool
     tests: list[TestIn] | None
     review_comment: str | None
     can_edit: bool
@@ -190,7 +202,14 @@ class FileRef(BaseModel):
     url: str | None = None
 
 
+class FailedTestOut(TestIn):
+    number: int
+    output: str
+
+
 class SubmissionOut(BaseModel):
+    failed_test: FailedTestOut | None = None
+    forbidden_word: str | None = None
     id: UUID
     task_id: UUID
     student_id: UUID
@@ -670,6 +689,8 @@ class CodeCheckIn(BaseModel):
 
 
 class CodeCheckOut(BaseModel):
+    failed_test: FailedTestOut | None = None
+    forbidden_word: str | None = None
     """Проверка кода по кнопке «Проверить»: ученику — только сколько тестов не прошло (решение №49)."""
 
     status: str = Field(description="checking, correct, incorrect или error")
