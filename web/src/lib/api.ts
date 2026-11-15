@@ -893,6 +893,7 @@ export type Material = {
   file: { id: string; filename: string; mime: string; size: number | null; url: string | null } | null;
   task_id: string | null;
   step_id: string | null;
+  collapsed_by_default: boolean;
   solved: boolean;
   position_sec: number;
   viewed: boolean;
@@ -960,10 +961,10 @@ export const content = {
   deleteModuleStep: (id: string, stepId: string) => api<void>(`${CT}/modules/${id}/steps/${stepId}`, { method: "DELETE" }),
   addMaterial: (
     moduleId: string,
-    data: { kind: MaterialKind; title?: string; body?: string; file_id?: string | null; url?: string | null; task_id?: string | null; step_id?: string | null },
+    data: { kind: MaterialKind; title?: string; body?: string; file_id?: string | null; url?: string | null; task_id?: string | null; step_id?: string | null; collapsed_by_default?: boolean },
   ) =>
     api<Material>(`${CT}/modules/${moduleId}/materials`, { method: "POST", body: data }),
-  updateMaterial: (id: string, data: { title?: string; body?: string; url?: string; step_id?: string | null }) =>
+  updateMaterial: (id: string, data: { title?: string; body?: string; url?: string; step_id?: string | null; collapsed_by_default?: boolean }) =>
     api<Material>(`${CT}/materials/${id}`, { method: "PATCH", body: data }),
   deleteMaterial: (id: string) => api<void>(`${CT}/materials/${id}`, { method: "DELETE" }),
   moveMaterial: (id: string, direction: "up" | "down") =>

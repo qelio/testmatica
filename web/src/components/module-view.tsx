@@ -80,7 +80,7 @@ function ModulePage({ id, base }: { id: string; base: string }) {
   );
 
   return (
-    <ThemeScope page theme={m.course_theme} className="mx-auto max-w-3xl">
+    <ThemeScope page theme={m.course_theme} className="mx-auto w-full max-w-4xl">
     <div className="space-y-6">
       <nav className="tm-eyebrow text-sm text-fg-soft">
         <Link href={`${base}/course/${m.course_id}`} className="hover:text-fg">
@@ -195,7 +195,7 @@ function ModulePage({ id, base }: { id: string; base: string }) {
         </div>
       ))}
 
-      {m.can_edit && <NewMaterial key={active ?? "first"} moduleId={m.id} stepId={active ?? undefined} onAdded={() => mod.reload()} />}
+      {m.can_edit && <NewMaterial key={active ?? "first"} numbered={numbered} moduleId={m.id} stepId={active ?? undefined} onAdded={() => mod.reload()} />}
 
       {awaitingPublication && (
         <p className="text-sm text-fg-soft">Тесты к новому модулю можно будет привязать, когда модератор примет изменения курса.</p>
@@ -238,8 +238,9 @@ function MarkdownEditor({ value, onChange, onBusyChange }: { value: string; onCh
   );
 }
 
-function NewMaterial({ moduleId, stepId, onAdded }: { moduleId: string; stepId?: string; onAdded: () => void }) {
+function NewMaterial({ moduleId, stepId, numbered, onAdded }: { moduleId: string; stepId?: string; numbered: boolean; onAdded: () => void }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [kind, setKind] = useState<MaterialKind>("text");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -270,12 +271,14 @@ function NewMaterial({ moduleId, stepId, onAdded }: { moduleId: string; stepId?:
           await content.addMaterial(moduleId, {
             kind,
             step_id: stepId,
+            collapsed_by_default: numbered && kind === "card" ? collapsed : undefined,
             title,
             body: kind === "text" || kind === "card" ? body : undefined,
             url: kind === "link" ? url : undefined,
             file_id: needsFile ? uploads.ids[0] : undefined,
             task_id: kind === "task" ? taskId : undefined,
           });
+          setCollapsed(false);
           setTitle("");
           setBody("");
           setUrl("");
@@ -315,6 +318,7 @@ function NewMaterial({ moduleId, stepId, onAdded }: { moduleId: string; stepId?:
         <Field label="Название" required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} />
       )}
       {(kind === "text" || kind === "card") && <MarkdownEditor value={body} onChange={setBody} onBusyChange={setEditorBusy} />}
+      {numbered && kind === "card" && <CollapsedOption checked={collapsed} onChange={setCollapsed} />}
       {kind === "link" && (
         <Field label="Ссылка" type="url" required placeholder="https://www.youtube.com/watch?v=…" value={url} onChange={(e) => setUrl(e.target.value)} />
       )}
@@ -351,7 +355,17 @@ function NewMaterial({ moduleId, stepId, onAdded }: { moduleId: string; stepId?:
   );
 }
 
+function CollapsedOption({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+      <input type="checkbox" className="size-4 accent-brand" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      Свёрнута по умолчанию
+    </label>
+  );
+}
+
 function MaterialEditor({ material, steps, onCancel, onSaved }: { material: Material; steps?: (string | null)[]; onCancel: () => void; onSaved: () => void }) {
+  const [collapsed, setCollapsed] = useState(material.collapsed_by_default);
   const [step, setStep] = useState(material.step_id ?? "");
   const [title, setTitle] = useState(material.title);
   const [body, setBody] = useState(material.body);
@@ -370,6 +384,7 @@ function MaterialEditor({ material, steps, onCancel, onSaved }: { material: Mate
           await content.updateMaterial(material.id, {
             title,
             ...(steps ? { step_id: step || null } : {}),
+            ...(steps && material.kind === "card" ? { collapsed_by_default: collapsed } : {}),
             ...(material.kind === "text" || material.kind === "card" ? { body } : {}),
             ...(material.kind === "link" ? { url } : {}),
           });
@@ -389,6 +404,7 @@ function MaterialEditor({ material, steps, onCancel, onSaved }: { material: Mate
         </Select>
       )}
       {(material.kind === "text" || material.kind === "card") && <MarkdownEditor value={body} onChange={setBody} onBusyChange={setEditorBusy} />}
+      {steps && material.kind === "card" && <CollapsedOption checked={collapsed} onChange={setCollapsed} />}
       {material.kind === "link" && <Field label="Ссылка" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} />}
       {material.file && <p className="text-sm text-fg-soft">Файл: {material.file.filename}. Чтобы заменить файл, удалите материал и добавьте заново.</p>}
       <div className="flex gap-2">

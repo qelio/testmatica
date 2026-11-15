@@ -104,7 +104,7 @@ export function CourseView({ id, base }: { id: string; base: string }) {
   const mine = c.owner_id === user?.id;
 
   return (
-    <ThemeScope page theme={c.theme} className="mx-auto max-w-4xl">
+    <ThemeScope page theme={c.theme} className="mx-auto w-full max-w-5xl">
     <div className="space-y-6">
       <div>
         <div className="flex flex-wrap items-center gap-2 text-sm text-fg-soft">

@@ -169,6 +169,7 @@ def material_out(m: Material, urls: dict[str, str], progress: dict[UUID, int], f
         else None,
         task_id=m.task_id,
         step_id=m.step_id,
+        collapsed_by_default=m.collapsed_by_default,
         position_sec=progress.get(m.id, 0),
         viewed=m.id in progress,
         favorite=m.id in favorites,

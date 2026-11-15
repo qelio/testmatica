@@ -106,6 +106,7 @@ class MaterialOut(BaseModel):
     url: str | None
     file: FileInfo | None
     task_id: UUID | None
+    collapsed_by_default: bool = False
     step_id: UUID | None = None
     solved: bool = False
     position_sec: int
@@ -168,6 +169,7 @@ class MaterialCreate(BaseModel):
     file_id: UUID | None = None
     url: str | None = Field(None, max_length=500)
     task_id: UUID | None = None
+    collapsed_by_default: bool = False
     step_id: UUID | None = None
 
     _title = field_validator("title")(_clean)
@@ -196,6 +198,7 @@ class MaterialCreate(BaseModel):
 
 
 class MaterialUpdate(BaseModel):
+    collapsed_by_default: bool | None = None
     step_id: UUID | None = None
     title: str | None = Field(None, min_length=1, max_length=200)
     body: str | None = Field(None, max_length=200_000)

@@ -14,7 +14,7 @@ from .models import PRIVATE, PUBLISHED, Material, Node
 
 COURSE_FIELDS = ("title", "description", "subject_id", "theme", "layout")
 NODE_FIELDS = ("title", "description", "position", "steps")
-MATERIAL_FIELDS = ("kind", "title", "body", "file_id", "file_name", "file_mime", "file_size", "url", "task_id", "position", "step_id")
+MATERIAL_FIELDS = ("kind", "title", "body", "file_id", "file_name", "file_mime", "file_size", "url", "task_id", "position", "step_id", "collapsed_by_default")
 
 
 async def draft_of(session: AsyncSession, live: Node) -> Node | None:

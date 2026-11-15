@@ -98,7 +98,7 @@ function BurgerMenu({ guest }: { guest: boolean }) {
 
 /** Шапка публичных страниц (главная, репетиторы, группы, новости) — открыты без регистрации.
  * wide — главная: свои полноширинные разделы и шапка-капсула над первым экраном. Капсула не закреплена и уезжает вместе со страницей. */
-export function PublicShell({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+export function PublicShell({ children, wide = false, widerContent = false }: { children: React.ReactNode; wide?: boolean; widerContent?: boolean }) {
   const { status } = useAuth();
   const pathname = usePathname();
   return (
@@ -153,7 +153,7 @@ export function PublicShell({ children, wide = false }: { children: React.ReactN
         <main className="flex-1">{children}</main>
       ) : (
         <>
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">{children}</main>
+          <main className={`mx-auto w-full flex-1 px-4 py-8 sm:px-6 ${widerContent ? "max-w-7xl" : "max-w-6xl"}`}>{children}</main>
           <LegalBar />
         </>
       )}
