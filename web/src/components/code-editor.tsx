@@ -43,7 +43,7 @@ export function CodeEditor({
         editable={!readOnly}
         extensions={[python()]}
         theme={panel || dark ? oneDark : "light"}
-        className={panel ? "[&_.cm-content]:py-3 [&_.cm-gutter]:min-w-9 [&_.cm-gutters]:py-3 [&_.cm-line]:px-3 [&_.cm-scroller]:leading-6" : undefined}
+        className={panel ? "[&_.cm-content]:py-3 [&_.cm-gutter]:min-w-9 [&_.cm-line]:px-3 [&_.cm-scroller]:leading-6" : undefined}
         minHeight={minHeight}
         basicSetup={{ foldGutter: false, highlightActiveLine: !readOnly, autocompletion: !readOnly }}
       />

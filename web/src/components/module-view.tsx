@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
 
@@ -97,7 +98,7 @@ function ModulePage({ id, base }: { id: string; base: string }) {
       {error && <Alert>{error}</Alert>}
 
       {numbered && (
-        <div className="space-y-3 rounded-2xl border border-line bg-surface p-3">
+        <div className="rounded-2xl border border-line bg-surface p-3">
           <nav aria-label="Подразделы модуля" className="flex flex-wrap justify-center gap-2">
             {steps.map((step, index) => {
               const done = progress.get(step) === true;
@@ -115,21 +116,39 @@ function ModulePage({ id, base }: { id: string; base: string }) {
                 </button>
               );
             })}
+            {m.can_edit && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Добавить подраздел"
+                  title="Добавить подраздел"
+                  disabled={changingSteps}
+                  className="grid size-10 place-items-center rounded-xl border border-line text-fg-soft hover:bg-muted hover:text-fg disabled:opacity-50"
+                  onClick={() => changeSteps(async () => {
+                    setEditingId(null);
+                    setSelected(await content.addModuleStep(id));
+                  })}
+                >
+                  <Plus size={18} aria-hidden="true" />
+                </button>
+                {active && materials.length === 0 && (
+                  <button
+                    type="button"
+                    aria-label="Удалить пустой подраздел"
+                    title="Удалить пустой подраздел"
+                    disabled={changingSteps}
+                    className="grid size-10 place-items-center rounded-xl border border-line text-danger hover:bg-muted disabled:opacity-50"
+                    onClick={() => changeSteps(async () => {
+                      await content.deleteModuleStep(id, active);
+                      setSelected(steps[steps.indexOf(active) - 1] ?? null);
+                    })}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                )}
+              </>
+            )}
           </nav>
-          {m.can_edit && (
-            <div className="flex flex-wrap justify-end gap-2">
-              {active && materials.length === 0 && (
-                <Button type="button" variant="secondary" disabled={changingSteps} onClick={() => changeSteps(async () => {
-                  await content.deleteModuleStep(id, active);
-                  setSelected(steps[steps.indexOf(active) - 1] ?? null);
-                })}>Удалить пустой</Button>
-              )}
-              <Button type="button" variant="secondary" disabled={changingSteps} onClick={() => changeSteps(async () => {
-                setEditingId(null);
-                setSelected(await content.addModuleStep(id));
-              })}>Добавить подраздел</Button>
-            </div>
-          )}
         </div>
       )}
       {materials.length === 0 && <p className="text-fg-soft">{numbered ? "В подразделе пока нет материалов." : "В модуле пока нет материалов."}</p>}
