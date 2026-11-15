@@ -127,6 +127,7 @@ class Material(Base):
     file_mime: Mapped[str | None] = mapped_column(String(120))
     file_size: Mapped[int | None]
     url: Mapped[str | None] = mapped_column(String(500))
+    collapsed_by_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     step_id: Mapped[UUID | None]
     task_id: Mapped[UUID | None]  # для kind = task
     origin_id: Mapped[UUID | None]  # в черновике изменений — id материала опубликованной версии (решение №46)

@@ -399,7 +399,7 @@ async def test_numbered_module_materials_survive_revision(client, fakes):
     step = created.json()
     foreign_step = (await client.post(f"/modules/{other}/steps", headers=headers)).json()
     assert (await client.patch(f"/materials/{material}", json={"step_id": foreign_step}, headers=headers)).status_code == 422
-    card = {"kind": "card", "title": "Пример", "body": "Теория", "step_id": step}
+    card = {"kind": "card", "title": "Пример", "body": "Теория", "step_id": step, "collapsed_by_default": True}
     task = {"kind": "task", "task_id": fakes.task(teacher, "Уравнение"), "step_id": step}
     for data in (card, card | {"title": "Правило"}, task, task | {"task_id": fakes.task(teacher, "Корень")}):
         response = await client.post(f"{endpoint}/materials", json=data, headers=headers)
@@ -414,6 +414,10 @@ async def test_numbered_module_materials_survive_revision(client, fakes):
     draft_module = draft["sections"][0]["modules"][0]["id"]
     preview = (await client.get(f"/modules/{draft_module}", headers=headers)).json()
     assert preview["steps"] == [step]
+    cards = [item for item in preview["materials"] if item["kind"] == "card"]
+    assert all(item["collapsed_by_default"] for item in cards)
+    updated = await client.patch(f"/materials/{cards[0]['id']}", json={"collapsed_by_default": False}, headers=headers)
+    assert updated.status_code == 200 and not updated.json()["collapsed_by_default"]
     assert [item["kind"] for item in preview["materials"] if item["step_id"] == step] == ["card", "card", "task", "task"]
     first_task = next(item for item in preview["materials"] if item["kind"] == "task")
     assert not first_task["solved"]
@@ -429,4 +433,5 @@ async def test_numbered_module_materials_survive_revision(client, fakes):
     await apply(handlers.on_moderation_decision, "moderation.decision.made", ref_id=draft["id"], **decision)
     published = (await client.get(endpoint)).json()
     assert published["course_layout"] == "steps" and published["steps"] == [step]
+    assert [item["collapsed_by_default"] for item in published["materials"] if item["kind"] == "card"] == [False, True]
     assert [item["id"] for item in published["materials"] if item["step_id"] == step][-1] == material

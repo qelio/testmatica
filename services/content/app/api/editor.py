@@ -222,6 +222,7 @@ async def add_material(
     material = Material(
         module_id=module.id, course_id=course.id, kind=body.kind, title=title, body=body.body.strip(), task_id=task_id,
         step_id=body.step_id,
+        collapsed_by_default=body.kind == "card" and body.collapsed_by_default,
         url=body.url if body.kind == "link" else None,
         position=await _next_position(session, Material, module_id=module.id),
     )
@@ -269,6 +270,8 @@ async def update_material(
             material.step_id = body.step_id
     if data.get("title"):
         material.title = data["title"]
+    if body.collapsed_by_default is not None and material.kind == "card":
+        material.collapsed_by_default = body.collapsed_by_default
     if "body" in data and material.kind in ("text", "card"):
         if not (data["body"] or "").strip():
             raise ApiError(422, "empty_body", "Текст не может быть пустым")
