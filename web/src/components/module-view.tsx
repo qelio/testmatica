@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { UploadChips, useUploads } from "@/components/files";
 import { KIND_LABELS, MaterialView } from "@/components/material-view";
@@ -11,6 +11,7 @@ import { TaskPicker } from "@/components/task-picker";
 import { ThemeScope } from "@/components/theme-scope";
 import { Alert, Button, Field, Select, Spinner } from "@/components/ui";
 import { content, type Material, type MaterialKind } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { errorText, useLoad } from "@/lib/hooks";
 
 const ACCEPT: Partial<Record<MaterialKind, string>> = {
@@ -19,16 +20,31 @@ const ACCEPT: Partial<Record<MaterialKind, string>> = {
   file: ".doc,.docx,.odt,.rtf,.txt,.xls,.xlsx,.ods,.csv,.ppt,.pptx,.odp,.zip,.7z,.rar,.png,.jpg,.jpeg",
 };
 
+function isTheory(material: Material) {
+  return material.kind === "text" || material.kind === "card";
+}
+
 export function ModuleView({ id, base }: { id: string; base: string }) {
+  const { user } = useAuth();
+  return <ModulePage key={`${id}:${user?.id ?? ""}`} id={id} base={base} />;
+}
+
+function ModulePage({ id, base }: { id: string; base: string }) {
   const mod = useLoad(() => content.module(id, true), [id]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [changingSteps, setChangingSteps] = useState(false);
   const [error, setError] = useState<string>();
+  const [completed, setCompleted] = useState<Set<string>>(() => new Set());
+  const markCompleted = useCallback((materialId: string) => {
+    setCompleted((current) => current.has(materialId) ? current : new Set([...current, materialId]));
+  }, []);
 
   async function act(action: () => Promise<unknown>) {
     setError(undefined);
     try {
       await action();
-      mod.reload();
+      await mod.reload();
     } catch (e) {
       setError(errorText(e));
     }
@@ -37,6 +53,30 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
   if (mod.error) return <Alert>{mod.error}</Alert>;
   const m = mod.data;
   if (!m) return <Spinner />;
+  const numbered = m.course_layout === "steps";
+  const steps = [null, ...(m.steps ?? [])];
+  const active = numbered && steps.includes(selected) ? selected : null;
+  const materials = numbered ? m.materials.filter((mat) => mat.step_id === active) : m.materials;
+  const progress = new Map<string | null, boolean>();
+  if (numbered) {
+    for (const material of m.materials) {
+      if (!isTheory(material) && material.kind !== "task") continue;
+      const done = completed.has(material.id) || (material.kind === "task" ? material.solved : material.viewed);
+      progress.set(material.step_id, (progress.get(material.step_id) ?? true) && done);
+    }
+  }
+
+  async function changeSteps(action: () => Promise<void>) {
+    setChangingSteps(true);
+    await act(action);
+    setChangingSteps(false);
+  }
+
+  // В черновике изменений тесты относятся к модулю опубликованной версии.
+  const awaitingPublication = !!(m.revision_of && !m.origin_id);
+  const works = !awaitingPublication && (
+    <ModuleWorks moduleId={m.origin_id ?? m.id} courseId={m.revision_of ?? m.course_id} inModal={numbered} />
+  );
 
   return (
     <ThemeScope page theme={m.course_theme} className="mx-auto max-w-3xl">
@@ -48,17 +88,57 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
         <span> / {m.section_title}</span>
       </nav>
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{m.title}</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight sm:text-3xl">{m.title}</h1>
+          {numbered && works}
+        </div>
         {m.description && <p className="mt-2 text-fg-soft">{m.description}</p>}
       </div>
       {error && <Alert>{error}</Alert>}
 
-      {m.materials.length === 0 && <p className="text-fg-soft">В модуле пока нет материалов.</p>}
-      {m.materials.map((mat, n) => (
+      {numbered && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3">
+          <nav aria-label="Подразделы модуля" className="flex flex-wrap gap-2">
+            {steps.map((step, index) => {
+              const done = progress.get(step) === true;
+              return (
+                <button
+                  key={step ?? "first"}
+                  type="button"
+                  aria-label={`Подраздел ${index + 1}${done ? ", выполнен" : ""}`}
+                  aria-current={active === step ? "true" : undefined}
+                  disabled={changingSteps}
+                  onClick={() => { setEditingId(null); setSelected(step); }}
+                  className={`flex size-10 items-center justify-center gap-0.5 rounded-xl border text-sm font-semibold tabular-nums ${done ? "border-ok bg-ok text-surface" : active === step ? "border-brand bg-brand text-on-brand" : "border-line hover:bg-muted"} ${done && active === step ? "ring-2 ring-ok ring-offset-2 ring-offset-surface" : ""}`}
+                >
+                  {index + 1}
+                </button>
+              );
+            })}
+          </nav>
+          {m.can_edit && (
+            <div className="flex flex-wrap gap-2">
+              {active && materials.length === 0 && (
+                <Button type="button" variant="secondary" disabled={changingSteps} onClick={() => changeSteps(async () => {
+                  await content.deleteModuleStep(id, active);
+                  setSelected(steps[steps.indexOf(active) - 1] ?? null);
+                })}>Удалить пустой</Button>
+              )}
+              <Button type="button" variant="secondary" disabled={changingSteps} onClick={() => changeSteps(async () => {
+                setEditingId(null);
+                setSelected(await content.addModuleStep(id));
+              })}>Добавить подраздел</Button>
+            </div>
+          )}
+        </div>
+      )}
+      {materials.length === 0 && <p className="text-fg-soft">{numbered ? "В подразделе пока нет материалов." : "В модуле пока нет материалов."}</p>}
+      {materials.map((mat, n) => (
         <div key={mat.id} className="space-y-2">
           {editingId === mat.id ? (
             <MaterialEditor
               material={mat}
+              steps={numbered ? steps : undefined}
               onCancel={() => setEditingId(null)}
               onSaved={() => {
                 setEditingId(null);
@@ -66,14 +146,19 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
               }}
             />
           ) : (
-            <MaterialView material={mat} n={n + 1} />
+            <MaterialView
+              material={numbered && isTheory(mat) && completed.has(mat.id) ? { ...mat, viewed: true } : mat}
+              n={numbered ? undefined : n + 1}
+              onStudied={numbered && isTheory(mat) ? markCompleted : undefined}
+              onSolved={numbered && mat.kind === "task" ? markCompleted : undefined}
+            />
           )}
           {m.can_edit && editingId !== mat.id && (
             <div className="flex justify-end gap-1 text-sm">
-              <button onClick={() => act(() => content.moveMaterial(mat.id, "up"))} className="rounded-lg px-2 py-1 text-fg-soft hover:bg-muted">
+              <button aria-label="Переместить выше" disabled={n === 0} onClick={() => act(() => content.moveMaterial(mat.id, "up"))} className="rounded-lg px-2 py-1 text-fg-soft hover:bg-muted disabled:opacity-40">
                 ↑
               </button>
-              <button onClick={() => act(() => content.moveMaterial(mat.id, "down"))} className="rounded-lg px-2 py-1 text-fg-soft hover:bg-muted">
+              <button aria-label="Переместить ниже" disabled={n === materials.length - 1} onClick={() => act(() => content.moveMaterial(mat.id, "down"))} className="rounded-lg px-2 py-1 text-fg-soft hover:bg-muted disabled:opacity-40">
                 ↓
               </button>
               <button onClick={() => setEditingId(mat.id)} className="rounded-lg px-2 py-1 text-fg-soft hover:bg-muted">
@@ -90,14 +175,12 @@ export function ModuleView({ id, base }: { id: string; base: string }) {
         </div>
       ))}
 
-      {m.can_edit && <NewMaterial moduleId={m.id} onAdded={() => mod.reload()} />}
+      {m.can_edit && <NewMaterial key={active ?? "first"} moduleId={m.id} stepId={active ?? undefined} onAdded={() => mod.reload()} />}
 
-      {/* Тесты привязаны к модулям опубликованной версии: в черновике изменений — тесты оригинала (решение №46). */}
-      {m.revision_of && !m.origin_id ? (
+      {awaitingPublication && (
         <p className="text-sm text-fg-soft">Тесты к новому модулю можно будет привязать, когда модератор примет изменения курса.</p>
-      ) : (
-        <ModuleWorks moduleId={m.origin_id ?? m.id} courseId={m.revision_of ?? m.course_id} />
       )}
+      {!numbered && works}
 
       <div className="flex justify-between gap-3 border-t border-line pt-4">
         {m.prev_module_id ? (
@@ -135,7 +218,7 @@ function MarkdownEditor({ value, onChange, onBusyChange }: { value: string; onCh
   );
 }
 
-function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => void }) {
+function NewMaterial({ moduleId, stepId, onAdded }: { moduleId: string; stepId?: string; onAdded: () => void }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<MaterialKind>("text");
   const [title, setTitle] = useState("");
@@ -166,6 +249,7 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
         try {
           await content.addMaterial(moduleId, {
             kind,
+            step_id: stepId,
             title,
             body: kind === "text" || kind === "card" ? body : undefined,
             url: kind === "link" ? url : undefined,
@@ -247,7 +331,8 @@ function NewMaterial({ moduleId, onAdded }: { moduleId: string; onAdded: () => v
   );
 }
 
-function MaterialEditor({ material, onCancel, onSaved }: { material: Material; onCancel: () => void; onSaved: () => void }) {
+function MaterialEditor({ material, steps, onCancel, onSaved }: { material: Material; steps?: (string | null)[]; onCancel: () => void; onSaved: () => void }) {
+  const [step, setStep] = useState(material.step_id ?? "");
   const [title, setTitle] = useState(material.title);
   const [body, setBody] = useState(material.body);
   const [url, setUrl] = useState(material.url ?? "");
@@ -264,6 +349,7 @@ function MaterialEditor({ material, onCancel, onSaved }: { material: Material; o
         try {
           await content.updateMaterial(material.id, {
             title,
+            ...(steps ? { step_id: step || null } : {}),
             ...(material.kind === "text" || material.kind === "card" ? { body } : {}),
             ...(material.kind === "link" ? { url } : {}),
           });
@@ -277,6 +363,11 @@ function MaterialEditor({ material, onCancel, onSaved }: { material: Material; o
     >
       {error && <Alert>{error}</Alert>}
       <Field label="Название" required value={title} onChange={(e) => setTitle(e.target.value)} />
+      {steps && (
+        <Select label="Подраздел" value={step} onChange={(e) => setStep(e.target.value)}>
+          {steps.map((id, index) => <option key={id ?? "first"} value={id ?? ""}>{index + 1}</option>)}
+        </Select>
+      )}
       {(material.kind === "text" || material.kind === "card") && <MarkdownEditor value={body} onChange={setBody} onBusyChange={setEditorBusy} />}
       {material.kind === "link" && <Field label="Ссылка" type="url" required value={url} onChange={(e) => setUrl(e.target.value)} />}
       {material.file && <p className="text-sm text-fg-soft">Файл: {material.file.filename}. Чтобы заменить файл, удалите материал и добавьте заново.</p>}

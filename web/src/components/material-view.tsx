@@ -66,20 +66,43 @@ function VideoPlayer({ material, signedIn }: { material: Material; signedIn: boo
 }
 
 /** n — номер материала в модуле: виден в игровых оформлениях курса (кружок у заголовка). */
-export function MaterialView({ material, n, onFavorite }: { material: Material; n?: number; onFavorite?: (on: boolean) => void }) {
+export function MaterialView({ material, n, onFavorite, onStudied, onSolved }: {
+  material: Material;
+  n?: number;
+  onFavorite?: (on: boolean) => void;
+  onStudied?: (id: string) => void;
+  onSolved?: (id: string) => void;
+}) {
   const { status } = useAuth();
   const signedIn = status === "authenticated";
   const [favorite, setFavorite] = useState(material.favorite);
+  const article = useRef<HTMLElement>(null);
 
-  // Открыл — значит просмотрел (для видео — позиция сохраняется плеером).
   useEffect(() => {
-    if (signedIn && !material.viewed && material.kind !== "video") content.saveProgress(material.id).catch(() => {});
-  }, [signedIn, material.id, material.viewed, material.kind]);
+    if (!signedIn || material.viewed || material.kind === "video") return;
+    if (!onStudied) {
+      content.saveProgress(material.id).catch(() => {});
+      return;
+    }
+    const element = article.current;
+    if (!element) return;
+    let saving = false;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || saving) return;
+      saving = true;
+      content.saveProgress(material.id).then(() => {
+        observer.disconnect();
+        onStudied(material.id);
+      }).catch(() => { saving = false; });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [signedIn, material.id, material.viewed, material.kind, onStudied]);
 
   const yt = material.kind === "link" && material.url ? youtubeId(material.url) : null;
 
   return (
-    <article className={`tm-card rounded-2xl border bg-surface p-5 sm:p-6 ${material.kind === "card" ? "border-brand/40" : "border-line"}`}>
+    <article ref={article} className={`tm-card rounded-2xl border bg-surface p-5 sm:p-6 ${material.kind === "card" ? "border-brand/40" : "border-line"}`}>
       <header className="mb-4 flex items-start justify-between gap-3">
         <div className="flex items-center gap-4">
           {n !== undefined && <span className="tm-only tm-num">{n}</span>}
@@ -107,7 +130,7 @@ export function MaterialView({ material, n, onFavorite }: { material: Material; 
       </header>
 
       {(material.kind === "text" || material.kind === "card") && <Markdown text={material.body} />}
-      {material.kind === "task" && material.task_id && <TaskSolver taskId={material.task_id} contextId={material.id} />}
+      {material.kind === "task" && material.task_id && <TaskSolver taskId={material.task_id} contextId={material.id} onSolved={onSolved} />}
       {material.kind === "video" && <VideoPlayer material={material} signedIn={signedIn} />}
       {material.kind === "pdf" && material.file?.url && (
         <iframe src={material.file.url} title={material.title} className="h-[75vh] w-full rounded-xl border border-line" />

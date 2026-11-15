@@ -38,13 +38,19 @@ export function TaskSolver({
   taskId,
   contextId,
   contextType = "practice",
+  onSolved,
 }: {
   taskId: string;
   contextId: string;
   contextType?: "practice" | "assignment";
+  onSolved?: (contextId: string) => void;
 }) {
   const { status } = useAuth();
   const view = useLoad(() => assessment.solve(taskId, contextId, contextType), [taskId, contextId, status]);
+  const solved = view.data?.submissions.some((submission) => submission.status === "correct");
+  useEffect(() => {
+    if (solved) onSolved?.(contextId);
+  }, [solved, contextId, onSolved]);
   if (view.error) return <Alert>{view.error}</Alert>;
   if (!view.data) return <Spinner />;
   return <Solver key={view.data.task.id} view={view.data} reload={view.reload} contextId={contextId} contextType={contextType} />;

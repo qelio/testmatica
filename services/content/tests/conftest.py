@@ -35,6 +35,7 @@ class FakeServices:
         self.files: dict[str, dict] = {}
         self.groups: dict[str, dict] = {}
         self.tasks: dict[str, dict] = {}
+        self.solved: dict[str, set[str]] = {}
 
     def task(self, owner: UUID, title: str, type_: str = "choice", status: str = "private") -> str:
         tid = str(uuid4())
@@ -43,6 +44,8 @@ class FakeServices:
 
     def assessment(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
+        if request.url.path.endswith("/practice-progress"):
+            return httpx.Response(200, json=[mid for mid in body["tasks"] if mid in self.solved.get(body["user_id"], set())])
         out = []
         for tid in body["task_ids"]:
             t = self.tasks.get(tid)

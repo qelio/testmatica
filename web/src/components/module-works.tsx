@@ -1,10 +1,11 @@
 "use client";
 
+import { ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Alert, Badge, Button } from "@/components/ui";
+import { Alert, Badge, Button, Modal } from "@/components/ui";
 import { assessment, type CourseTest, type TestVisibility } from "@/lib/api";
 import { lastAttempt, studentStatus } from "@/lib/assignments";
 import { useAuth } from "@/lib/auth";
@@ -22,7 +23,7 @@ const ORDER: TestVisibility[] = ["public", "teachers", "private"];
 /** Тесты под модулем курса (решения №43, 44, 46).
  *  Ученикам — публичные тесты автора курса (проходят сами) и работы по теме от их педагога.
  *  Педагогам — тесты автора курса, принятые с курсом (публичные и «для педагогов»), и свои личные — с кнопкой «Назначить». */
-export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId: string }) {
+export function ModuleWorks({ moduleId, courseId, inModal = false }: { moduleId: string; courseId: string; inModal?: boolean }) {
   const { status, user } = useAuth();
   const signedIn = status === "authenticated";
   // Тесты к модулю ведут педагоги и штатные редакторы библиотеки (модератор, администратор); назначают — педагоги.
@@ -68,10 +69,11 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
           note: t.review === "new" ? "новый тест — проверяется вместе с курсом" : t.review === "changed" ? "изменения автора — проверяются вместе с курсом" : null,
         })),
     ].sort((a, b) => ORDER.indexOf(a.visibility) - ORDER.indexOf(b.visibility));
+    if (inModal && !rows.length) return null;
     return (
-      <section className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
+      <WorksPanel title="Тесты по теме" inModal={inModal}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Тесты по теме</h2>
+          {!inModal && <h2 className="text-lg font-semibold">Тесты по теме</h2>}
           <Link
             href={`/dashboard/tests/new?course=${courseId}&module=${moduleId}`}
             className="tm-btn tm-btn-secondary inline-flex h-9 items-center rounded-xl border border-line px-3 text-sm font-medium hover:bg-muted"
@@ -98,7 +100,7 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
             разные тесты.
           </p>
         )}
-      </section>
+      </WorksPanel>
     );
   }
 
@@ -106,8 +108,8 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
   const open = shared.data ?? [];
   if (!assigned.length && !open.length) return null;
   return (
-    <section className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">
-      <h2 className="text-lg font-semibold">Тесты и практические работы</h2>
+    <WorksPanel title="Тесты и практические работы" inModal={inModal}>
+      {!inModal && <h2 className="text-lg font-semibold">Тесты и практические работы</h2>}
       {assigned.length > 0 && (
         <ul className="space-y-2">
           {assigned.map((a) => {
@@ -137,7 +139,33 @@ export function ModuleWorks({ moduleId, courseId }: { moduleId: string; courseId
           ))}
         </ul>
       )}
-    </section>
+    </WorksPanel>
+  );
+}
+
+function WorksPanel({ title, inModal, children }: { title: string; inModal: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  if (!inModal) {
+    return <section className="tm-card space-y-3 rounded-2xl border border-line bg-surface p-5">{children}</section>;
+  }
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={title}
+        title={title}
+        aria-haspopup="dialog"
+        onClick={() => setOpen(true)}
+        className="grid size-10 shrink-0 place-items-center rounded-lg border border-line bg-surface text-fg-soft hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      >
+        <ClipboardList size={20} aria-hidden="true" />
+      </button>
+      {open && (
+        <Modal open title={title} onClose={() => setOpen(false)} wide>
+          <div className="max-h-[65dvh] space-y-3 overflow-y-auto p-0.5">{children}</div>
+        </Modal>
+      )}
+    </>
   );
 }
 

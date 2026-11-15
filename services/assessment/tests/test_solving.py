@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from .conftest import CHOICE, CODE, LONG, MULTI, SHORT, bearer, link, outbox, run_code_checks, student
+from .conftest import INTERNAL, CHOICE, CODE, LONG, MULTI, SHORT, bearer, link, outbox, run_code_checks, student
 
 
 async def published(client, body):
@@ -151,3 +151,19 @@ async def test_guest_sees_statement_but_cannot_answer(client):
         f"/tasks/{task['id']}/submissions", json={"context_id": str(CTX), "answer": {"option_ids": []}}
     )
     assert resp.status_code == 401
+
+
+async def test_course_practice_progress_uses_correct_answers_per_material(client):
+    task, _ = await published(client, SHORT)
+    other, _ = await published(client, SHORT)
+    pupil, another_pupil, wrong_context, other_context = (uuid4() for _ in range(4))
+    correct = await answer(client, task, pupil, text="3.5")
+    assert correct.json()["status"] == "correct"
+    await answer(client, task, pupil, context=wrong_context, text="0")
+    await answer(client, other, pupil, context=other_context, text="3.5")
+    await answer(client, task, another_pupil, context=wrong_context, text="3.5")
+    endpoint = "/internal/tasks/practice-progress"
+    body = {"user_id": str(pupil), "tasks": {str(context): task["id"] for context in (CTX, wrong_context, other_context)}}
+    assert (await client.post(endpoint, json=body)).status_code == 403
+    result = await client.post(endpoint, json=body, headers=INTERNAL)
+    assert result.status_code == 200 and result.json() == [str(CTX)]
