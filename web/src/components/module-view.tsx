@@ -98,58 +98,56 @@ function ModulePage({ id, base }: { id: string; base: string }) {
       {error && <Alert>{error}</Alert>}
 
       {numbered && (
-        <div className="rounded-2xl border border-line bg-surface p-3">
-          <nav aria-label="Подразделы модуля" className="flex flex-wrap justify-center gap-2">
-            {steps.map((step, index) => {
-              const done = progress.get(step) === true;
-              return (
+        <nav aria-label="Подразделы модуля" className="flex flex-wrap justify-center gap-2">
+          {steps.map((step, index) => {
+            const done = progress.get(step) === true;
+            return (
+              <button
+                key={step ?? "first"}
+                type="button"
+                aria-label={`Подраздел ${index + 1}${done ? ", выполнен" : ""}`}
+                aria-current={active === step ? "true" : undefined}
+                disabled={changingSteps}
+                onClick={() => { setEditingId(null); setSelected(step); }}
+                className={`flex size-10 items-center justify-center gap-0.5 rounded-xl border text-sm font-semibold tabular-nums ${done ? "border-ok bg-ok text-surface" : active === step ? "border-brand bg-brand text-on-brand" : "border-line bg-surface hover:bg-muted"} ${done && active === step ? "ring-2 ring-ok ring-offset-2 ring-offset-surface" : ""}`}
+              >
+                {index + 1}
+              </button>
+            );
+          })}
+          {m.can_edit && (
+            <>
+              <button
+                type="button"
+                aria-label="Добавить подраздел"
+                title="Добавить подраздел"
+                disabled={changingSteps}
+                className="grid size-10 place-items-center rounded-xl border border-line bg-surface text-fg-soft hover:bg-muted hover:text-fg disabled:opacity-50"
+                onClick={() => changeSteps(async () => {
+                  setEditingId(null);
+                  setSelected(await content.addModuleStep(id));
+                })}
+              >
+                <Plus size={18} aria-hidden="true" />
+              </button>
+              {active && materials.length === 0 && (
                 <button
-                  key={step ?? "first"}
                   type="button"
-                  aria-label={`Подраздел ${index + 1}${done ? ", выполнен" : ""}`}
-                  aria-current={active === step ? "true" : undefined}
+                  aria-label="Удалить пустой подраздел"
+                  title="Удалить пустой подраздел"
                   disabled={changingSteps}
-                  onClick={() => { setEditingId(null); setSelected(step); }}
-                  className={`flex size-10 items-center justify-center gap-0.5 rounded-xl border text-sm font-semibold tabular-nums ${done ? "border-ok bg-ok text-surface" : active === step ? "border-brand bg-brand text-on-brand" : "border-line hover:bg-muted"} ${done && active === step ? "ring-2 ring-ok ring-offset-2 ring-offset-surface" : ""}`}
-                >
-                  {index + 1}
-                </button>
-              );
-            })}
-            {m.can_edit && (
-              <>
-                <button
-                  type="button"
-                  aria-label="Добавить подраздел"
-                  title="Добавить подраздел"
-                  disabled={changingSteps}
-                  className="grid size-10 place-items-center rounded-xl border border-line text-fg-soft hover:bg-muted hover:text-fg disabled:opacity-50"
+                  className="grid size-10 place-items-center rounded-xl border border-line bg-surface text-danger hover:bg-muted disabled:opacity-50"
                   onClick={() => changeSteps(async () => {
-                    setEditingId(null);
-                    setSelected(await content.addModuleStep(id));
+                    await content.deleteModuleStep(id, active);
+                    setSelected(steps[steps.indexOf(active) - 1] ?? null);
                   })}
                 >
-                  <Plus size={18} aria-hidden="true" />
+                  <Trash2 size={16} aria-hidden="true" />
                 </button>
-                {active && materials.length === 0 && (
-                  <button
-                    type="button"
-                    aria-label="Удалить пустой подраздел"
-                    title="Удалить пустой подраздел"
-                    disabled={changingSteps}
-                    className="grid size-10 place-items-center rounded-xl border border-line text-danger hover:bg-muted disabled:opacity-50"
-                    onClick={() => changeSteps(async () => {
-                      await content.deleteModuleStep(id, active);
-                      setSelected(steps[steps.indexOf(active) - 1] ?? null);
-                    })}
-                  >
-                    <Trash2 size={16} aria-hidden="true" />
-                  </button>
-                )}
-              </>
-            )}
-          </nav>
-        </div>
+              )}
+            </>
+          )}
+        </nav>
       )}
       {materials.length === 0 && <p className="text-fg-soft">{numbered ? "В подразделе пока нет материалов." : "В модуле пока нет материалов."}</p>}
       {materials.map((mat, n) => (
