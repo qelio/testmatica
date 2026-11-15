@@ -66,9 +66,10 @@ function VideoPlayer({ material, signedIn }: { material: Material; signedIn: boo
 }
 
 /** n — номер материала в модуле: виден в игровых оформлениях курса (кружок у заголовка). */
-export function MaterialView({ material, n, onFavorite, onStudied, onSolved }: {
+export function MaterialView({ material, n, onFavorite, onStudied, onSolved, numbered = false }: {
   material: Material;
   n?: number;
+  numbered?: boolean;
   onFavorite?: (on: boolean) => void;
   onStudied?: (id: string) => void;
   onSolved?: (id: string) => void;
@@ -130,7 +131,7 @@ export function MaterialView({ material, n, onFavorite, onStudied, onSolved }: {
       </header>
 
       {(material.kind === "text" || material.kind === "card") && <Markdown text={material.body} />}
-      {material.kind === "task" && material.task_id && <TaskSolver taskId={material.task_id} contextId={material.id} onSolved={onSolved} />}
+      {material.kind === "task" && material.task_id && <TaskSolver taskId={material.task_id} contextId={material.id} onSolved={onSolved} compact={numbered} />}
       {material.kind === "video" && <VideoPlayer material={material} signedIn={signedIn} />}
       {material.kind === "pdf" && material.file?.url && (
         <iframe src={material.file.url} title={material.title} className="h-[75vh] w-full rounded-xl border border-line" />

@@ -97,8 +97,8 @@ function ModulePage({ id, base }: { id: string; base: string }) {
       {error && <Alert>{error}</Alert>}
 
       {numbered && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3">
-          <nav aria-label="Подразделы модуля" className="flex flex-wrap gap-2">
+        <div className="space-y-3 rounded-2xl border border-line bg-surface p-3">
+          <nav aria-label="Подразделы модуля" className="flex flex-wrap justify-center gap-2">
             {steps.map((step, index) => {
               const done = progress.get(step) === true;
               return (
@@ -117,7 +117,7 @@ function ModulePage({ id, base }: { id: string; base: string }) {
             })}
           </nav>
           {m.can_edit && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               {active && materials.length === 0 && (
                 <Button type="button" variant="secondary" disabled={changingSteps} onClick={() => changeSteps(async () => {
                   await content.deleteModuleStep(id, active);
@@ -149,6 +149,7 @@ function ModulePage({ id, base }: { id: string; base: string }) {
             <MaterialView
               material={numbered && isTheory(mat) && completed.has(mat.id) ? { ...mat, viewed: true } : mat}
               n={numbered ? undefined : n + 1}
+              numbered={numbered}
               onStudied={numbered && isTheory(mat) ? markCompleted : undefined}
               onSolved={numbered && mat.kind === "task" ? markCompleted : undefined}
             />

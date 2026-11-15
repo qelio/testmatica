@@ -116,6 +116,9 @@
   --color-logo-word: var(--fg);
   --color-lime: #b8f04a;
   --color-logo-ink: var(--logo-ink);
+  --color-code-panel: #20242c;
+  --color-code-line: #414955;
+  --color-code-label: #d3dbe7;
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-logo: var(--font-unbounded), var(--font-inter), system-ui, sans-serif;
 }

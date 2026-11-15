@@ -60,10 +60,12 @@ export function TaskSolver({
   contextId,
   contextType = "practice",
   onSolved,
+  compact = false,
 }: {
   taskId: string;
   contextId: string;
   contextType?: "practice" | "assignment";
+  compact?: boolean;
   onSolved?: (contextId: string) => void;
 }) {
   const { status } = useAuth();
@@ -74,7 +76,7 @@ export function TaskSolver({
   }, [solved, contextId, onSolved]);
   if (view.error) return <Alert>{view.error}</Alert>;
   if (!view.data) return <Spinner />;
-  return <Solver key={view.data.task.id} view={view.data} reload={view.reload} contextId={contextId} contextType={contextType} />;
+  return <Solver key={view.data.task.id} view={view.data} reload={view.reload} contextId={contextId} contextType={contextType} compact={compact} />;
 }
 
 function Solver({
@@ -82,7 +84,9 @@ function Solver({
   reload,
   contextId,
   contextType,
+  compact,
 }: {
+  compact: boolean;
   view: SolveView;
   reload: () => void;
   contextId: string;
@@ -150,11 +154,13 @@ function Solver({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <Badge tone="brand">{TASK_TYPE_LABELS[task.type]}</Badge>
-        <Badge>{DIFFICULTY_LABELS[task.difficulty]}</Badge>
-        {view.solved && <Badge tone="ok">решено ✓</Badge>}
-      </div>
+      {!compact && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Badge tone="brand">{TASK_TYPE_LABELS[task.type]}</Badge>
+          <Badge>{DIFFICULTY_LABELS[task.difficulty]}</Badge>
+          {view.solved && <Badge tone="ok">решено ✓</Badge>}
+        </div>
+      )}
       <Markdown text={task.statement} />
 
       {status !== "authenticated" ? (
@@ -221,9 +227,9 @@ function Solver({
           )}
           {task.type === "code" && (
             <div className="space-y-1">
-              <CodeEditor value={code} onChange={setCode} minHeight="220px" />
+              <CodeEditor value={code} onChange={setCode} minHeight="220px" presentation={compact ? "dark-panel" : undefined} />
               <p className="text-xs text-fg-soft">
-                Python · лимит {task.time_limit_s} с, {task.memory_limit_mb} МБ · чтение — input(), вывод — print()
+                {!compact && "Python · "}лимит {task.time_limit_s} с, {task.memory_limit_mb} МБ · чтение — input(), вывод — print()
               </p>
             </div>
           )}
@@ -264,7 +270,7 @@ function Solver({
                     <details className="mt-1">
                       <summary className="cursor-pointer text-xs text-brand-text">Код этой попытки</summary>
                       <div className="mt-1">
-                        <CodeEditor value={s.answer.code} readOnly minHeight="60px" />
+                        <CodeEditor value={s.answer.code} readOnly minHeight="60px" presentation={compact ? "dark-panel" : undefined} />
                       </div>
                     </details>
                   )}
