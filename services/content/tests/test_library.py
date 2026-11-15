@@ -13,9 +13,9 @@ async def subject_id(client, name="Алгебра"):
     return next(s["id"] for s in (await client.get("/subjects")).json() if s["name"] == name)
 
 
-async def build_course(client, teacher, title="Линейные уравнения", with_subject=True):
+async def build_course(client, teacher, title="Линейные уравнения", with_subject=True, layout="feed"):
     """Курс → раздел → два модуля, в первом — текст с формулой и ссылка."""
-    body = {"title": title, "description": "7 класс"}
+    body = {"title": title, "description": "7 класс", "layout": layout}
     if with_subject:
         body["subject_id"] = await subject_id(client)
     course = (await client.post("/courses", json=body, headers=bearer(teacher))).json()
@@ -387,3 +387,46 @@ async def test_course_revision_draft(client):
     await client.patch(f"/nodes/{s_draft['id']}", json={"title": "Курс редакции, 2-е изд."}, headers=bearer(staff, MOD))
     done = (await client.post(f"/courses/{s_draft['id']}/submit", headers=bearer(staff, MOD))).json()
     assert (done["id"], done["title"], done["status"]) == (s_course["id"], "Курс редакции, 2-е изд.", "published")
+
+
+async def test_numbered_module_materials_survive_revision(client, fakes):
+    teacher, moderator = uuid4(), uuid4()
+    headers = bearer(teacher)
+    course_id, _, module, other, material, _ = await build_course(client, teacher, layout="steps")
+    endpoint = f"/modules/{module}"
+    created = await client.post(f"{endpoint}/steps", headers=headers)
+    assert created.status_code == 201
+    step = created.json()
+    foreign_step = (await client.post(f"/modules/{other}/steps", headers=headers)).json()
+    assert (await client.patch(f"/materials/{material}", json={"step_id": foreign_step}, headers=headers)).status_code == 422
+    card = {"kind": "card", "title": "Пример", "body": "Теория", "step_id": step}
+    task = {"kind": "task", "task_id": fakes.task(teacher, "Уравнение"), "step_id": step}
+    for data in (card, card | {"title": "Правило"}, task, task | {"task_id": fakes.task(teacher, "Корень")}):
+        response = await client.post(f"{endpoint}/materials", json=data, headers=headers)
+        assert response.status_code == 201, response.text
+    assert (await client.delete(f"{endpoint}/steps/{step}", headers=headers)).status_code == 409
+
+    decision = {"kind": "course", "author_id": str(teacher), "moderator_id": str(moderator), "decision": "approve", "comment": None}
+    await client.post(f"/courses/{course_id}/submit", headers=headers)
+    await apply(handlers.on_moderation_decision, "moderation.decision.made", ref_id=course_id, **decision)
+    draft = (await client.post(f"/courses/{course_id}/revision", headers=headers)).json()
+    assert draft["layout"] == "steps"
+    draft_module = draft["sections"][0]["modules"][0]["id"]
+    preview = (await client.get(f"/modules/{draft_module}", headers=headers)).json()
+    assert preview["steps"] == [step]
+    assert [item["kind"] for item in preview["materials"] if item["step_id"] == step] == ["card", "card", "task", "task"]
+    first_task = next(item for item in preview["materials"] if item["kind"] == "task")
+    assert not first_task["solved"]
+    fakes.solved[str(teacher)] = {first_task["id"]}
+    updated_preview = (await client.get(f"/modules/{draft_module}", headers=headers)).json()
+    assert [item["id"] for item in updated_preview["materials"] if item["solved"]] == [first_task["id"]]
+    draft_text = next(item for item in preview["materials"] if item["kind"] == "text")
+    moved = await client.patch(f"/materials/{draft_text['id']}", json={"step_id": step}, headers=headers)
+    assert moved.json()["step_id"] == step
+    before = (await client.get(endpoint)).json()
+    assert next(item for item in before["materials"] if item["id"] == material)["step_id"] is None
+    await client.post(f"/courses/{draft['id']}/submit", headers=headers)
+    await apply(handlers.on_moderation_decision, "moderation.decision.made", ref_id=draft["id"], **decision)
+    published = (await client.get(endpoint)).json()
+    assert published["course_layout"] == "steps" and published["steps"] == [step]
+    assert [item["id"] for item in published["materials"] if item["step_id"] == step][-1] == material

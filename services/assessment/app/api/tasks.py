@@ -95,6 +95,8 @@ async def _apply(session: AsyncSession, task: Task, body: TaskIn) -> None:
     task.answers = [a.model_dump() for a in body.answers] if body.type == "short" else []
     task.options = [TaskOption(text=o.text, is_correct=o.is_correct, position=i) for i, o in enumerate(body.options)] if body.type == "choice" else []
     task.tests = [TaskTest(input=c.input, expected=c.expected, position=i) for i, c in enumerate(body.tests)] if body.type == CODE else []
+    task.forbidden_words = body.forbidden_words if body.type == CODE else []
+    task.show_failed_test = body.type == CODE and body.show_failed_test
     if body.type == CODE:
         task.language, task.time_limit_s, task.memory_limit_mb = "python", body.time_limit_s, body.memory_limit_mb
     else:
@@ -200,7 +202,8 @@ async def copy(task_id: UUID, principal: Principal = Depends(author), session: A
         subject_name=source.subject_name, topic_id=source.topic_id, exam_item_ids=source.exam_item_ids, difficulty=source.difficulty, tags=source.tags, explanation=source.explanation,
         theory_material_id=source.theory_material_id, file_mode=source.file_mode,
         options=[{"text": o.text, "is_correct": o.is_correct} for o in source.options],
-        answers=source.answers, starter_code=source.starter_code, time_limit_s=source.time_limit_s or 2,
+        answers=source.answers, starter_code=source.starter_code,
+        forbidden_words=source.forbidden_words, show_failed_test=source.show_failed_test, time_limit_s=source.time_limit_s or 2,
         memory_limit_mb=source.memory_limit_mb or 128, tests=[{"input": c.input, "expected": c.expected} for c in source.tests],
     )
     task = Task(owner_id=principal.user_id, status=PRIVATE, based_on_id=source.id)

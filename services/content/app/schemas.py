@@ -30,6 +30,7 @@ class SubjectUpdate(BaseModel):
 
 # Оформление курса для учеников (решение №42). Новая тема — сюда, в web/src/lib/course-themes.ts и в mcp.
 Theme = Literal["classic", "comics", "code"]
+CourseLayout = Literal["feed", "steps"]
 
 
 class CourseSummary(BaseModel):
@@ -42,6 +43,7 @@ class CourseSummary(BaseModel):
     status: str
     review_comment: str | None
     theme: str
+    layout: CourseLayout
     sections_count: int
     materials_count: int
     updated_at: datetime
@@ -104,6 +106,8 @@ class MaterialOut(BaseModel):
     url: str | None
     file: FileInfo | None
     task_id: UUID | None
+    step_id: UUID | None = None
+    solved: bool = False
     position_sec: int
     viewed: bool
     favorite: bool
@@ -116,6 +120,8 @@ class ModuleContent(BaseModel):
     course_id: UUID
     course_title: str
     course_theme: str
+    course_layout: CourseLayout
+    steps: list[UUID]
     section_title: str
     origin_id: UUID | None = Field(None, description="В черновике изменений — модуль опубликованной версии")
     revision_of: UUID | None = Field(None, description="Модуль черновика изменений курса с этим id")
@@ -133,6 +139,7 @@ class CourseCreate(BaseModel):
     subject_id: UUID | None = None
     description: str = Field("", max_length=5000)
     theme: Theme = "classic"
+    layout: CourseLayout = "feed"
 
     _title = field_validator("title")(_clean)
 
@@ -148,6 +155,7 @@ class NodeUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=5000)
     subject_id: UUID | None = None
+    layout: CourseLayout | None = Field(None, description="Только у курса")
     theme: Theme | None = Field(None, description="Только у курса")
 
     _title = field_validator("title")(_clean)
@@ -160,6 +168,7 @@ class MaterialCreate(BaseModel):
     file_id: UUID | None = None
     url: str | None = Field(None, max_length=500)
     task_id: UUID | None = None
+    step_id: UUID | None = None
 
     _title = field_validator("title")(_clean)
 
@@ -187,6 +196,7 @@ class MaterialCreate(BaseModel):
 
 
 class MaterialUpdate(BaseModel):
+    step_id: UUID | None = None
     title: str | None = Field(None, min_length=1, max_length=200)
     body: str | None = Field(None, max_length=200_000)
     url: str | None = Field(None, max_length=500)

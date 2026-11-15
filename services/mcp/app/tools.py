@@ -4,6 +4,9 @@
 ключа как его личные материалы (задача — «личная», курс — черновик); в публичный банк и библиотеку — через
 обычную модерацию (submit_tasks_to_bank, submit_course) или в интерфейсе."""
 
+import base64
+import binascii
+import re
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -21,6 +24,9 @@ INSTRUCTIONS = """Ты работаешь с образовательной пл
 или администратора) и при необходимости задания ЕГЭ/ОГЭ (list_exam_items),
 проверь, нет ли похожей задачи (search_tasks). У каждой задачи короткий номер — «(100345)»; по нему её можно найти
 и исправить. Теория: курс → раздел → модуль → материалы (текст, карточка теории, задача из банка).
+У Python-задач можно задать forbidden_words и включить show_failed_test. Печатный PDF «РЕШУ ОГЭ/ЕГЭ»
+сначала разбери через parse_exam_pdf; проверь условия, ответы и темы, затем сохрани через save_exam_tasks.
+В курсе layout=steps используй get_module и add_module_step; материалы группируй с помощью step_id.
 Опубликованный курс напрямую не правится: start_course_changes → правки в черновике → submit_course (модератор
 проверит; ученики до этого видят прежнюю версию). Изменения принятых тестов автора к такому курсу тоже уходят на проверку
 вместе с черновиком. Тесты собираются из задач банка; тест можно привязать к модулю курса (свой курс или опубликованный —
@@ -33,6 +39,7 @@ search_library_courses): тогда он оформлен как курс. У а
 mcp = MCPServer(name="ТестМатика", instructions=INSTRUCTIONS, website_url="https://testmatica.ru")
 
 TaskType = Literal["choice", "short", "long", "code"]
+CourseLayout = Annotated[Literal["feed", "steps"], Field(description="feed — лента; steps — нумерованные подразделы модуля")]
 # Оформление курса (решение №42): classic — как вся платформа; comics — игровое: толстые контуры, яркие цвета,
 # крупный округлый шрифт; подходит для 5–9 классов и курсов-«миссий»; code — «Код» (решение №47): для информатики,
 # в стиле среды разработки.
@@ -171,6 +178,8 @@ class TaskFields(BaseModel):
     answers: list[ShortAnswer] = Field(default_factory=list, description="Для short: правильные ответы")
     file_mode: Literal["none", "optional", "required"] = Field("none", description="Для long: можно или нужно прикрепить файл")
     starter_code: str = Field("", description="Для code: заготовка программы")
+    forbidden_words: list[str] = Field(default_factory=list, max_length=50, description="Для code: запрещённые имена и ключевые слова Python с учётом регистра, например sort и sorted")
+    show_failed_test: bool = Field(False, description="Для code: показывать ученику ввод, ожидаемый и фактический вывод первого непройденного теста")
     tests: list[CodeTest] = Field(default_factory=list, description="Для code: тест-кейсы")
     time_limit_s: float = Field(2, description="Для code: лимит времени, секунд")
     memory_limit_mb: int = Field(128, description="Для code: лимит памяти, МБ")
@@ -233,7 +242,10 @@ async def search_tasks(
 async def get_task(ctx: Context, task: Annotated[str, Field(description="Номер задачи (100345) или id")]) -> dict:
     """Задача целиком: условие, варианты и ответы (для своих задач), разбор."""
     t = await _resolve_task(_key(ctx), task)
-    return _brief(t) | {k: t.get(k) for k in ("statement", "explanation", "options", "answers", "file_mode", "starter_code", "tests", "tags", "exam_items")}
+    return _brief(t) | {k: t.get(k) for k in (
+        "statement", "explanation", "options", "answers", "file_mode", "starter_code",
+        "tests", "time_limit_s", "memory_limit_mb", "forbidden_words", "show_failed_test", "tags", "exam_items",
+    )}
 
 
 @mcp.tool()
@@ -243,6 +255,72 @@ async def create_task(ctx: Context, task: TaskFields) -> dict:
     body = await _payload(key, task.model_dump(mode="json"))
     created = await call(key, "assessment", "POST", "/tasks", json=body)
     return _brief(created)
+
+
+PDF_LIMIT = 10 * 1024 * 1024
+PDF_IMAGE = re.compile(r"(\]\()ege-pdf-image-(\d+)(\))")
+EXAM_FILE = re.compile(r"\[([^\]\n]+)\]\((https://(?:[a-z0-9-]+-)?(?:ege|oge)\.sdamgia\.ru/get_file\?id=\d+)\)")
+
+
+@mcp.tool()
+async def parse_exam_pdf(
+    ctx: Context, pdf_base64: Annotated[str, Field(description="Печатный PDF РЕШУ ОГЭ/ЕГЭ в base64, до 10 МБ")],
+) -> list[dict]:
+    """Распознать PDF для проверки педагогом. Переносит файлы и иллюстрации, но задачи ещё не сохраняет."""
+    key = _key(ctx)
+    encoded = "".join(pdf_base64.removeprefix("data:application/pdf;base64,").split())
+    if len(encoded) > 4 * ((PDF_LIMIT + 2) // 3):
+        raise ToolError("PDF должен занимать не больше 10 МБ")
+    try:
+        pdf = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        raise ToolError("Передайте PDF в формате base64") from None
+    if len(pdf) > PDF_LIMIT or not pdf.startswith(b"%PDF-"):
+        raise ToolError("Нужен PDF размером до 10 МБ")
+    parsed = await call(key, "assessment", "POST", "/tasks/import-ege", content=pdf, headers={"Content-Type": "application/pdf"})
+    results = []
+    images: dict[int, str] = {}
+    files: dict[str, str] = {}
+    for draft in parsed["tasks"]:
+        fields = {}
+        for field in ("statement", "explanation"):
+            text = draft[field]
+            for match in PDF_IMAGE.finditer(text):
+                index = int(match[2])
+                if index not in images:
+                    images[index] = await store_image(key, parsed["images"][index], f"ege-{index + 1}")
+            for match in EXAM_FILE.finditer(text):
+                url = match[2]
+                if url not in files:
+                    try:
+                        file = await call(key, "media", "POST", "/files/import-ege", json={"url": url})
+                    except ToolError as err:
+                        raise ToolError(f"Задача {draft['number']}: {err}") from None
+                    files[url] = f"/api/media/files/{file['id']}/content"
+            text = PDF_IMAGE.sub(lambda match: f"{match[1]}{images[int(match[2])]}{match[3]}", text)
+            fields[field] = EXAM_FILE.sub(lambda match: f"[📎 {match[1]}]({files[match[2]]})", text)
+        answer = draft["answer"]
+        short = bool(answer) and len(answer) <= 200
+        fields["statement"] += f"\n\nИсточник: [{draft['source_name']}]({draft['source_url']})"
+        if answer and not short:
+            fields["explanation"] = "\n\n".join(filter(None, (fields["explanation"], f"Ответ: {answer}")))
+        task = TaskFields(
+            title=draft["title"], **fields, type="short" if short else "long",
+            answers=[ShortAnswer(value=answer)] if short else [],
+        )
+        results.append({"number": draft["number"], "task": task.model_dump(mode="json", exclude_defaults=True)})
+    return results
+
+
+@mcp.tool()
+async def save_exam_tasks(ctx: Context, tasks: Annotated[list[TaskFields], Field(min_length=1, max_length=100)]) -> list[dict]:
+    """Сохранить проверенный список задач из PDF одной операцией. Передайте только нужные задачи с выбранными темами."""
+    if any(task.topic_id is None for task in tasks):
+        raise ToolError("Выберите тему или раздел рубрикатора для каждой задачи")
+    key = _key(ctx)
+    body = [await _payload(key, task.model_dump(mode="json")) for task in tasks]
+    saved = await call(key, "assessment", "POST", "/tasks/import-ege/save", json=body)
+    return [_brief(task) for task in saved]
 
 
 @mcp.tool()
@@ -296,7 +374,8 @@ async def update_task(
 
 def _course_out(c: dict) -> dict:
     out = {
-        "id": c["id"], "title": c["title"], "status": c["status"], "theme": c.get("theme"), "can_edit": c.get("can_edit"),
+        "id": c["id"], "title": c["title"], "status": c["status"], "theme": c.get("theme"),
+        "layout": c.get("layout", "feed"), "can_edit": c.get("can_edit"),
         "url": link(f"/dashboard/library/course/{c['id']}"),
         "sections": [
             {"id": s["id"], "title": s["title"],
@@ -336,17 +415,52 @@ async def create_course(
     subject_id: Annotated[UUID | None, Field(description="Предмет из list_subjects")] = None,
     description: str = "",
     theme: Theme = "classic",
+    layout: CourseLayout = "feed",
 ) -> dict:
     """Создать курс в библиотеке (черновик педагога). Дальше — add_section, add_module, add_material."""
     return _course_out(await call(_key(ctx), "content", "POST", "/courses",
                                   json={"title": title, "subject_id": str(subject_id) if subject_id else None,
-                                        "description": description, "theme": theme}))
+                                        "description": description, "theme": theme, "layout": layout}))
 
 
 @mcp.tool()
 async def set_course_theme(ctx: Context, course_id: UUID, theme: Theme) -> dict:
     """Сменить оформление курса: страницы курса и модулей у учеников."""
     return _course_out(await call(_key(ctx), "content", "PATCH", f"/nodes/{course_id}", json={"theme": theme}))
+
+
+@mcp.tool()
+async def set_course_layout(ctx: Context, course_id: UUID, layout: CourseLayout) -> dict:
+    """Сменить вид курса. При включении подразделов материалы без группы отображаются в подразделе №1."""
+    return _course_out(await call(_key(ctx), "content", "PATCH", f"/nodes/{course_id}", json={"layout": layout}))
+
+
+@mcp.tool()
+async def get_module(ctx: Context, module_id: UUID) -> dict:
+    """Содержимое модуля, номера подразделов, их id и материалы. Тесты модуля — list_module_tests."""
+    module = await call(_key(ctx), "content", "GET", f"/modules/{module_id}")
+    step_ids = [None, *module.get("steps", [])] if module["course_layout"] == "steps" else []
+    return {
+        "id": module["id"], "title": module["title"], "layout": module["course_layout"], "can_edit": module["can_edit"],
+        "url": link(f"/dashboard/library/module/{module_id}"),
+        "steps": [{"number": number, "id": step} for number, step in enumerate(step_ids, 1)],
+        "materials": [{k: material.get(k) for k in ("id", "kind", "title", "step_id", "task_id", "viewed", "solved")}
+                      for material in module["materials"]],
+    }
+
+
+@mcp.tool()
+async def add_module_step(ctx: Context, module_id: UUID) -> dict:
+    """Добавить нумерованный подраздел в конец модуля. Используйте возвращённый id в add_material или update_material."""
+    step = await call(_key(ctx), "content", "POST", f"/modules/{module_id}/steps")
+    return {"id": step, "url": link(f"/dashboard/library/module/{module_id}")}
+
+
+@mcp.tool()
+async def delete_module_step(ctx: Context, module_id: UUID, step_id: UUID) -> dict:
+    """Удалить пустой подраздел. Подраздел №1 с id=null остаётся доступен."""
+    await call(_key(ctx), "content", "DELETE", f"/modules/{module_id}/steps/{step_id}")
+    return {"deleted": str(step_id)}
 
 
 async def _add_child(key: str, parent_id: UUID, title: str, description: str, kind: str) -> dict:
@@ -381,10 +495,13 @@ async def add_material(
     title: Annotated[str | None, Field(description="Название; для задачи — по умолчанию её название")] = None,
     body: Annotated[str, Field(description="Для text и card: содержание (Markdown, формулы $…$, картинки)")] = "",
     task: Annotated[str | None, Field(description="Для task: номер задачи (100345) или id; в курсы — только с автопроверкой")] = None,
+    step_id: Annotated[UUID | None, Field(description="Подраздел из get_module; null — первый подраздел или лента")] = None,
 ) -> dict:
     """Добавить материал в модуль библиотеки."""
     key = _key(ctx)
     payload: dict[str, Any] = {"kind": kind, "title": title}
+    if step_id:
+        payload["step_id"] = str(step_id)
     if kind == "task":
         if not task:
             raise ToolError("Для материала-задачи укажите задачу: номер или id")
@@ -394,7 +511,7 @@ async def add_material(
             raise ToolError("Пустой материал — заполните body")
         payload["body"] = await localize_images(key, body)
     m = await call(key, "content", "POST", f"/modules/{module_id}/materials", json=payload)
-    return {"id": m["id"], "kind": m["kind"], "title": m["title"], "url": link(f"/dashboard/library/module/{module_id}")}
+    return {"id": m["id"], "kind": m["kind"], "title": m["title"], "step_id": m.get("step_id"), "url": link(f"/dashboard/library/module/{module_id}")}
 
 
 @mcp.tool()
@@ -438,18 +555,23 @@ async def delete_material(ctx: Context, material_id: UUID) -> dict:
 
 
 @mcp.tool()
-async def update_material(ctx: Context, material_id: UUID, title: str | None = None, body: str | None = None) -> dict:
-    """Исправить текст или название материала."""
+async def update_material(
+    ctx: Context, material_id: UUID, title: str | None = None, body: str | None = None,
+    step: Annotated[UUID | Literal["first"] | None, Field(description="Id подраздела; first — перенести в первый; null — оставить как есть")] = None,
+) -> dict:
+    """Исправить текст или название материала либо перенести его в другой подраздел."""
     key = _key(ctx)
     payload: dict[str, Any] = {}
     if title is not None:
         payload["title"] = title
     if body is not None:
         payload["body"] = await localize_images(key, body)
+    if step is not None:
+        payload["step_id"] = None if step == "first" else str(step)
     if not payload:
-        raise ToolError("Нечего менять — передайте title или body")
+        raise ToolError("Нечего менять — передайте title, body или step")
     m = await call(key, "content", "PATCH", f"/materials/{material_id}", json=payload)
-    return {"id": m["id"], "kind": m["kind"], "title": m["title"], "url": link(f"/dashboard/library/module/{m['module_id']}")}
+    return {"id": m["id"], "kind": m["kind"], "title": m["title"], "step_id": m.get("step_id"), "url": link(f"/dashboard/library/module/{m['module_id']}")}
 
 
 

@@ -60,7 +60,7 @@ async def create_course(
     cid = uuid7()
     course = Node(
         id=cid, kind="course", course_id=cid, owner_id=principal.user_id, title=body.title,
-        description=body.description, subject_id=body.subject_id, status=PRIVATE, theme=body.theme,
+        description=body.description, subject_id=body.subject_id, status=PRIVATE, theme=body.theme, layout=body.layout,
     )
     session.add(course)
     await session.commit()
@@ -108,6 +108,8 @@ async def update_node(
         node.subject_id = data["subject_id"]
     if data.get("theme") and node.kind == "course":
         node.theme = data["theme"]
+    if data.get("layout") and node.kind == "course":
+        node.layout = data["layout"]
     _touch(course)
     await session.commit()
     return await views.course_tree(session, course, principal)
@@ -149,17 +151,50 @@ async def move_node(
     return await views.course_tree(session, course, principal)
 
 
-def _swap(items: list, item, direction: str) -> None:
-    """Поменять элемент местами с соседом; позиции перенумеровываются подряд."""
+def _swap(items: list, item, direction: str, *, keep_positions: bool = False) -> None:
+    """Поменять элемент местами с соседом, сохраняя позиции других подразделов."""
+    positions = [entry.position for entry in items] if keep_positions else range(len(items))
     idx = items.index(item)
     other = idx - 1 if direction == "up" else idx + 1
     if 0 <= other < len(items):
         items[idx], items[other] = items[other], items[idx]
-    for pos, it in enumerate(items):
+    for it, pos in zip(items, positions):
         it.position = pos
 
 
 # ---------- материалы ----------
+
+
+def _check_step(module: Node, course: Node, step_id: UUID | None) -> None:
+    if step_id is not None and (course.layout != "steps" or str(step_id) not in module.steps):
+        raise ApiError(422, "invalid_step", "Выберите подраздел этого модуля")
+
+
+@router.post("/modules/{module_id}/steps", response_model=UUID, status_code=201)
+async def add_step(
+    module_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)
+) -> UUID:
+    module, course = await access.editable_node(session, module_id, principal)
+    if module.kind != "module" or course.layout != "steps":
+        raise ApiError(422, "invalid_module", "Подразделы доступны в модулях нумерованного курса")
+    step_id = uuid7()
+    module.steps = [*module.steps, str(step_id)]
+    _touch(course)
+    await session.commit()
+    return step_id
+
+
+@router.delete("/modules/{module_id}/steps/{step_id}", status_code=204)
+async def delete_step(
+    module_id: UUID, step_id: UUID, principal: Principal = Depends(auth.principal), session: AsyncSession = Depends(db.session)
+) -> None:
+    module, course = await access.editable_node(session, module_id, principal)
+    _check_step(module, course, step_id)
+    if await session.scalar(select(Material.id).where(Material.module_id == module.id, Material.step_id == step_id).limit(1)):
+        raise ApiError(409, "step_not_empty", "Сначала перенесите материалы в другой подраздел")
+    module.steps = [step for step in module.steps if step != str(step_id)]
+    _touch(course)
+    await session.commit()
 
 
 @router.post("/modules/{module_id}/materials", response_model=MaterialOut, status_code=201)
@@ -172,6 +207,7 @@ async def add_material(
     module, course = await access.editable_node(session, module_id, principal)
     if module.kind != "module":
         raise ApiError(422, "invalid_parent", "Материалы добавляются в модуль")
+    _check_step(module, course, body.step_id)
     title = body.title
     task_id = None
     if body.kind == "task":
@@ -185,6 +221,7 @@ async def add_material(
         title, task_id = title or task["title"], body.task_id
     material = Material(
         module_id=module.id, course_id=course.id, kind=body.kind, title=title, body=body.body.strip(), task_id=task_id,
+        step_id=body.step_id,
         url=body.url if body.kind == "link" else None,
         position=await _next_position(session, Material, module_id=module.id),
     )
@@ -224,6 +261,12 @@ async def update_material(
 ) -> MaterialOut:
     material, course = await access.editable_material(session, material_id, principal)
     data = body.model_dump(exclude_unset=True)
+    if "step_id" in data:
+        module = await session.get(Node, material.module_id)
+        _check_step(module, course, body.step_id)
+        if material.step_id != body.step_id:
+            material.position = await _next_position(session, Material, module_id=material.module_id)
+            material.step_id = body.step_id
     if data.get("title"):
         material.title = data["title"]
     if "body" in data and material.kind in ("text", "card"):
@@ -258,12 +301,11 @@ async def move_material(
     session: AsyncSession = Depends(db.session),
 ) -> None:
     material, course = await access.editable_material(session, material_id, principal)
-    siblings = (
-        await session.execute(
-            select(Material).where(Material.module_id == material.module_id).order_by(Material.position, Material.created_at)
-        )
-    ).scalars().all()
-    _swap(list(siblings), material, body.direction)
+    query = select(Material).where(Material.module_id == material.module_id)
+    if course.layout == "steps":
+        query = query.where(Material.step_id == material.step_id)
+    siblings = list((await session.scalars(query.order_by(Material.position, Material.created_at))).all())
+    _swap(siblings, material, body.direction, keep_positions=course.layout == "steps")
     _touch(course)
     await session.commit()
 

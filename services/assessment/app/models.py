@@ -170,6 +170,8 @@ class Task(Base):
     # Код:
     language: Mapped[str | None] = mapped_column(String(20))
     starter_code: Mapped[str] = mapped_column(Text, default="")
+    forbidden_words: Mapped[list[str]] = mapped_column(ARRAY(String(80)), default=list, server_default="{}")
+    show_failed_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     time_limit_s: Mapped[float | None] = mapped_column(Float)
     memory_limit_mb: Mapped[int | None]
 
@@ -248,6 +250,8 @@ class Submission(Base):
     # Для кода: номер первого упавшего теста и его вид — это видит ученик.
     failed_case: Mapped[int | None]
     failure: Mapped[str | None] = mapped_column(String(20))
+    failed_test: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    forbidden_word: Mapped[str | None] = mapped_column(String(80))
     # Полный протокол прогона (выводы, ошибки) — только для педагога.
     run_log: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     teacher_comment: Mapped[str | None] = mapped_column(Text)

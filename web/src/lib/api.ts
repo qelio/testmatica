@@ -850,6 +850,8 @@ export type CourseStatus = "private" | "pending" | "published" | "rejected" | "r
 /** Оформление курса или теста для учеников (решение №42); список — lib/course-themes.ts. */
 export type CourseTheme = "classic" | "comics" | "code";
 
+export type CourseLayout = "feed" | "steps";
+
 export type CourseSummary = {
   id: string;
   title: string;
@@ -860,6 +862,7 @@ export type CourseSummary = {
   status: CourseStatus;
   review_comment: string | null;
   theme: CourseTheme;
+  layout: CourseLayout;
   sections_count: number;
   materials_count: number;
   updated_at: string;
@@ -889,6 +892,8 @@ export type Material = {
   url: string | null;
   file: { id: string; filename: string; mime: string; size: number | null; url: string | null } | null;
   task_id: string | null;
+  step_id: string | null;
+  solved: boolean;
   position_sec: number;
   viewed: boolean;
   favorite: boolean;
@@ -901,6 +906,8 @@ export type ModuleContent = {
   course_id: string;
   course_title: string;
   course_theme: CourseTheme;
+  course_layout: CourseLayout;
+  steps: string[];
   section_title: string;
   /** В черновике изменений — модуль опубликованной версии (к нему привязаны тесты). */
   origin_id: string | null;
@@ -940,21 +947,23 @@ export const content = {
 
   /** Черновик изменений опубликованного курса: создаёт или возвращает существующий (решение №46). */
   startRevision: (courseId: string) => api<CourseTree>(`${CT}/courses/${courseId}/revision`, { method: "POST" }),
-  createCourse: (data: { title: string; subject_id?: string | null; description?: string; theme?: CourseTheme }) =>
+  createCourse: (data: { title: string; subject_id?: string | null; description?: string; theme?: CourseTheme; layout?: CourseLayout }) =>
     api<CourseTree>(`${CT}/courses`, { method: "POST", body: data }),
   addChild: (parentId: string, title: string) =>
     api<CourseTree>(`${CT}/nodes/${parentId}/children`, { method: "POST", body: { title } }),
-  updateNode: (id: string, data: { title?: string; description?: string; subject_id?: string | null; theme?: CourseTheme }) =>
+  updateNode: (id: string, data: { title?: string; description?: string; subject_id?: string | null; theme?: CourseTheme; layout?: CourseLayout }) =>
     api<CourseTree>(`${CT}/nodes/${id}`, { method: "PATCH", body: data }),
   deleteNode: (id: string) => api<void>(`${CT}/nodes/${id}`, { method: "DELETE" }),
   moveNode: (id: string, direction: "up" | "down") =>
     api<CourseTree>(`${CT}/nodes/${id}/move`, { method: "POST", body: { direction } }),
+  addModuleStep: (id: string) => api<string>(`${CT}/modules/${id}/steps`, { method: "POST" }),
+  deleteModuleStep: (id: string, stepId: string) => api<void>(`${CT}/modules/${id}/steps/${stepId}`, { method: "DELETE" }),
   addMaterial: (
     moduleId: string,
-    data: { kind: MaterialKind; title?: string; body?: string; file_id?: string | null; url?: string | null; task_id?: string | null },
+    data: { kind: MaterialKind; title?: string; body?: string; file_id?: string | null; url?: string | null; task_id?: string | null; step_id?: string | null },
   ) =>
     api<Material>(`${CT}/modules/${moduleId}/materials`, { method: "POST", body: data }),
-  updateMaterial: (id: string, data: { title?: string; body?: string; url?: string }) =>
+  updateMaterial: (id: string, data: { title?: string; body?: string; url?: string; step_id?: string | null }) =>
     api<Material>(`${CT}/materials/${id}`, { method: "PATCH", body: data }),
   deleteMaterial: (id: string) => api<void>(`${CT}/materials/${id}`, { method: "DELETE" }),
   moveMaterial: (id: string, direction: "up" | "down") =>
@@ -1027,6 +1036,8 @@ export type TaskFull = TaskSummary & {
   options: { id: string; text: string; is_correct: boolean | null }[];
   answers: { mode: "exact" | "regex"; value: string }[] | null;
   starter_code: string;
+  forbidden_words: string[];
+  show_failed_test: boolean;
   time_limit_s: number | null;
   memory_limit_mb: number | null;
   tests: { input: string; expected: string }[] | null;
@@ -1050,6 +1061,8 @@ export type TaskInput = {
   options: { text: string; is_correct: boolean }[];
   answers: { mode: "exact" | "regex"; value: string }[];
   starter_code: string;
+  forbidden_words: string[];
+  show_failed_test: boolean;
   time_limit_s: number;
   memory_limit_mb: number;
   tests: { input: string; expected: string }[];
@@ -1065,6 +1078,8 @@ export type EgePdfDraft = {
   source_name: string;
 };
 
+export type FailedTest = { number: number; input: string; expected: string; output: string };
+
 export type Submission = {
   id: string;
   task_id: string;
@@ -1076,6 +1091,8 @@ export type Submission = {
   status: "checking" | "correct" | "incorrect" | "error" | "pending_review" | "reviewed";
   score: number | null;
   failed_case: number | null;
+  failed_test: FailedTest | null;
+  forbidden_word: string | null;
   failure: "wrong_answer" | "runtime_error" | "time_limit" | "memory_limit" | null;
   teacher_comment: string | null;
   /** Когда проверил или изменил педагог. */
@@ -1387,6 +1404,8 @@ export type AttemptTask = {
   earned: number | null;
 };
 export type CodeCheck = {
+  failed_test: FailedTest | null;
+  forbidden_word: string | null;
   status: "checking" | "correct" | "incorrect" | "error";
   failed: number | null;
   total: number | null;

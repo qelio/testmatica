@@ -265,3 +265,69 @@ async def test_create_topic(monkeypatch):
     role["staff"] = False
     with pytest.raises(ToolError, match="только модератор и администратор"):
         await tools.create_topic(ctx, "Тема", section_id="22222222-2222-2222-2222-222222222222")
+
+
+async def test_new_authoring_tools(monkeypatch):
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app import tools
+
+    course, module, step, material, topic, task_id = (uuid4() for _ in range(6))
+    ctx = SimpleNamespace(headers={"authorization": "Bearer tm_good"})
+    sent = []
+    task = {"id": str(task_id), "number": 100345, "title": "Тип 3", "type": "short", "difficulty": 1, "status": "private"}
+
+    async def call(key, service, method, path, **kwargs):
+        sent.append((service, method, path, kwargs))
+        assert key == "tm_good"
+        if path in ("/courses", f"/nodes/{course}"):
+            return {"id": str(course), "title": "Курс", "status": "private", "layout": kwargs["json"]["layout"]}
+        if path == f"/modules/{module}":
+            return {"id": str(module), "title": "Модуль", "course_layout": "steps", "can_edit": True,
+                    "steps": [str(step)], "materials": [{"id": str(material), "kind": "card", "title": "Правило", "step_id": str(step)}]}
+        if path.endswith("/steps"):
+            return str(step)
+        if path.endswith(f"/steps/{step}"):
+            return None
+        if path.endswith("/materials") or path == f"/materials/{material}":
+            return {"id": str(material), "module_id": str(module), "title": "Правило", "kind": "card", **kwargs["json"]}
+        if path == "/tasks/import-ege":
+            assert kwargs["headers"] == {"Content-Type": "application/pdf"}
+            assert kwargs["content"].startswith(b"%PDF-")
+            return {"tasks": [{"number": 1, "title": "Тип 3", "statement": "[Данные](https://inf-ege.sdamgia.ru/get_file?id=123)",
+                               "explanation": "Разбор", "answer": "45", "source_url": "https://inf-ege.sdamgia.ru/problem?id=456",
+                               "source_name": "РЕШУ ЕГЭ"}], "images": []}
+        if path == "/files/import-ege":
+            return {"id": "file-id"}
+        if path == "/tasks/import-ege/save":
+            return [task]
+        if path == "/tasks":
+            return task
+        raise AssertionError(path)
+
+    monkeypatch.setattr(tools, "call", call)
+    assert (await tools.create_course(ctx, "Курс", layout="steps"))["layout"] == "steps"
+    assert (await tools.set_course_layout(ctx, course, "feed"))["layout"] == "feed"
+    assert (await tools.add_module_step(ctx, module))["id"] == str(step)
+    data = await tools.get_module(ctx, module)
+    assert data["steps"] == [{"number": 1, "id": None}, {"number": 2, "id": str(step)}]
+    assert data["materials"][0]["step_id"] == str(step)
+    assert (await tools.add_material(ctx, module, "card", "Правило", "Теория", step_id=step))["step_id"] == str(step)
+    assert (await tools.update_material(ctx, material, step="first"))["step_id"] is None
+    assert (await tools.delete_module_step(ctx, module, step))["deleted"] == str(step)
+
+    encoded = base64.b64encode(b"%PDF-1.7").decode()
+    preview = (await tools.parse_exam_pdf(ctx, encoded))[0]["task"]
+    assert "[📎 Данные](/api/media/files/file-id/content)" in preview["statement"]
+    assert preview["statement"].endswith("https://inf-ege.sdamgia.ru/problem?id=456)")
+    with pytest.raises(ToolError, match="Выберите тему"):
+        await tools.save_exam_tasks(ctx, [tools.TaskFields(**preview)])
+    result = await tools.save_exam_tasks(ctx, [tools.TaskFields(**preview, topic_id=topic)])
+    assert result[0]["id"] == str(task_id)
+    assert sent[-1][3]["json"][0]["answers"][0]["value"] == "45"
+
+    await tools.create_task(ctx, tools.TaskFields(title="Python", statement="Условие", type="code",
+                                                 forbidden_words=["sorted"], show_failed_test=True))
+    assert sent[-1][3]["json"]["forbidden_words"] == ["sorted"]
+    assert sent[-1][3]["json"]["show_failed_test"] is True

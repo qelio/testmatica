@@ -94,6 +94,9 @@ class Node(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Оформление курса для учеников (решение №42): classic — как вся платформа, comics — игровое «Комикс»,
     # code — «Код» для информатики (решение №47).
+    layout: Mapped[str] = mapped_column(String(5), default="feed", server_default="feed")
+    # Дополнительные подразделы модуля. Первый подраздел хранит материалы с step_id = NULL.
+    steps: Mapped[list[str]] = mapped_column(JSONB, default=list, server_default="[]")
     theme: Mapped[str] = mapped_column(String(12), default="classic", server_default="classic")
     # Черновик изменений опубликованного курса (решение №46): у корня черновика — id опубликованного курса,
     # у копий разделов и модулей — id оригинала (новые — без него). Ученики видят опубликованную версию,
@@ -124,6 +127,7 @@ class Material(Base):
     file_mime: Mapped[str | None] = mapped_column(String(120))
     file_size: Mapped[int | None]
     url: Mapped[str | None] = mapped_column(String(500))
+    step_id: Mapped[UUID | None]
     task_id: Mapped[UUID | None]  # для kind = task
     origin_id: Mapped[UUID | None]  # в черновике изменений — id материала опубликованной версии (решение №46)
     position: Mapped[int] = mapped_column(Integer, default=0)

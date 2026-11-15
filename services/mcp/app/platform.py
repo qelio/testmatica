@@ -71,11 +71,11 @@ def _error_text(resp: httpx.Response) -> str:
     return text
 
 
-async def call(key: str, service: str, method: str, path: str, **kwargs) -> Any:
+async def call(key: str, service: str, method: str, path: str, *, headers: Mapping[str, str] | None = None, **kwargs) -> Any:
     token, _ = await session_for(key)
     async with httpx.AsyncClient(base_url=SERVICES[service], timeout=30, transport=transport) as client:
         try:
-            resp = await client.request(method, path, headers={"Authorization": f"Bearer {token}"}, **kwargs)
+            resp = await client.request(method, path, headers={**(headers or {}), "Authorization": f"Bearer {token}"}, **kwargs)
         except httpx.HTTPError:
             raise ToolError("Сервис ТестМатики временно недоступен, попробуйте позже") from None
     if resp.status_code >= 500:

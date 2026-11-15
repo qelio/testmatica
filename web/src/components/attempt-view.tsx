@@ -7,7 +7,7 @@ import { CodeEditor } from "@/components/code-editor";
 import { AttachButton, AttachmentView, UploadChips, useUploads } from "@/components/files";
 import { Markdown } from "@/components/markdown";
 import { ReviewForm } from "@/components/review-form";
-import { resultText } from "@/components/task-solver";
+import { FailedTestDetails, resultText } from "@/components/task-solver";
 import { Alert, Badge, Button } from "@/components/ui";
 import { assessment, type Attempt, type AttemptTask, type Submission } from "@/lib/api";
 import { celebrateOnce } from "@/lib/confetti";
@@ -101,6 +101,7 @@ function CodeCheckButton({ attemptId, item, code, beforeCheck }: { attemptId: st
   if (checking) text = <span className="text-fg-soft">Проверяю…</span>;
   else if (check?.status === "error") text = <span className="text-danger">Не удалось проверить — попробуйте ещё раз</span>;
   else if (check?.status === "correct") text = <span className="text-ok">Все тесты пройдены ✓</span>;
+  else if (check?.forbidden_word) text = <span className="text-danger">Запрещённое слово: {check.forbidden_word}</span>;
   else if (check?.status === "incorrect")
     text = (
       <span className="text-danger">
@@ -122,6 +123,7 @@ function CodeCheckButton({ attemptId, item, code, beforeCheck }: { attemptId: st
           {check.passed_once && check.status !== "correct" && " · уже было решено верно — это и засчитается"}
         </span>
       )}
+      {check?.failed_test && <div className="w-full"><FailedTestDetails test={check.failed_test} /></div>}
       {error && <span className="w-full text-sm text-danger">{error}</span>}
     </div>
   );
@@ -447,6 +449,7 @@ export function AttemptView({ attempt, teacher, reload }: { attempt: Attempt; te
                     </Button>
                   )}
                 </div>
+                {item.result.failed_test && <FailedTestDetails test={item.result.failed_test} />}
                 {item.result.teacher_comment && <p className="text-sm">Комментарий педагога: {item.result.teacher_comment}</p>}
                 {teacher && <RunLog sub={item.result} />}
                 {teacher && item.task.type === "long" && <ReviewForm sub={item.result} points={item.points} onChanged={reload} />}

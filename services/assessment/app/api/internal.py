@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from testmatica_common.errors import ApiError
 from testmatica_common.internal import internal_guard
@@ -12,7 +12,7 @@ from testmatica_common.internal import internal_guard
 from .. import class_access, views
 from ..config import settings
 from ..deps import db
-from ..models import AUTO_TYPES, IN_PROGRESS, PUBLISHED, REMOVED, Assignment, Attempt, Task
+from ..models import AUTO_TYPES, CORRECT, IN_PROGRESS, PUBLISHED, REMOVED, Assignment, Attempt, Submission, Task
 from ..schemas import ProctorAccess, ProctorStudent
 
 router = APIRouter(prefix="/internal", tags=["internal"], dependencies=[Depends(internal_guard(settings.internal_token))])
@@ -47,6 +47,24 @@ async def lookup(body: LookupIn, session: AsyncSession = Depends(db.session)) ->
 
 class SubjectsIn(BaseModel):
     assignment_ids: list[UUID] = Field(max_length=1000)
+
+
+class PracticeProgressIn(BaseModel):
+    user_id: UUID
+    tasks: dict[UUID, UUID] = Field(max_length=500, description="Материал курса → задача")
+
+
+@router.post("/tasks/practice-progress", response_model=list[UUID])
+async def practice_progress(body: PracticeProgressIn, session: AsyncSession = Depends(db.session)) -> list[UUID]:
+    if not body.tasks:
+        return []
+    query = select(Submission.context_id).where(
+        Submission.student_id == body.user_id,
+        Submission.context_type == "practice",
+        Submission.status == CORRECT,
+        tuple_(Submission.context_id, Submission.task_id).in_(list(body.tasks.items())),
+    ).distinct()
+    return list((await session.scalars(query)).all())
 
 
 @router.post("/assignments/subjects", response_model=dict[UUID, str | None])

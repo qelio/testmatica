@@ -7,7 +7,7 @@ import { useState } from "react";
 import { AdminContentActions } from "@/components/admin-content";
 import { ThemePicker, ThemeScope } from "@/components/theme-scope";
 import { Alert, Badge, Button, EmptyState, Field, Modal, Select, Spinner } from "@/components/ui";
-import { classroom, content, type CourseStatus, type CourseTheme, type CourseTree } from "@/lib/api";
+import { classroom, content, type CourseLayout, type CourseStatus, type CourseTheme, type CourseTree } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { errorText, useLoad } from "@/lib/hooks";
 
@@ -381,6 +381,7 @@ export function CourseDetailsModal({
   const [title, setTitle] = useState(course?.title ?? "");
   const [subjectId, setSubjectId] = useState(course?.subject?.id ?? "");
   const [description, setDescription] = useState(course?.description ?? "");
+  const [layout, setLayout] = useState<CourseLayout>(course?.layout ?? "feed");
   const [theme, setTheme] = useState<CourseTheme>(course?.theme ?? "classic");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -393,7 +394,7 @@ export function CourseDetailsModal({
           setBusy(true);
           setError(undefined);
           try {
-            const data = { title, subject_id: subjectId || null, description, theme };
+            const data = { title, subject_id: subjectId || null, description, theme, layout };
             const saved = course ? await content.updateNode(course.id, data) : await content.createCourse(data);
             onSaved(saved.id);
           } catch (err) {
@@ -423,6 +424,23 @@ export function CourseDetailsModal({
             className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </label>
+        <fieldset>
+          <legend className="mb-2 text-sm font-medium">Вид модулей курса</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {([
+              ["feed", "Лента", "Все материалы модуля идут подряд."],
+              ["steps", "По подразделам", "Материалы сгруппированы по номерам."],
+            ] as const).map(([value, label, hint]) => (
+              <label key={value} className="block cursor-pointer rounded-xl border border-line p-3 has-checked:border-brand has-checked:bg-brand/5">
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <input type="radio" name="course-layout" value={value} checked={layout === value} onChange={() => setLayout(value)} className="accent-brand" />
+                  {label}
+                </span>
+                <span className="mt-1 block text-xs text-fg-soft">{hint}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <ThemePicker value={theme} onChange={setTheme} hint="Как курс, его модули, задачи и привязанные к нему тесты выглядят у учеников." />
         <Button type="submit" loading={busy} disabled={!title.trim()} className="w-full">
           {course ? "Сохранить" : "Создать курс"}

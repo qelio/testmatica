@@ -10,7 +10,7 @@ from testmatica_common.auth import Principal
 from testmatica_common.errors import ApiError
 
 from . import access
-from .deps import media
+from .deps import assessment, media
 from .models import Favorite, Material, MaterialProgress, Node, Person, Subject
 from .schemas import (
     CourseOut,
@@ -69,6 +69,7 @@ async def summaries(session: AsyncSession, courses: Sequence[Node]) -> list[Cour
             status=c.status,
             review_comment=c.review_comment,
             theme=c.theme,
+            layout=c.layout,
             sections_count=sections.get(c.id, 0),
             materials_count=materials.get(c.id, 0),
             updated_at=c.updated_at,
@@ -167,6 +168,7 @@ def material_out(m: Material, urls: dict[str, str], progress: dict[UUID, int], f
         if m.file_id
         else None,
         task_id=m.task_id,
+        step_id=m.step_id,
         position_sec=progress.get(m.id, 0),
         viewed=m.id in progress,
         favorite=m.id in favorites,
@@ -179,6 +181,21 @@ async def module_content(session: AsyncSession, module: Node, course: Node, prin
     ).scalars().all()
     progress, favorites = await _marks(session, principal, [m.id for m in materials])
     urls = await file_urls(materials)
+    material_views = [material_out(m, urls, progress, favorites) for m in materials]
+    if course.layout == "steps" and principal is not None:
+        tasks = [(str(m.id), str(m.task_id)) for m in materials if m.kind == "task" and m.task_id]
+        solved: set[str] = set()
+        try:
+            for start in range(0, len(tasks), 500):
+                solved.update(await assessment.post(
+                    "/internal/tasks/practice-progress",
+                    json={"user_id": str(principal.user_id), "tasks": dict(tasks[start:start + 500])},
+                ))
+        except ApiError:
+            # Теория остаётся доступной при недоступности проверки задач.
+            pass
+        for material in material_views:
+            material.solved = str(material.id) in solved
 
     # Соседние модули в порядке курса — для кнопок «назад / дальше».
     nodes = (
@@ -196,10 +213,12 @@ async def module_content(session: AsyncSession, module: Node, course: Node, prin
         course_id=course.id,
         course_title=course.title,
         course_theme=course.theme,
+        course_layout=course.layout,
+        steps=module.steps,
         origin_id=module.origin_id,
         revision_of=course.revision_of,
         section_title=section.title,
-        materials=[material_out(m, urls, progress, favorites) for m in materials],
+        materials=material_views,
         prev_module_id=order[idx - 1].id if idx > 0 else None,
         next_module_id=order[idx + 1].id if idx + 1 < len(order) else None,
         can_edit=access.can_edit(course, principal),
