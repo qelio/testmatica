@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 
 import { NewsCard } from "@/components/news-card";
 import type { NewsSummary } from "@/lib/server-api";
 import { serverGet } from "@/lib/server-api";
+
+export const metadata: Metadata = {
+  title: "Новости образовательной платформы | ТестМатика",
+  description: "Читайте новости ТестМатики об обновлениях платформы и возможностях для педагогов и учеников.",
+  alternates: { canonical: "/news" },
+};
 
 /** Лента новостей (ведёт администратор). */
 export default async function NewsPage() {

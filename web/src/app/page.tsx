@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   BookOpen,
   CalendarDays,
@@ -38,6 +39,12 @@ import { pluralWord } from "@/lib/format";
 import { FOUNDER } from "@/lib/founder";
 import { OPERATOR } from "@/lib/legal";
 import { featuredTutors, type LandingIcon, type LandingOut, serverGet } from "@/lib/server-api";
+
+export const metadata: Metadata = {
+  title: "ТестМатика — онлайн-платформа для учителей и репетиторов",
+  description: "Создавайте онлайн-тесты и задания, ведите электронный журнал и проводите занятия с онлайн-доской. Ученики могут найти репетитора и пройти бесплатные курсы.",
+  alternates: { canonical: "/" },
+};
 
 /** Яркие карточки курсов. Фиолетовый на сайте не используем. */
 const COURSE_TONES = ["bg-lime text-logo-ink", "bg-sky text-logo-ink", "bg-sun text-logo-ink", "bg-brand-strong text-on-brand", "bg-pink text-logo-ink", "bg-danger text-on-danger"];
