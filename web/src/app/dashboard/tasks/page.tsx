@@ -31,8 +31,8 @@ function TaskBank() {
 }
 
 function TaskBankContent({ initialScope }: { initialScope: Scope }) {
-  const { user } = useAuth();
-  const staff = !!user?.roles.some((r) => r === "moderator" || r === "admin");
+  const { activeRole } = useAuth();
+  const staff = activeRole === "moderator" || activeRole === "admin";
   const [scope, setScope] = useState<Scope>(initialScope);
   const [node, setNode] = useState("");
   const [treeOpen, setTreeOpen] = useState(false);
