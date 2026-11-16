@@ -3,6 +3,7 @@ import { Inter, Unbounded } from "next/font/google";
 import Script from "next/script";
 
 import { AuthProvider } from "@/lib/auth";
+import { SITE } from "@/lib/legal";
 import { RealtimeProvider } from "@/lib/realtime";
 import { THEME_SCRIPT } from "@/lib/theme-script";
 
@@ -13,6 +14,7 @@ const inter = Inter({ variable: "--font-inter", subsets: ["latin", "cyrillic"] }
 const unbounded = Unbounded({ variable: "--font-unbounded", subsets: ["latin", "cyrillic"], weight: ["700"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE.url),
   title: "ТестМатика – Образовательная платформа",
   description: "Образовательная платформа: школьные классы, репетиторы, библиотека знаний и заданий",
 };

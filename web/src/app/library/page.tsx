@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import { Catalog } from "@/components/library";
+
+export const metadata: Metadata = {
+  title: "Библиотека знаний — бесплатные курсы | ТестМатика",
+  description: "Изучайте бесплатные онлайн-курсы из библиотеки ТестМатики. Материалы проверены модераторами и доступны без регистрации.",
+  alternates: { canonical: "/library" },
+};
 
 export default function PublicLibraryPage() {
   return (
