@@ -16,7 +16,7 @@ import { useRealtime } from "@/lib/realtime";
 /** Обращение: тема, статус, кто ведёт, и переписка с поддержкой. */
 export default function TicketPage() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, activeRole } = useAuth();
   // Сначала обращение: для сотрудника это же добавляет его в участники переписки.
   const ticket = useLoad(() => support.ticket(id), [id]);
   const conv = useLoad(async () => (ticket.data ? chat.conversation(id) : null), [id, !!ticket.data]);
@@ -28,7 +28,10 @@ export default function TicketPage() {
   if (ticket.error) return <Alert>{ticket.error}</Alert>;
   if (!ticket.data || !user) return <Spinner />;
   const t = ticket.data;
-  const staff = user.roles.some((r) => r === "moderator" || r === "admin");
+  const staff = activeRole === "moderator" || activeRole === "admin";
+  if (!staff && t.requester_id !== user.id) {
+    return <Alert>Откройте обращение в режиме администратора или модератора.</Alert>;
+  }
 
   async function act(fn: () => Promise<SupportTicket>) {
     setError(undefined);

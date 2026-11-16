@@ -1,8 +1,8 @@
 "use client";
 
-import { Bell, ChevronDown, MessageSquare } from "lucide-react";
+import { Bell, BookOpen, Check, ChevronDown, GraduationCap, MessageSquare, ShieldCheck, UserCog } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Avatar, conversationPreview, shortTime } from "@/components/chat-preview";
@@ -205,8 +205,11 @@ export function NotificationBell() {
   );
 }
 
+const ROLE_ICONS = { admin: UserCog, moderator: ShieldCheck, teacher: GraduationCap, student: BookOpen };
+
 export function UserMenu() {
-  const { user, signOut } = useAuth();
+  const { user, activeRole, availableRoles, switchRole, signOut } = useAuth();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const ref = useDismiss(open, close);
@@ -219,6 +222,7 @@ export function UserMenu() {
     .toUpperCase();
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || user.full_name;
   const roles = user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ");
+  const activeLabel = activeRole ? ROLE_LABELS[activeRole] : roles;
 
   return (
     <div ref={ref} className="relative">
@@ -226,7 +230,7 @@ export function UserMenu() {
         type="button"
         onClick={() => setOpen(!open)}
         className="flex h-12 items-center gap-2 rounded-xl py-1 pr-1.5 pl-1 hover:bg-muted"
-        aria-label={`Профиль: ${name}, ${roles}`}
+        aria-label={`Профиль: ${name}, ${activeLabel}`}
         aria-expanded={open}
       >
         <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-brand/15 text-sm font-semibold text-brand-text">
@@ -239,7 +243,7 @@ export function UserMenu() {
         </span>
         <span className="ml-1 hidden max-w-56 min-w-0 text-left sm:block">
           <span className="block truncate text-sm leading-[18px] font-medium">{name}</span>
-          <span className="block truncate text-xs leading-[15px] font-bold text-fg-soft/60">{roles}</span>
+          <span className="block truncate text-xs leading-[15px] font-bold text-fg-soft/60">{activeLabel}</span>
         </span>
         <ChevronDown size={16} strokeWidth={2} aria-hidden className={`shrink-0 text-fg-soft transition-transform sm:ml-1 ${open ? "rotate-180" : ""}`} />
       </button>
@@ -248,8 +252,37 @@ export function UserMenu() {
           <div className="px-3 py-2">
             <p className="truncate font-medium">{user.full_name}</p>
             <p className="truncate text-sm text-fg-soft">{user.email ?? user.login}</p>
-            <p className="mt-1 text-xs text-fg-soft">{roles}</p>
+            {availableRoles.length < 2 && <p className="mt-1 text-xs text-fg-soft">{roles}</p>}
           </div>
+          {availableRoles.length > 1 && (
+            <div role="group" aria-label="Режим работы" className="my-1 rounded-xl bg-muted p-1">
+              <p aria-hidden="true" className="px-2 pt-1 pb-0.5 text-xs font-medium text-fg-soft">Режим работы</p>
+              {availableRoles.map((role) => {
+                const Icon = ROLE_ICONS[role];
+                const active = role === activeRole;
+                return (
+                  <button
+                    key={role}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (active) return;
+                      switchRole(role);
+                      close();
+                      router.replace("/dashboard");
+                    }}
+                    className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-sm font-medium ${active ? "bg-surface text-brand-text shadow-sm" : "text-fg-soft hover:bg-surface/70 hover:text-fg"}`}
+                  >
+                    <span className={`grid size-7 shrink-0 place-items-center rounded-md ${active ? "bg-brand/15" : ""}`}>
+                      <Icon size={16} aria-hidden="true" />
+                    </span>
+                    {ROLE_LABELS[role]}
+                    {active && <Check size={16} aria-hidden="true" className="ml-auto shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <ThemeSwitch />
           <Link href="/dashboard/account" onClick={close} className="block rounded-lg px-3 py-2 text-sm hover:bg-muted">
             Личный кабинет

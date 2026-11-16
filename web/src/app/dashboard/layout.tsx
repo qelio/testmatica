@@ -10,7 +10,7 @@ import { MessagesButton, NotificationBell, UserMenu } from "@/components/header-
 import { HeaderSearch } from "@/components/header-search";
 import { Logo } from "@/components/ui";
 import { APP_VERSION } from "@/lib/version";
-import { chat, CHAT_READ, type Conversation, support, type UserInfo } from "@/lib/api";
+import { chat, CHAT_READ, type Conversation, support } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { navFor } from "@/lib/navigation";
 import { useRealtime } from "@/lib/realtime";
@@ -23,7 +23,8 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
   // Свёрнутое меню (только иконки) — на широком экране; запоминается в браузере.
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const chats = useConversations(auth.status === "authenticated", pathname);
-  const supportBadge = useSupportBadge(auth.status === "authenticated" ? auth.user : null, pathname);
+  const role = auth.activeRole;
+  const supportBadge = useSupportBadge(auth.status === "authenticated", role === "admin" || role === "moderator", pathname);
 
   useEffect(() => {
     if (auth.status === "anonymous") router.replace("/login");
@@ -37,8 +38,8 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
     );
   }
 
-  const { user } = auth;
-  const nav = navFor(user.roles);
+  const roles = role ? [role] : [];
+  const nav = navFor(roles);
   const badges = { chats: chats.list?.filter((c) => c.unread > 0).length ?? 0, support: supportBadge };
 
   return (
@@ -67,7 +68,7 @@ export default function DashboardLayout({ children }: LayoutProps<"/dashboard">)
             {collapsed ? <PanelLeftOpen size={20} strokeWidth={1.8} /> : <PanelLeftClose size={20} strokeWidth={1.8} />}
           </button>
           <Logo compact className="ml-1 sm:ml-4" />
-          <HeaderSearch roles={user.roles} />
+          <HeaderSearch key={role} roles={roles} />
           <div className="flex items-center">
             <MessagesButton conversations={chats.list} failed={chats.failed} reload={chats.reload} />
             <NotificationBell />
@@ -207,14 +208,12 @@ function useConversations(enabled: boolean, pathname: string) {
 }
 
 /** Значок «Поддержки»: у поддержки — сколько обращений ждут ответа, у пользователя — сколько с непрочитанным ответом. */
-function useSupportBadge(user: UserInfo | null, pathname: string): number {
-  const [count, setCount] = useState(0);
-  const staff = !!user?.roles.some((r) => r === "moderator" || r === "admin");
-  const enabled = !!user;
+function useSupportBadge(enabled: boolean, staff: boolean, pathname: string): number {
+  const [counts, setCounts] = useState({ staff: 0, personal: 0 });
   const refresh = useCallback(() => {
     if (!enabled) return;
     (staff ? support.counts().then((c) => c.open) : support.mine().then((list) => list.filter((t) => t.unread > 0).length))
-      .then(setCount)
+      .then((count) => setCounts((previous) => ({ ...previous, [staff ? "staff" : "personal"]: count })))
       .catch(() => {});
   }, [enabled, staff]);
   useEffect(() => {
@@ -223,7 +222,7 @@ function useSupportBadge(user: UserInfo | null, pathname: string): number {
   useRealtime((e) => {
     if (e.type === "message" || e.type === "refresh" || e.type === "reconnected") refresh();
   });
-  return count;
+  return counts[staff ? "staff" : "personal"];
 }
 
 function isActive(pathname: string, href: string): boolean {

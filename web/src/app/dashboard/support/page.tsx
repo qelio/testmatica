@@ -13,13 +13,14 @@ import { useRealtime } from "@/lib/realtime";
 
 /** Поддержка: у пользователя — свои обращения, у модераторов и администраторов — очередь. */
 export default function SupportPage() {
-  const { user } = useAuth();
+  const { user, activeRole } = useAuth();
   if (!user) return null;
-  const staff = user.roles.some((r) => r === "moderator" || r === "admin");
-  return <div className="mx-auto max-w-4xl space-y-6">{staff ? <Queue /> : <MyTickets />}</div>;
+  const staff = activeRole === "moderator" || activeRole === "admin";
+  const canCreate = !user.roles.some((role) => role === "moderator" || role === "admin");
+  return <div className="mx-auto max-w-4xl space-y-6">{staff ? <Queue /> : <MyTickets canCreate={canCreate} />}</div>;
 }
 
-function MyTickets() {
+function MyTickets({ canCreate }: { canCreate: boolean }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const list = useLoad(() => support.mine(), []);
@@ -31,9 +32,9 @@ function MyTickets() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Поддержка</h1>
-          <p className="mt-1 text-sm text-fg-soft">Напишите, если что-то не получается или есть идея. Отвечаем здесь же, придёт уведомление.</p>
+          {canCreate && <p className="mt-1 text-sm text-fg-soft">Напишите, если что-то не получается или есть идея. Отвечаем здесь же, придёт уведомление.</p>}
         </div>
-        <Button onClick={() => setCreating(true)}>Новое обращение</Button>
+        {canCreate && <Button onClick={() => setCreating(true)}>Новое обращение</Button>}
       </div>
       {list.error && <Alert>{list.error}</Alert>}
       {!list.data ? (
@@ -41,8 +42,8 @@ function MyTickets() {
       ) : list.data.length === 0 ? (
         <EmptyState
           title="Обращений пока нет"
-          text="Если что-то пошло не так — опишите, что случилось, и приложите скриншот."
-          action={<Button onClick={() => setCreating(true)}>Написать в поддержку</Button>}
+          text={canCreate ? "Если что-то пошло не так — опишите, что случилось, и приложите скриншот." : undefined}
+          action={canCreate && <Button onClick={() => setCreating(true)}>Написать в поддержку</Button>}
         />
       ) : (
         <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
@@ -51,7 +52,7 @@ function MyTickets() {
           ))}
         </ul>
       )}
-      <NewTicketModal open={creating} onClose={() => setCreating(false)} onCreated={(t) => router.push(`/dashboard/support/${t.id}`)} />
+      {canCreate && <NewTicketModal open={creating} onClose={() => setCreating(false)} onCreated={(t) => router.push(`/dashboard/support/${t.id}`)} />}
     </>
   );
 }

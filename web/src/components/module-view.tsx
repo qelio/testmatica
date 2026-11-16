@@ -98,7 +98,7 @@ function ModulePage({ id, base }: { id: string; base: string }) {
       {error && <Alert>{error}</Alert>}
 
       {numbered && (
-        <nav aria-label="Подразделы модуля" className="flex flex-wrap justify-center gap-2">
+        <nav aria-label="Подразделы модуля" className="flex flex-wrap items-center gap-1.5">
           {steps.map((step, index) => {
             const done = progress.get(step) === true;
             return (
@@ -106,10 +106,10 @@ function ModulePage({ id, base }: { id: string; base: string }) {
                 key={step ?? "first"}
                 type="button"
                 aria-label={`Подраздел ${index + 1}${done ? ", выполнен" : ""}`}
-                aria-current={active === step ? "true" : undefined}
+                aria-current={active === step ? "step" : undefined}
                 disabled={changingSteps}
                 onClick={() => { setEditingId(null); setSelected(step); }}
-                className={`flex size-10 items-center justify-center gap-0.5 rounded-xl border text-sm font-semibold tabular-nums ${done ? "border-ok bg-ok text-surface" : active === step ? "border-brand bg-brand text-on-brand" : "border-line bg-surface hover:bg-muted"} ${done && active === step ? "ring-2 ring-ok ring-offset-2 ring-offset-surface" : ""}`}
+                className={`relative grid size-11 place-items-center rounded-md bg-surface text-base font-semibold tabular-nums hover:bg-muted disabled:opacity-50 after:absolute after:inset-x-2.5 after:bottom-1 after:h-0.5 after:rounded-full aria-[current=step]:after:bg-brand ${done ? "text-ok" : active === step ? "text-brand-strong" : "text-fg"}`}
               >
                 {index + 1}
               </button>
@@ -122,7 +122,7 @@ function ModulePage({ id, base }: { id: string; base: string }) {
                 aria-label="Добавить подраздел"
                 title="Добавить подраздел"
                 disabled={changingSteps}
-                className="grid size-10 place-items-center rounded-xl border border-line bg-surface text-fg-soft hover:bg-muted hover:text-fg disabled:opacity-50"
+                className="grid size-11 place-items-center rounded-md bg-surface text-fg-soft hover:bg-muted hover:text-fg disabled:opacity-50"
                 onClick={() => changeSteps(async () => {
                   setEditingId(null);
                   setSelected(await content.addModuleStep(id));
@@ -136,7 +136,7 @@ function ModulePage({ id, base }: { id: string; base: string }) {
                   aria-label="Удалить пустой подраздел"
                   title="Удалить пустой подраздел"
                   disabled={changingSteps}
-                  className="grid size-10 place-items-center rounded-xl border border-line bg-surface text-danger hover:bg-muted disabled:opacity-50"
+                  className="grid size-11 place-items-center rounded-md bg-surface text-danger hover:bg-muted disabled:opacity-50"
                   onClick={() => changeSteps(async () => {
                     await content.deleteModuleStep(id, active);
                     setSelected(steps[steps.indexOf(active) - 1] ?? null);

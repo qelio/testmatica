@@ -18,6 +18,9 @@ type AuthState =
   | { status: "authenticated"; user: UserInfo };
 
 type AuthContextValue = AuthState & {
+  activeRole: AccountRole | null;
+  availableRoles: AccountRole[];
+  switchRole: (role: AccountRole) => void;
   signIn: (session: Authenticated) => void;
   signOut: () => Promise<void>;
   /** Обновить данные пользователя после правок в личном кабинете (имя, фото, email). */
@@ -26,8 +29,13 @@ type AuthContextValue = AuthState & {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const ROLE_PRIORITY = ["admin", "moderator", "teacher", "student"] as const;
+type AccountRole = typeof ROLE_PRIORITY[number];
+const roleKey = (userId: string) => `tm:active-role:${userId}`;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading", user: null });
+  const [preferredRole, setPreferredRole] = useState<string | null>(null);
 
   // Даты везде показываются в часовом поясе из профиля — выставляем его до отрисовки (lib/dates).
   const setUser = useCallback((user: UserInfo) => {
@@ -36,6 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = useCallback((session: Authenticated) => {
+    try {
+      setPreferredRole(window.localStorage.getItem(roleKey(session.user.id)));
+    } catch {
+      setPreferredRole(null);
+    }
     setAccessToken(session.access_token);
     setDisplayTimezone(session.user.timezone);
     setState({ status: "authenticated", user: session.user });
@@ -68,9 +81,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setSessionLostHandler(null);
   }, [signIn]);
 
+  const user = state.user;
+  const availableRoles = useMemo(() => ROLE_PRIORITY.filter((role) => user?.roles.includes(role)), [user]);
+  const activeRole = availableRoles.find((role) => role === preferredRole) ?? availableRoles[0] ?? null;
+  const switchRole = useCallback((role: AccountRole) => {
+    if (!user || !availableRoles.includes(role)) return;
+    setPreferredRole(role);
+    try {
+      window.localStorage.setItem(roleKey(user.id), role);
+    } catch {
+      // Если хранилище недоступно, выбор действует до обновления страницы.
+    }
+  }, [user, availableRoles]);
   const value = useMemo(
-    () => ({ ...state, signIn, signOut, setUser }),
-    [state, signIn, signOut, setUser],
+    () => ({ ...state, activeRole, availableRoles, switchRole, signIn, signOut, setUser }),
+    [state, activeRole, availableRoles, switchRole, signIn, signOut, setUser],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

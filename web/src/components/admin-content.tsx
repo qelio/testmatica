@@ -28,11 +28,11 @@ export function AdminContentActions({
   removed: boolean;
   onChanged: () => void;
 }) {
-  const { user } = useAuth();
+  const { activeRole } = useAuth();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  if (!user?.roles.includes("admin")) return null;
+  if (activeRole !== "admin") return null;
   const t = TITLES[kind];
   if (removed && !t.restore) return null;
   return (

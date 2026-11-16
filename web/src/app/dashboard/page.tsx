@@ -8,13 +8,13 @@ import { Alert } from "@/components/ui";
 import { useAuth } from "@/lib/auth";
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, activeRole } = useAuth();
   const { items, unread, error, markAllRead, markRead } = useNotifications();
 
   if (!user) return null;
   const firstName = user.first_name || user.full_name;
-  const student = user.roles.includes("student");
-  const teacher = user.roles.includes("teacher");
+  const student = activeRole === "student";
+  const teacher = activeRole === "teacher";
 
   return (
     <div className={`mx-auto space-y-6 ${student || teacher ? "max-w-6xl" : "max-w-4xl"}`}>
